@@ -1,0 +1,11 @@
+.idea
+
+*.yaml
+!example-config.yaml
+
+*.session
+*.json
+*.db
+*.log
+
+/mautrix-imessage
