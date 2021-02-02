@@ -215,6 +215,10 @@ type BridgeInfoSection struct {
 	DisplayName string              `json:"displayname,omitempty"`
 	AvatarURL   id.ContentURIString `json:"avatar_url,omitempty"`
 	ExternalURL string              `json:"external_url,omitempty"`
+
+	GUID    string `json:"fi.mau.imessage.guid"`
+	Service string `json:"fi.mau.imessage.service"`
+	IsGroup bool   `json:"fi.mau.imessage.is_group"`
 }
 
 type BridgeInfoContent struct {
@@ -241,9 +245,13 @@ func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
 			ExternalURL: "https://support.apple.com/messages",
 		},
 		Channel: BridgeInfoSection{
-			ID:          portal.GUID,
+			ID:          portal.Identifier.LocalID,
 			DisplayName: portal.Name,
 			AvatarURL:   portal.AvatarURL.CUString(),
+
+			GUID:    portal.GUID,
+			IsGroup: portal.Identifier.IsGroup,
+			Service: portal.Identifier.Service,
 		},
 	}
 	if portal.Identifier.Service == "SMS" {

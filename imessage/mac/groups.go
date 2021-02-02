@@ -27,7 +27,7 @@ const groupMemberQuery = `
 SELECT value FROM cn_handles
 JOIN cn_handles_sources ON cn_handles.id = cn_handles_sources.cn_handle_id
 JOIN sources ON cn_handles_sources.source_id = sources.id
-WHERE sources.group_id = $1
+WHERE cn_handles_sources.source_id = (SELECT id FROM sources WHERE group_id = $1 ORDER BY seconds_from_1970 DESC LIMIT 1)
 `
 
 func (imdb *Database) prepareGroups() error {
