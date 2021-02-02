@@ -606,13 +606,28 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	}
 	senderGUID := msg.Sender.String()
 
+	existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, senderGUID)
+	if msg.Tapback.Remove {
+		if existing == nil {
+			return
+		}
+		_, err := intent.RedactEvent(portal.MXID, existing.MXID)
+		if err != nil {
+			portal.log.Warnln("Failed to remove tapback from %s: %v", msg.Sender.LocalID, err)
+		}
+		existing.Delete()
+		return
+	} else if existing != nil && existing.Type == msg.Tapback.Type {
+		portal.log.Debugln("Ignoring tapback from %s to %s: type is same", msg.Sender.LocalID, target.GUID)
+		return
+	}
+
 	resp, err := intent.SendReaction(portal.MXID, target.MXID, msg.Tapback.Type.Emoji())
 	if err != nil {
 		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.Sender.LocalID, err)
 		return
 	}
 
-	existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, senderGUID)
 	if existing == nil {
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
