@@ -33,14 +33,15 @@ import (
 
 const messagesQuery = `
 SELECT
-  message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.service, chat.guid, chat.chat_identifier, chat.service_name,
-  handle.id, handle.service, message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
+  message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.service, chat.guid,
+  chat.chat_identifier, chat.service_name, COALESCE(handle.id, ''), COALESCE(handle.service, ''),
+  message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
   COALESCE(attachment.filename, ''), COALESCE(attachment.mime_type, ''), COALESCE(attachment.transfer_name, '')
 FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
-JOIN handle            ON message.handle_id = handle.ROWID
+LEFT JOIN handle       ON message.handle_id = handle.ROWID
 LEFT JOIN message_attachment_join ON message_attachment_join.message_id = message.ROWID
 LEFT JOIN attachment              ON message_attachment_join.attachment_id = attachment.ROWID
 WHERE (chat.guid=$1 OR $1='') AND message.date>$2
