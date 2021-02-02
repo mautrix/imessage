@@ -593,12 +593,22 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		portal.log.Debugln("Unknown tapback target", msg.Tapback.TargetGUID)
 		return
 	}
-	puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
+	var intent *appservice.IntentAPI
+	if msg.IsFromMe {
+		intent = portal.bridge.user.DoublePuppetIntent
+		if intent == nil {
+			portal.log.Debugfln("Dropping own message in %s as double puppeting is not initialized", msg.ChatGUID)
+			return
+		}
+	} else {
+		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
+		intent = puppet.Intent
+	}
 	senderGUID := msg.Sender.String()
 
-	resp, err := puppet.Intent.SendReaction(portal.MXID, target.MXID, msg.Tapback.Type.Emoji())
+	resp, err := intent.SendReaction(portal.MXID, target.MXID, msg.Tapback.Type.Emoji())
 	if err != nil {
-		portal.log.Errorln("Failed to send tapback from %s: %v", msg.Sender.LocalID)
+		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.Sender.LocalID, err)
 		return
 	}
 
@@ -612,7 +622,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		tapback.MXID = resp.EventID
 		tapback.Insert()
 	} else {
-		_, err = puppet.Intent.RedactEvent(portal.MXID, existing.MXID)
+		_, err = intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnln("Failed to redact old tapback from %s: %v", msg.Sender.LocalID, err)
 		}
