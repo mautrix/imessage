@@ -544,6 +544,11 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 }
 
 func (portal *Portal) HandleiMessage(msg *imessage.Message) {
+	if portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID) != nil {
+		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
+		return
+	}
+
 	dbMessage := portal.bridge.DB.Message.New()
 	dbMessage.ChatGUID = portal.GUID
 	dbMessage.SenderGUID = msg.Sender.String()
