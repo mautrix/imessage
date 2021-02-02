@@ -135,7 +135,7 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 		Type:                     mautrix.AuthTypeAppservice,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(helper.bridge.AS.BotMXID())},
 		DeviceID:                 deviceID,
-		InitialDeviceDisplayName: "WhatsApp Bridge",
+		InitialDeviceDisplayName: "iMessage Bridge",
 		StoreCredentials:         true,
 	})
 	if err != nil {
