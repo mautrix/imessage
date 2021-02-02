@@ -1,0 +1,16 @@
+stages:
+- build
+
+build amd64:
+  tags:
+  - macos
+  - amd64
+  stage: build
+  before_script:
+  - export GO_LDFLAGS="-extldflags -X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
+  script:
+  - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
+  artifacts:
+    paths:
+    - mautrix-imessage
+    - example-config.yaml
