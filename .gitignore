@@ -5,7 +5,7 @@
 
 *.session
 *.json
-*.db
+*.db*
 *.log
 
 /mautrix-imessage

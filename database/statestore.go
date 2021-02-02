@@ -1,0 +1,243 @@
+// mautrix-imessage - A Matrix-iMessage puppeting bridge.
+// Copyright (C) 2021 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+package database
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"sync"
+
+	log "maunium.net/go/maulogger/v2"
+
+	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
+)
+
+type SQLStateStore struct {
+	*appservice.TypingStateStore
+
+	db  *Database
+	log log.Logger
+
+	Typing     map[id.RoomID]map[id.UserID]int64
+	typingLock sync.RWMutex
+}
+
+var _ appservice.StateStore = (*SQLStateStore)(nil)
+
+func NewSQLStateStore(db *Database) *SQLStateStore {
+	return &SQLStateStore{
+		TypingStateStore: appservice.NewTypingStateStore(),
+		db:               db,
+		log:              db.log.Sub("StateStore"),
+	}
+}
+
+func (store *SQLStateStore) IsRegistered(userID id.UserID) bool {
+	row := store.db.QueryRow("SELECT EXISTS(SELECT 1 FROM mx_registrations WHERE user_id=$1)", userID)
+	var isRegistered bool
+	err := row.Scan(&isRegistered)
+	if err != nil {
+		store.log.Warnfln("Failed to scan registration existence for %s: %v", userID, err)
+	}
+	return isRegistered
+}
+
+func (store *SQLStateStore) MarkRegistered(userID id.UserID) {
+	var err error
+	if store.db.dialect == "postgres" {
+		_, err = store.db.Exec("INSERT INTO mx_registrations (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", userID)
+	} else if store.db.dialect == "sqlite3" {
+		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_registrations (user_id) VALUES ($1)", userID)
+	} else {
+		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
+	}
+	if err != nil {
+		store.log.Warnfln("Failed to mark %s as registered: %v", userID, err)
+	}
+}
+
+func (store *SQLStateStore) GetRoomMembers(roomID id.RoomID) map[id.UserID]*event.MemberEventContent {
+	members := make(map[id.UserID]*event.MemberEventContent)
+	rows, err := store.db.Query("SELECT user_id, membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1", roomID)
+	if err != nil {
+		return members
+	}
+	var userID id.UserID
+	var member event.MemberEventContent
+	for rows.Next() {
+		err := rows.Scan(&userID, &member.Membership, &member.Displayname, &member.AvatarURL)
+		if err != nil {
+			store.log.Warnfln("Failed to scan member in %s: %v", roomID, err)
+		} else {
+			members[userID] = &member
+		}
+	}
+	return members
+}
+
+func (store *SQLStateStore) GetMembership(roomID id.RoomID, userID id.UserID) event.Membership {
+	row := store.db.QueryRow("SELECT membership FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
+	membership := event.MembershipLeave
+	err := row.Scan(&membership)
+	if err != nil && err != sql.ErrNoRows {
+		store.log.Warnfln("Failed to scan membership of %s in %s: %v", userID, roomID, err)
+	}
+	return membership
+}
+
+func (store *SQLStateStore) GetMember(roomID id.RoomID, userID id.UserID) *event.MemberEventContent {
+	member, ok := store.TryGetMember(roomID, userID)
+	if !ok {
+		member.Membership = event.MembershipLeave
+	}
+	return member
+}
+
+func (store *SQLStateStore) TryGetMember(roomID id.RoomID, userID id.UserID) (*event.MemberEventContent, bool) {
+	row := store.db.QueryRow("SELECT membership, displayname, avatar_url FROM mx_user_profile WHERE room_id=$1 AND user_id=$2", roomID, userID)
+	var member event.MemberEventContent
+	err := row.Scan(&member.Membership, &member.Displayname, &member.AvatarURL)
+	if err != nil && err != sql.ErrNoRows {
+		store.log.Warnfln("Failed to scan member info of %s in %s: %v", userID, roomID, err)
+	}
+	return &member, err == nil
+}
+
+func (store *SQLStateStore) FindSharedRooms(userID id.UserID) (rooms []id.RoomID) {
+	rows, err := store.db.Query(`
+			SELECT room_id FROM mx_user_profile
+			LEFT JOIN portal ON portal.mxid=mx_user_profile.room_id
+			WHERE user_id=$1 AND portal.encrypted=true
+	`, userID)
+	if err != nil {
+		store.log.Warnfln("Failed to query shared rooms with %s: %v", userID, err)
+		return
+	}
+	for rows.Next() {
+		var roomID id.RoomID
+		err := rows.Scan(&roomID)
+		if err != nil {
+			store.log.Warnfln("Failed to scan room ID: %v", err)
+		} else {
+			rooms = append(rooms, roomID)
+		}
+	}
+	return
+}
+
+func (store *SQLStateStore) IsInRoom(roomID id.RoomID, userID id.UserID) bool {
+	return store.IsMembership(roomID, userID, "join")
+}
+
+func (store *SQLStateStore) IsInvited(roomID id.RoomID, userID id.UserID) bool {
+	return store.IsMembership(roomID, userID, "join", "invite")
+}
+
+func (store *SQLStateStore) IsMembership(roomID id.RoomID, userID id.UserID, allowedMemberships ...event.Membership) bool {
+	membership := store.GetMembership(roomID, userID)
+	for _, allowedMembership := range allowedMemberships {
+		if allowedMembership == membership {
+			return true
+		}
+	}
+	return false
+}
+
+func (store *SQLStateStore) SetMembership(roomID id.RoomID, userID id.UserID, membership event.Membership) {
+	var err error
+	if store.db.dialect == "postgres" {
+		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership) VALUES ($1, $2, $3)
+			ON CONFLICT (room_id, user_id) DO UPDATE SET membership=$3`, roomID, userID, membership)
+	} else if store.db.dialect == "sqlite3" {
+		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_user_profile (room_id, user_id, membership) VALUES ($1, $2, $3)", roomID, userID, membership)
+	} else {
+		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
+	}
+	if err != nil {
+		store.log.Warnfln("Failed to set membership of %s in ,. %s to %s: %v", userID, roomID, membership, err)
+	}
+}
+
+func (store *SQLStateStore) SetMember(roomID id.RoomID, userID id.UserID, member *event.MemberEventContent) {
+	var err error
+	if store.db.dialect == "postgres" {
+		_, err = store.db.Exec(`INSERT INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (room_id, user_id) DO UPDATE SET membership=$3`, roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
+	} else if store.db.dialect == "sqlite3" {
+		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_user_profile (room_id, user_id, membership, displayname, avatar_url) VALUES ($1, $2, $3, $4, $5)",
+			roomID, userID, member.Membership, member.Displayname, member.AvatarURL)
+	} else {
+		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
+	}
+	if err != nil {
+		store.log.Warnfln("Failed to set membership of %s in %s to %s: %v", userID, roomID, member, err)
+	}
+}
+
+func (store *SQLStateStore) SetPowerLevels(roomID id.RoomID, levels *event.PowerLevelsEventContent) {
+	levelsBytes, err := json.Marshal(levels)
+	if err != nil {
+		store.log.Errorfln("Failed to marshal power levels of %s: %v", roomID, err)
+		return
+	}
+	if store.db.dialect == "postgres" {
+		_, err = store.db.Exec(`INSERT INTO mx_room_state (room_id, power_levels) VALUES ($1, $2)
+			ON CONFLICT (room_id) DO UPDATE SET power_levels=$2`, roomID, levelsBytes)
+	} else if store.db.dialect == "sqlite3" {
+		_, err = store.db.Exec("INSERT OR REPLACE INTO mx_room_state (room_id, power_levels) VALUES ($1, $2)", roomID, levelsBytes)
+	} else {
+		err = fmt.Errorf("unsupported dialect %s", store.db.dialect)
+	}
+	if err != nil {
+		store.log.Warnfln("Failed to store power levels of %s: %v", roomID, err)
+	}
+}
+
+func (store *SQLStateStore) GetPowerLevels(roomID id.RoomID) (levels *event.PowerLevelsEventContent) {
+	row := store.db.QueryRow("SELECT power_levels FROM mx_room_state WHERE room_id=$1", roomID)
+	if row == nil {
+		return
+	}
+	var data []byte
+	err := row.Scan(&data)
+	if err != nil {
+		store.log.Errorln("Failed to scan power levels of %s: %v", roomID, err)
+		return
+	}
+	levels = &event.PowerLevelsEventContent{}
+	err = json.Unmarshal(data, levels)
+	if err != nil {
+		store.log.Errorln("Failed to parse power levels of %s: %v", roomID, err)
+		return nil
+	}
+	return
+}
+
+func (store *SQLStateStore) GetPowerLevel(roomID id.RoomID, userID id.UserID) int {
+	return store.GetPowerLevels(roomID).GetUserLevel(userID)
+}
+
+func (store *SQLStateStore) GetPowerLevelRequirement(roomID id.RoomID, eventType event.Type) int {
+	return store.GetPowerLevels(roomID).GetEventLevel(eventType)
+}
+
+func (store *SQLStateStore) HasPowerLevel(roomID id.RoomID, userID id.UserID, eventType event.Type) bool {
+	return store.GetPowerLevel(roomID, userID) >= store.GetPowerLevelRequirement(roomID, eventType)
+}

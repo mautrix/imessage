@@ -27,7 +27,8 @@ type Database struct {
 	chatDBPath    string
 	chatDB        *sql.DB
 	messagesQuery *sql.Stmt
-	Messages      chan imessage.Message
+	chatQuery     *sql.Stmt
+	Messages      chan *imessage.Message
 	stopWatching  chan struct{}
 
 	ppDB             *sql.DB

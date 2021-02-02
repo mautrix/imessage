@@ -85,7 +85,7 @@ func (imdb *Database) loadAddressBook() error {
 					imdb.Contacts[numberStr] = contact
 				}
 			}
-			if email.Valid && len(number.String) > 0 {
+			if email.Valid && len(email.String) > 0 {
 				_, emailExists := imdb.Contacts[email.String]
 				if !emailExists {
 					contact.Emails = append(contact.Emails, email.String)
@@ -97,10 +97,10 @@ func (imdb *Database) loadAddressBook() error {
 	return nil
 }
 
-func (imdb *Database) GetContactInfo(identifier string) *imessage.Contact {
+func (imdb *Database) GetContactInfo(identifier string) (*imessage.Contact, error) {
 	contact, ok := imdb.Contacts[identifier]
 	if !ok {
-		return nil
+		return nil, nil
 	}
-	return contact
+	return contact, nil
 }
