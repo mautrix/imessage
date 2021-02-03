@@ -570,6 +570,15 @@ func (portal *Portal) sendErrorMessage(message string) id.EventID {
 	return resp.EventID
 }
 
+func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
+	if portal.bridge.Config.Bridge.DeliveryReceipts {
+		err := portal.bridge.Bot.MarkRead(portal.MXID, eventID)
+		if err != nil {
+			portal.log.Debugfln("Failed to send delivery receipt for %s: %v", eventID, err)
+		}
+	}
+}
+
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	msg, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -700,6 +709,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 			portal.messageDedupLock.Unlock()
 			portal.log.Debugfln("Received echo for Matrix message %s -> %s", dedup.EventID, msg.GUID)
 			dbMessage.MXID = dedup.EventID
+			portal.sendDeliveryReceipt(dbMessage.MXID)
 			dbMessage.Insert()
 			return
 		} else {
@@ -734,6 +744,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		dbMessage.MXID = resp.EventID
 	}
 	if len(dbMessage.MXID) > 0 {
+		portal.sendDeliveryReceipt(dbMessage.MXID)
 		dbMessage.Insert()
 	} else {
 		portal.log.Debugfln("Unhandled message %s", msg.GUID)
