@@ -133,7 +133,7 @@ type Portal struct {
 func (portal *Portal) SyncParticipants() {
 	members, err := portal.bridge.IM.GetGroupMembers(portal.GUID)
 	if err != nil {
-		portal.log.Errorln("Failed to get group members: %v", err)
+		portal.log.Errorln("Failed to get group members:", err)
 		return
 	}
 	for _, member := range members {
@@ -722,7 +722,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 	if mediaContent := portal.HandleiMessageAttachment(msg, intent); mediaContent != nil {
 		resp, err := portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
 		if err != nil {
-			portal.log.Errorln("Failed to send attachment in message %s: %v", msg.GUID, err)
+			portal.log.Errorfln("Failed to send attachment in message %s: %v", msg.GUID, err)
 			return
 		}
 		portal.log.Debugfln("Handled iMessage attachment in %s -> %s", msg.GUID, resp.EventID)
@@ -737,7 +737,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		portal.SetReply(content, msg)
 		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
 		if err != nil {
-			portal.log.Errorln("Failed to send message %s: %v", msg.GUID, err)
+			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
 		}
 		portal.log.Debugfln("Handled iMessage %s -> %s", msg.GUID, resp.EventID)
@@ -777,12 +777,12 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		}
 		_, err := intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
-			portal.log.Warnln("Failed to remove tapback from %s: %v", msg.Sender.LocalID, err)
+			portal.log.Warnfln("Failed to remove tapback from %s: %v", msg.Sender.LocalID, err)
 		}
 		existing.Delete()
 		return
 	} else if existing != nil && existing.Type == msg.Tapback.Type {
-		portal.log.Debugln("Ignoring tapback from %s to %s: type is same", msg.Sender.LocalID, target.GUID)
+		portal.log.Debugfln("Ignoring tapback from %s to %s: type is same", msg.Sender.LocalID, target.GUID)
 		return
 	}
 
@@ -803,7 +803,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	} else {
 		_, err = intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
-			portal.log.Warnln("Failed to redact old tapback from %s: %v", msg.Sender.LocalID, err)
+			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.Sender.LocalID, err)
 		}
 		existing.Type = msg.Tapback.Type
 		existing.MXID = resp.EventID
