@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 const sendMessage = `
@@ -83,12 +84,18 @@ func (imdb *Database) SendFile(chatID, filename string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer os.Remove(dir)
 	filePath := filepath.Join(dir, filename)
 	err = ioutil.WriteFile(filePath, data, 0640)
 	if err != nil {
 		return fmt.Errorf("failed to write data to temp file: %w", err)
 	}
-	defer os.Remove(filePath)
-	return runOsascript(sendFile, chatID, filePath)
+	err = runOsascript(sendFile, chatID, filePath)
+	go func() {
+		// TODO maybe log when the file gets removed
+		// Random sleep to make sure the message has time to get sent
+		time.Sleep(60 * time.Second)
+		os.Remove(filePath)
+		os.Remove(dir)
+	}()
+	return err
 }
