@@ -97,3 +97,5 @@ maunium.net/go/mautrix v0.8.1-0.20210202174214-a19487db9b66 h1:KBLV39rU0NI/WUwZ5
 maunium.net/go/mautrix v0.8.1-0.20210202174214-a19487db9b66/go.mod h1:KiViCshKBUZwrVRvTOXsJBFfstvR/btxckHUbOPdu54=
 maunium.net/go/mautrix v0.8.1-0.20210202174706-a91c727bf8b3 h1:JyaZm9F16f7a9a6m3N9uDHQsiI2VyAq9ceBf67nz4tc=
 maunium.net/go/mautrix v0.8.1-0.20210202174706-a91c727bf8b3/go.mod h1:KiViCshKBUZwrVRvTOXsJBFfstvR/btxckHUbOPdu54=
+maunium.net/go/mautrix v0.8.1-0.20210203113303-4713321cf3c2 h1:YGg8Uekygg5CpsnB1D+3WYnOQyaRADVxhbAhjXyNnPg=
+maunium.net/go/mautrix v0.8.1-0.20210203113303-4713321cf3c2/go.mod h1:KiViCshKBUZwrVRvTOXsJBFfstvR/btxckHUbOPdu54=

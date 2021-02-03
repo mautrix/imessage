@@ -110,6 +110,7 @@ type Bridge struct {
 	portalsLock   sync.Mutex
 	puppets       map[string]*Puppet
 	puppetsLock   sync.Mutex
+	stopping      bool
 }
 
 type Crypto interface {
@@ -208,6 +209,20 @@ func (bridge *Bridge) Init() {
 	bridge.Crypto = NewCryptoHelper(bridge)
 }
 
+func (bridge *Bridge) startWebsocket() {
+	for {
+		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy)
+		if err != nil {
+			bridge.Log.Errorln("Error in appservice websocket:", err)
+		}
+		if bridge.stopping {
+			return
+		}
+		bridge.Log.Infoln("Websocket disconnected, reconnecting in 5 seconds...")
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Running database upgrades")
 	err := bridge.DB.Init()
@@ -236,13 +251,7 @@ func (bridge *Bridge) Start() {
 		}
 	}()
 	bridge.Log.Debugln("Starting application service websocket")
-	go func() {
-		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy)
-		if err != nil {
-			bridge.Log.Fatalln("Error in appservice websocket:", err)
-			os.Exit(41)
-		}
-	}()
+	go bridge.startWebsocket()
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 	bridge.Log.Debugln("Stating iMessage handler")
@@ -282,10 +291,11 @@ func (bridge *Bridge) UpdateBotProfile() {
 }
 
 func (bridge *Bridge) Stop() {
+	bridge.stopping = true
 	if bridge.Crypto != nil {
 		bridge.Crypto.Stop()
 	}
-	bridge.AS.Stop()
+	bridge.AS.StopWebsocket()
 	bridge.EventProcessor.Stop()
 	bridge.IMHandler.Stop()
 }
