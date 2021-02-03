@@ -2,7 +2,7 @@
 * Matrix → iMessage
   * [ ] Message content
     * [x] Plain text
-    * [ ] Media/files
+    * [x] Media/files
     * [ ] Replies
   * [ ] Reactions
 * iMessage → Matrix

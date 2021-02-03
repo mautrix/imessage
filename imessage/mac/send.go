@@ -18,21 +18,35 @@ package mac
 
 import (
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 const sendMessage = `
-on run {targetChatId, targetMessage}
-    tell application "Messages"
-        set theBuddy to a reference to chat id targetChatId
-        send targetMessage to theBuddy
-    end tell
+on run {targetChatID, messageText}
+	tell application "Messages"
+		set theBuddy to a reference to chat id targetChatID
+		send messageText to theBuddy
+	end tell
 end run
 `
 
-func (imdb *Database) SendMessage(chatID, text string) error {
-	cmd := exec.Command("osascript", "-", chatID, text)
+const sendFile = `
+on run {targetChatID, filePath}
+	tell application "Messages"
+		set theBuddy to a reference to chat id targetChatID
+		set theFile to (filePath as POSIX file)
+		send theFile to theBuddy
+	end tell
+end run
+`
+
+func runOsascript(script string, args ...string) error {
+	args = append([]string{"-"}, args...)
+	cmd := exec.Command("osascript", args...)
 	// TODO make these go somewhere else
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
@@ -45,7 +59,7 @@ func (imdb *Database) SendMessage(chatID, text string) error {
 	if err != nil {
 		return fmt.Errorf("failed to run osascript: %w", err)
 	}
-	_, err = stdin.Write([]byte(sendMessage))
+	_, err = io.WriteString(stdin, script)
 	if err != nil {
 		return fmt.Errorf("failed to send script to osascript: %w", err)
 	}
@@ -58,4 +72,23 @@ func (imdb *Database) SendMessage(chatID, text string) error {
 		return fmt.Errorf("failed to wait for osascript: %w", err)
 	}
 	return nil
+}
+
+func (imdb *Database) SendMessage(chatID, text string) error {
+	return runOsascript(sendMessage, chatID, text)
+}
+
+func (imdb *Database) SendFile(chatID, filename string, data []byte) error {
+	dir, err := ioutil.TempDir("", "mautrix-imessage-upload")
+	if err != nil {
+		return fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	defer os.Remove(dir)
+	filePath := filepath.Join(dir, filename)
+	err = ioutil.WriteFile(filePath, data, 0640)
+	if err != nil {
+		return fmt.Errorf("failed to write data to temp file: %w", err)
+	}
+	defer os.Remove(filePath)
+	return runOsascript(sendFile, chatID, filePath)
 }

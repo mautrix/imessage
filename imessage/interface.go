@@ -32,6 +32,7 @@ type API interface {
 	GetChatInfo(chatID string) (*ChatInfo, error)
 
 	SendMessage(chatID, text string) error
+	SendFile(chatID, filename string, data []byte) error
 }
 
 var AppleEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)

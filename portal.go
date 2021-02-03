@@ -576,19 +576,49 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		// TODO log
 		return
 	}
+	portal.messageDedupLock.Lock()
+	portal.messageDedup[msg.Body] = SentMessage{
+		EventID:   evt.ID,
+		Timestamp: time.Now(),
+	}
+	portal.messageDedupLock.Unlock()
 	if msg.MsgType == event.MsgText {
-		portal.messageDedupLock.Lock()
-		portal.messageDedup[msg.Body] = SentMessage{
-			EventID:   evt.ID,
-			Timestamp: time.Now(),
-		}
-		portal.messageDedupLock.Unlock()
 		// TODO deduplicate sent messages
 		err := portal.bridge.IM.SendMessage(portal.GUID, msg.Body)
 		if err != nil {
-			portal.log.Errorln("Error sending to iMessage: %v", err)
+			portal.log.Errorln("Error sending to iMessage:", err)
 		} else {
 			portal.log.Debugln("Handled Matrix message", evt.ID)
+		}
+	} else if len(msg.URL) > 0 || msg.File != nil {
+		var data []byte
+		var err error
+		var url id.ContentURI
+		if msg.File != nil {
+			url, err = msg.File.URL.Parse()
+		} else {
+			url, err = msg.URL.Parse()
+		}
+		if err != nil {
+			portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
+			return
+		}
+		data, err = portal.MainIntent().DownloadBytes(url)
+		if err != nil {
+			portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
+			return
+		}
+		if msg.File != nil {
+			data, err = msg.File.Decrypt(data)
+			if err != nil {
+				portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
+			}
+		}
+		err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data)
+		if err != nil {
+			portal.log.Errorln("Error sending file to iMessage:", err)
+		} else {
+			portal.log.Debugln("Handled Matrix file message", evt.ID)
 		}
 	}
 }
@@ -660,9 +690,13 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 			return
 		}
 		portal.messageDedupLock.Lock()
-		dedup, isDup := portal.messageDedup[msg.Text]
+		dedupKey := msg.Text
+		if msg.Attachment != nil {
+			dedupKey = msg.Attachment.GetFileName()
+		}
+		dedup, isDup := portal.messageDedup[dedupKey]
 		if isDup && dedup.Timestamp.Before(msg.Time) {
-			delete(portal.messageDedup, msg.Text)
+			delete(portal.messageDedup, dedupKey)
 			portal.messageDedupLock.Unlock()
 			portal.log.Debugfln("Received echo for Matrix message %s -> %s", dedup.EventID, msg.GUID)
 			dbMessage.MXID = dedup.EventID
