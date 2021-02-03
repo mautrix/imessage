@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -92,6 +93,13 @@ func (ai *AttachmentInfo) GetFileName() string {
 }
 
 func (ai *AttachmentInfo) Read() ([]byte, error) {
+	if strings.HasPrefix(ai.FileName, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+		ai.FileName = filepath.Join(home, ai.FileName[2:])
+	}
 	return ioutil.ReadFile(ai.FileName)
 }
 

@@ -6,13 +6,10 @@
     * [ ] Replies
   * [ ] Reactions
 * iMessage → Matrix
-  * [ ] Message content
+  * [x] Message content
     * [x] Plain text
-    * [ ] Formatted messages
-    * [ ] Media/files
-    * [ ] Location messages
-    * [ ] Contact messages
-    * [ ] Replies
+    * [x] Media/files
+    * [x] Replies
   * [x] Tapbacks
   * [ ] Read receipts
   * [ ] User metadata
@@ -22,6 +19,9 @@
     * [x] Display name
     * [x] Member list
     * [ ] Avatar
+  * [ ] Backfilling history
+    * [ ] Missed messages
+    * [ ] When creating portal
 * Misc
   * [x] Automatic portal creation
     * [ ] At startup

@@ -543,6 +543,47 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 }
 
+func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *appservice.IntentAPI) *event.MessageEventContent {
+	if msg.Attachment == nil {
+		return nil
+	}
+	data, err := msg.Attachment.Read()
+	if err != nil {
+		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
+		return nil
+	}
+	data, uploadMime, uploadInfo := portal.encryptFile(data, msg.Attachment.GetMimeType())
+	uploadResp, err := portal.uploadWithRetry(intent, data, uploadMime, MediaUploadRetries)
+	if err != nil {
+		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
+		return nil
+	}
+	var content event.MessageEventContent
+	if uploadInfo != nil {
+		uploadInfo.URL = uploadResp.ContentURI.CUString()
+		content.File = uploadInfo
+	} else {
+		content.URL = uploadResp.ContentURI.CUString()
+	}
+	content.Body = msg.Attachment.GetFileName()
+	content.Info = &event.FileInfo{
+		MimeType: msg.Attachment.GetMimeType(),
+		Size:     len(data),
+	}
+	switch strings.Split(msg.Attachment.GetMimeType(), "/")[0] {
+	case "image":
+		content.MsgType = event.MsgImage
+	case "video":
+		content.MsgType = event.MsgVideo
+	case "audio":
+		content.MsgType = event.MsgAudio
+	default:
+		content.MsgType = event.MsgFile
+	}
+	portal.SetReply(&content, msg)
+	return &content
+}
+
 func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 	if portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID) != nil {
 		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
@@ -577,19 +618,35 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
 		intent = puppet.Intent
 	}
-	content := &event.MessageEventContent{
-		MsgType: event.MsgText,
-		Body:    msg.Text,
+	if mediaContent := portal.HandleiMessageAttachment(msg, intent); mediaContent != nil {
+		resp, err := portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
+		if err != nil {
+			portal.log.Errorln("Failed to send attachment in message %s: %v", msg.GUID, err)
+			return
+		}
+		portal.log.Debugfln("Handled iMessage attachment in %s -> %s", msg.GUID, resp.EventID)
+		dbMessage.MXID = resp.EventID
 	}
-	portal.SetReply(content, msg)
-	resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
-	if err != nil {
-		portal.log.Errorln("Failed to send message from %s: %v", msg.Sender.LocalID, err)
-		return
+	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
+	if len(msg.Text) > 0 {
+		content := &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    msg.Text,
+		}
+		portal.SetReply(content, msg)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
+		if err != nil {
+			portal.log.Errorln("Failed to send message %s: %v", msg.GUID, err)
+			return
+		}
+		portal.log.Debugfln("Handled iMessage %s -> %s", msg.GUID, resp.EventID)
+		dbMessage.MXID = resp.EventID
 	}
-	portal.log.Debugfln("Handled iMessage %s -> %s", msg.GUID, resp.EventID)
-	dbMessage.MXID = resp.EventID
-	dbMessage.Insert()
+	if len(dbMessage.MXID) > 0 {
+		dbMessage.Insert()
+	} else {
+		portal.log.Debugfln("Unhandled message %s", msg.GUID)
+	}
 }
 
 func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
