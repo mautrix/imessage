@@ -18,6 +18,7 @@ package database
 
 import (
 	"database/sql"
+	"time"
 
 	log "maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix/id"
@@ -84,6 +85,11 @@ type Message struct {
 	MXID       id.EventID
 	SenderGUID string
 	Timestamp  int64
+}
+
+func (msg *Message) Time() time.Time {
+	// Add 1 ms to avoid rounding down
+	return time.Unix(msg.Timestamp / 1000, ((msg.Timestamp % 1000) + 1) * int64(time.Millisecond))
 }
 
 func (msg *Message) Scan(row Scannable) *Message {

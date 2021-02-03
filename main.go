@@ -260,6 +260,12 @@ func (bridge *Bridge) Start() {
 	if bridge.Crypto != nil {
 		go bridge.Crypto.Start()
 	}
+
+	for _, portal := range bridge.GetAllPortals() {
+		if len(portal.MXID) > 0 {
+			portal.Sync()
+		}
+	}
 }
 
 func (bridge *Bridge) UpdateBotProfile() {

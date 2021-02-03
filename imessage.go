@@ -57,11 +57,7 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 			return
 		}
 	}
-	if msg.Tapback != nil {
-		portal.HandleiMessageTapback(msg)
-	} else {
-		portal.HandleiMessage(msg)
-	}
+	portal.Messages <- msg
 }
 
 func (imh *iMessageHandler) Stop() {

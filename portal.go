@@ -100,9 +100,12 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		bridge: bridge,
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
 
-		Identifier:   imessage.ParseIdentifier(dbPortal.GUID),
-		messageDedup: make(map[string]SentMessage),
+		Identifier:    imessage.ParseIdentifier(dbPortal.GUID),
+		Messages:      make(chan *imessage.Message, 100),
+		backfillStart: make(chan struct{}),
+		messageDedup:  make(map[string]SentMessage),
 	}
+	go portal.handleMessageLoop()
 	return portal
 }
 
@@ -117,6 +120,10 @@ type Portal struct {
 	bridge *Bridge
 	log    log.Logger
 
+	Messages         chan *imessage.Message
+	backfillStart    chan struct{}
+	backfillWait     sync.WaitGroup
+	backfillLock     sync.Mutex
 	roomCreateLock   sync.Mutex
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
@@ -168,23 +175,68 @@ func (portal *Portal) Sync() {
 		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
 	}
 
-	if portal.IsPrivateChat() {
-		return
+	if !portal.IsPrivateChat() {
+		chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
+		if err != nil {
+			portal.log.Errorln("Failed to get chat info:", err)
+		}
+		update := false
+		if len(chatInfo.DisplayName) > 0 {
+			update = portal.UpdateName(chatInfo.DisplayName)
+		}
+		portal.SyncParticipants()
+		// TODO avatar?
+		if update {
+			portal.Update()
+			portal.UpdateBridgeInfo()
+		}
 	}
 
-	chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
+	portal.Backfill()
+}
+
+func (portal *Portal) handleMessageLoop() {
+	portal.log.Debugln("Starting message processing loop")
+	for {
+		select {
+		case msg := <-portal.Messages:
+			portal.HandleiMessage(msg)
+		case <-portal.backfillStart:
+			portal.log.Debugln("Backfill started, stopping new message processing")
+			portal.backfillWait.Wait()
+			portal.log.Debugln("Continuing new message processing")
+		}
+	}
+}
+
+func (portal *Portal) Backfill() {
+	portal.backfillLock.Lock()
+	portal.log.Debugln("Preparing to backfill")
+	defer portal.backfillLock.Unlock()
+	portal.backfillWait.Add(1)
+	select {
+	case portal.backfillStart <- struct{}{}:
+	default:
+	}
+	defer portal.backfillWait.Done()
+
+	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
+	if lastMessage == nil {
+		portal.log.Debugln("No messages found, not backfilling")
+		// TODO initial backfill?
+		return
+	}
+	messages, err := portal.bridge.IM.GetMessages(portal.GUID, lastMessage.Time())
 	if err != nil {
-		portal.log.Errorln("Failed to get chat info: %v", err)
-	}
-	update := false
-	if len(chatInfo.DisplayName) > 0 {
-		update = portal.UpdateName(chatInfo.DisplayName)
-	}
-	portal.SyncParticipants()
-	// TODO avatar?
-	if update {
-		portal.Update()
-		portal.UpdateBridgeInfo()
+		portal.log.Errorln("Failed to fetch messages for backfilling:", err)
+	} else if len(messages) == 0 {
+		portal.log.Debugln("Nothing to backfill")
+	} else {
+		portal.log.Infofln("Backfilling %d messages", len(messages))
+		for _, message := range messages {
+			portal.HandleiMessage(message)
+		}
+		portal.log.Infoln("Backfill finished")
 	}
 }
 
@@ -296,7 +348,9 @@ func (portal *Portal) CreateMatrixRoom() error {
 
 	chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
 	if err != nil {
-		portal.log.Errorln("Failed to get chat info when creating portal: %v", err)
+		// If there's no chat info, the chat probably doesn't exist and we shouldn't auto-create a Matrix room for it.
+		// TODO if we want a `pm` command or something, this check won't work
+		return fmt.Errorf("failed to get chat info: %w", err)
 	}
 	portal.Name = chatInfo.DisplayName
 
@@ -585,7 +639,10 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 }
 
 func (portal *Portal) HandleiMessage(msg *imessage.Message) {
-	if portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID) != nil {
+	if msg.Tapback != nil {
+		portal.HandleiMessageTapback(msg)
+		return
+	} else if portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID) != nil {
 		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
 		return
 	}

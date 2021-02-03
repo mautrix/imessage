@@ -20,7 +20,7 @@
     * [x] Member list
     * [ ] Avatar
   * [ ] Backfilling history
-    * [ ] Missed messages
+    * [x] Missed messages
     * [ ] When creating portal
 * Misc
   * [x] Automatic portal creation
