@@ -28,6 +28,7 @@ build arm64:
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   - export LIBRARY_PATH=/opt/homebrew/lib
   - export CPATH=/opt/homebrew/include
+  - export PATH=/opt/homebrew/bin:$PATH
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
   - install_name_tool -change /opt/homebrew/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3 mautrix-imessage
