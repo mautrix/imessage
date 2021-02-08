@@ -17,6 +17,7 @@
 package mac
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -48,9 +49,8 @@ end run
 func runOsascript(script string, args ...string) error {
 	args = append([]string{"-"}, args...)
 	cmd := exec.Command("osascript", args...)
-	// TODO make these go somewhere else
-	cmd.Stderr = os.Stderr
-	cmd.Stdout = os.Stdout
+	var errors bytes.Buffer
+	cmd.Stderr = &errors
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -60,6 +60,12 @@ func runOsascript(script string, args ...string) error {
 	if err != nil {
 		return fmt.Errorf("failed to run osascript: %w", err)
 	}
+	// Make sure Wait is always called even if something fails.
+	defer func() {
+		go func() {
+			_ = cmd.Wait()
+		}()
+	}()
 	_, err = io.WriteString(stdin, script)
 	if err != nil {
 		return fmt.Errorf("failed to send script to osascript: %w", err)
@@ -70,7 +76,9 @@ func runOsascript(script string, args ...string) error {
 	}
 	err = cmd.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to wait for osascript: %w", err)
+		return fmt.Errorf("failed to wait for osascript: %w (stderr: %s)", err, errors.String())
+	} else if errors.Len() > 0 {
+		return fmt.Errorf("osascript returned error: %s", errors.String())
 	}
 	return nil
 }
