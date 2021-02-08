@@ -13,9 +13,10 @@ build amd64:
   - install_name_tool -change /usr/local/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3 mautrix-imessage
   - install_name_tool -add_rpath @executable_path mautrix-imessage
   - install_name_tool -add_rpath /usr/local/opt/libolm/lib mautrix-imessage
+  - cp /usr/local/opt/libolm/lib/libolm.3.dylib .
   artifacts:
     paths:
-    - /usr/local/opt/libolm/lib/libolm.3.dylib
+    - libolm.3.dylib
     - mautrix-imessage
     - example-config.yaml
 
@@ -35,8 +36,9 @@ build arm64:
   - install_name_tool -add_rpath @executable_path mautrix-imessage
   - install_name_tool -add_rpath /opt/homebrew/opt/libolm/lib mautrix-imessage
   - install_name_tool -add_rpath /usr/local/opt/libolm/lib mautrix-imessage
+  - cp /opt/homebrew/opt/libolm/lib/libolm.3.dylib .
   artifacts:
     paths:
-    - /opt/homebrew/opt/libolm/lib/libolm.3.dylib
+    - libolm.3.dylib
     - mautrix-imessage
     - example-config.yaml
