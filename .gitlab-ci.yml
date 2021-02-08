@@ -10,7 +10,30 @@ build amd64:
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
+  - install_name_tool -change /usr/local/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3 mautrix-imessage
+  - install_name_tool -add_rpath @executable_path mautrix-imessage
+  - install_name_tool -add_rpath /usr/local/opt/libolm/lib mautrix-imessage
   artifacts:
     paths:
+    - /usr/local/opt/libolm/lib/libolm.3.dylib
+    - mautrix-imessage
+    - example-config.yaml
+
+build arm64:
+  tags:
+  - macos
+  - arm64
+  stage: build
+  before_script:
+  - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
+  script:
+  - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
+  - install_name_tool -change /opt/homebrew/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3 mautrix-imessage
+  - install_name_tool -add_rpath @executable_path mautrix-imessage
+  - install_name_tool -add_rpath /opt/homebrew/opt/libolm/lib mautrix-imessage
+  - install_name_tool -add_rpath /usr/local/opt/libolm/lib mautrix-imessage
+  artifacts:
+    paths:
+    - /opt/homebrew/opt/libolm/lib/libolm.3.dylib
     - mautrix-imessage
     - example-config.yaml
