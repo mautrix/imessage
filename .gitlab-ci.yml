@@ -12,9 +12,9 @@ build amd64:
   script:
   - mkdir mautrix-imessage-amd64
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage-amd64/mautrix-imessage
-  - install_name_tool -change /usr/local/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3.dylib mautrix-imessage
-  - install_name_tool -add_rpath @executable_path mautrix-imessage
-  - install_name_tool -add_rpath /usr/local/opt/libolm/lib mautrix-imessage
+  - install_name_tool -change /usr/local/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3.dylib mautrix-imessage-amd64/mautrix-imessage
+  - install_name_tool -add_rpath @executable_path mautrix-imessage-amd64/mautrix-imessage
+  - install_name_tool -add_rpath /usr/local/opt/libolm/lib mautrix-imessage-amd64/mautrix-imessage
   - cp /usr/local/opt/libolm/lib/libolm.3.dylib mautrix-imessage-amd64/
   - cp example-config.yaml mautrix-imessage-amd64/
   artifacts:
