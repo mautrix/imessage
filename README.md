@@ -4,8 +4,10 @@ iPhone (soon™). A [websocket proxy](https://github.com/tulir/mautrix-wsproxy)
 is required to receive appservice events from the homeserver.
 
 ### Wiki
-All setup and usage instructions are located in the GitHub
-[wiki](https://github.com/tulir/mautrix-imessage/wiki).
+All setup and usage instructions are located on
+[docs.mau.fi](https://docs.mau.fi/bridges/go/imessage/index.html):
+
+* [Bridge setup](https://docs.mau.fi/bridges/go/imessage/setup.html)
 
 ### Features & Roadmap
 [ROADMAP.md](https://github.com/tulir/mautrix-imessage/blob/master/ROADMAP.md)
