@@ -87,8 +87,8 @@ gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c h1:dUUwHk2QECo/6vqA44rthZ8ie
 gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 maunium.net/go/mauflag v1.0.0 h1:YiaRc0tEI3toYtJMRIfjP+jklH45uDHtT80nUamyD4M=
 maunium.net/go/mauflag v1.0.0/go.mod h1:nLivPOpTpHnpzEh8jEdSL9UqO9+/KBJFmNRlwKfkPeA=
-maunium.net/go/maulogger/v2 v2.1.1 h1:NAZNc6XUFJzgzfewCzVoGkxNAsblLCSSEdtDuIjP0XA=
-maunium.net/go/maulogger/v2 v2.1.1/go.mod h1:TYWy7wKwz/tIXTpsx8G3mZseIRiC5DoMxSZazOHy68A=
+maunium.net/go/maulogger/v2 v2.2.0 h1:UEehE1MCeWoBYJfB4wDZZQTNMpwM/yyl9mPzoW+bdss=
+maunium.net/go/maulogger/v2 v2.2.0/go.mod h1:TYWy7wKwz/tIXTpsx8G3mZseIRiC5DoMxSZazOHy68A=
 maunium.net/go/mautrix v0.8.0 h1:G1jlVslNUTWEqaxuatHAMmzTWnGyoCIc4tAF5GpQJd8=
 maunium.net/go/mautrix v0.8.0/go.mod h1:TtVePxoEaw6+RZDKVajw66Yaj1lqLjH8l4FF3krsqWY=
 maunium.net/go/mautrix v0.8.1-0.20201226134146-471456108062 h1:oAWI4HMtfycWWZwAfquppLoon4zW9GDinVLpPtOFoCc=
@@ -99,3 +99,5 @@ maunium.net/go/mautrix v0.8.1-0.20210202174706-a91c727bf8b3 h1:JyaZm9F16f7a9a6m3
 maunium.net/go/mautrix v0.8.1-0.20210202174706-a91c727bf8b3/go.mod h1:KiViCshKBUZwrVRvTOXsJBFfstvR/btxckHUbOPdu54=
 maunium.net/go/mautrix v0.8.1-0.20210203113303-4713321cf3c2 h1:YGg8Uekygg5CpsnB1D+3WYnOQyaRADVxhbAhjXyNnPg=
 maunium.net/go/mautrix v0.8.1-0.20210203113303-4713321cf3c2/go.mod h1:KiViCshKBUZwrVRvTOXsJBFfstvR/btxckHUbOPdu54=
+maunium.net/go/mautrix v0.8.3-0.20210217114116-ff59b6bd6506 h1:dEoqQT58VN7cHASAItpfbdvzuPFLFys4rFMdemzQOxw=
+maunium.net/go/mautrix v0.8.3-0.20210217114116-ff59b6bd6506/go.mod h1:wPnHhaYcYVJ57tBU4RfmUYv6zB4CUhK3eWVPv+GYqR8=

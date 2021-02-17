@@ -103,6 +103,7 @@ type Bridge struct {
 	Crypto         Crypto
 	IM             imessage.API
 	IMHandler      *iMessageHandler
+	IPC            *IPCHandler
 
 	user          *User
 	portalsByMXID map[id.RoomID]*Portal
@@ -111,6 +112,7 @@ type Bridge struct {
 	puppets       map[string]*Puppet
 	puppetsLock   sync.Mutex
 	stopping      bool
+	stop          chan struct{}
 }
 
 type Crypto interface {
@@ -129,6 +131,7 @@ func NewBridge() *Bridge {
 		portalsByMXID: make(map[id.RoomID]*Portal),
 		portalsByGUID: make(map[string]*Portal),
 		puppets:       make(map[string]*Puppet),
+		stop:          make(chan struct{}, 1),
 	}
 
 	var err error
@@ -207,6 +210,7 @@ func (bridge *Bridge) Init() {
 
 	bridge.IMHandler = NewiMessageHandler(bridge)
 	bridge.Crypto = NewCryptoHelper(bridge)
+	bridge.IPC = NewIPCHandler(bridge)
 }
 
 func (bridge *Bridge) startWebsocket() {
@@ -256,6 +260,7 @@ func (bridge *Bridge) Start() {
 	go bridge.EventProcessor.Start()
 	bridge.Log.Debugln("Stating iMessage handler")
 	go bridge.IMHandler.Start()
+	go bridge.IPC.Loop()
 	go bridge.UpdateBotProfile()
 	if bridge.Crypto != nil {
 		go bridge.Crypto.Start()
@@ -319,9 +324,14 @@ func (bridge *Bridge) Main() {
 
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	<-c
 
-	bridge.Log.Infoln("Interrupt received, stopping...")
+	select {
+	case <-c:
+		bridge.Log.Infoln("Interrupt received, stopping...")
+	case <-bridge.stop:
+		bridge.Log.Infoln("Stop command received, stopping...")
+	}
+
 	bridge.Stop()
 	bridge.Log.Infoln("Bridge stopped.")
 	os.Exit(0)
