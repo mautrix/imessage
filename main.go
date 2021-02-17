@@ -260,6 +260,7 @@ func (bridge *Bridge) Start() {
 	go bridge.EventProcessor.Start()
 	bridge.Log.Debugln("Stating iMessage handler")
 	go bridge.IMHandler.Start()
+	bridge.Log.Debugln("Starting IPC loop")
 	go bridge.IPC.Loop()
 	go bridge.UpdateBotProfile()
 	if bridge.Crypto != nil {

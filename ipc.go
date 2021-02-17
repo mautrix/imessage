@@ -84,6 +84,7 @@ func (ipc *IPCHandler) Loop() {
 			ipc.log.Errorln("Failed to read input:", err)
 			break
 		} else {
+			ipc.log.Debugfln("Received IPC command: %+v", msg)
 			go ipc.Handle(&msg)
 		}
 	}
