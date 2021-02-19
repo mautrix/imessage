@@ -30,6 +30,14 @@ JOIN sources ON cn_handles_sources.source_id = sources.id
 WHERE cn_handles_sources.source_id = (SELECT id FROM sources WHERE group_id = $1 ORDER BY seconds_from_1970 DESC LIMIT 1)
 `
 
+const legacyGroupMemberQuery = `
+SELECT DISTINCT(handle.id) FROM message
+JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
+JOIN chat              ON chat_message_join.chat_id = chat.ROWID
+JOIN handle            ON message.handle_id = handle.ROWID
+WHERE chat.guid=$1
+`
+
 func (imdb *Database) prepareGroups() error {
 	path, err := os.UserHomeDir()
 	if err != nil {
@@ -39,11 +47,24 @@ func (imdb *Database) prepareGroups() error {
 	ppPath := filepath.Join(path, "Library", "PersonalizationPortrait", "PPSQLDatabase.db")
 	imdb.ppDB, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", ppPath))
 	if err != nil {
+		imdb.ppDB = nil
 		return err
 	}
 	imdb.groupMemberQuery, err = imdb.ppDB.Prepare(groupMemberQuery)
 	if err != nil {
+		_ = imdb.ppDB.Close()
+		imdb.ppDB = nil
+		imdb.groupMemberQuery = nil
 		return fmt.Errorf("failed to prepare group member query: %w", err)
+	}
+	return nil
+}
+
+func (imdb *Database) prepareLegacyGroups() error {
+	var err error
+	imdb.groupMemberQuery, err = imdb.chatDB.Prepare(legacyGroupMemberQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare legacy group query: %w", err)
 	}
 	return nil
 }

@@ -46,7 +46,11 @@ func NewChatDatabase() (imessage.API, error) {
 	}
 	err = imdb.prepareGroups()
 	if err != nil {
-		return nil, fmt.Errorf("failed to open group database: %w", err)
+		// TODO log error
+		legacyErr := imdb.prepareLegacyGroups()
+		if legacyErr != nil {
+			return nil, fmt.Errorf("failed to open group database: %v, and %w", err, legacyErr)
+		}
 	}
 	err = imdb.loadAddressBook()
 	if err != nil {
