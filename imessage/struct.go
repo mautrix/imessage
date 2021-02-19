@@ -49,6 +49,7 @@ type Contact struct {
 	FirstName string
 	LastName  string
 	Avatar    []byte
+	AvatarRef string
 	Phones    []string
 	Emails    []string
 }

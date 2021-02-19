@@ -29,7 +29,15 @@ import (
 var phoneNumberCleaner = strings.NewReplacer("(", "", ")", "", " ", "", "-", "")
 
 const contactInfoQuery = `
-SELECT ZABCDRECORD.Z_PK, ZABCDPHONENUMBER.ZFULLNUMBER, ZABCDEMAILADDRESS.ZADDRESS, ZABCDRECORD.ZIMAGEDATA,
+SELECT ZABCDRECORD.Z_PK, ZABCDPHONENUMBER.ZFULLNUMBER, ZABCDEMAILADDRESS.ZADDRESS, ZABCDRECORD.ZIMAGEDATA, '',
+       ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
+FROM ZABCDRECORD
+LEFT JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
+LEFT JOIN ZABCDEMAILADDRESS ON ZABCDRECORD.Z_PK = ZABCDEMAILADDRESS.ZOWNER
+`
+
+const contactInfoImageReferenceQuery = `
+SELECT ZABCDRECORD.Z_PK, ZABCDPHONENUMBER.ZFULLNUMBER, ZABCDEMAILADDRESS.ZADDRESS, '', ZABCDRECORD.ZIMAGEREFERENCE,
        ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
 FROM ZABCDRECORD
 LEFT JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
@@ -55,26 +63,34 @@ func (imdb *Database) loadAddressBook() error {
 	}
 	imdb.Contacts = make(map[string]*imessage.Contact)
 	for _, dbPath := range addressDatabases {
-		db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", dbPath))
+		currentDir := filepath.Dir(dbPath)
+		currentID := filepath.Base(currentDir)
+		var db *sql.DB
+		db, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", dbPath))
 		if err != nil {
-			return fmt.Errorf("failed to open address book database: %w", err)
+			return fmt.Errorf("failed to open address book %s database: %w", currentID, err)
 		}
-		res, err := db.Query(contactInfoQuery)
+		var res *sql.Rows
+		if _, err = os.Stat(filepath.Join(currentDir, "Images")); err != nil && os.IsNotExist(err) {
+			res, err = db.Query(contactInfoQuery)
+		} else {
+			res, err = db.Query(contactInfoImageReferenceQuery)
+		}
 		if err != nil {
-			return fmt.Errorf("error querying address book database: %w", err)
+			return fmt.Errorf("error querying address book %s database: %w", currentID, err)
 		}
 		contacts := make(map[int]*imessage.Contact)
 		for res.Next() {
 			var id int
-			var number, email, firstName, lastName sql.NullString
+			var number, email, avatarReference, firstName, lastName sql.NullString
 			var avatar []byte
-			err = res.Scan(&id, &number, &email, &avatar, &firstName, &lastName)
+			err = res.Scan(&id, &number, &email, &avatar, &avatarReference, &firstName, &lastName)
 			if err != nil {
-				return fmt.Errorf("error scanning row: %w", err)
+				return fmt.Errorf("error scanning row in %s: %w", currentID, err)
 			}
 			contact, ok := contacts[id]
 			if !ok {
-				contact = &imessage.Contact{FirstName: firstName.String, LastName: lastName.String, Avatar: avatar}
+				contact = &imessage.Contact{FirstName: firstName.String, LastName: lastName.String, Avatar: avatar, AvatarRef: avatarReference.String}
 				contacts[id] = contact
 			}
 			if number.Valid && len(number.String) > 0 {

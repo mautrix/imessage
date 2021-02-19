@@ -64,7 +64,12 @@ func (imdb *Database) prepareMessages() error {
 	if err != nil {
 		return err
 	}
-	imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
+	if majorVer < 11 {
+		patchedQuery := strings.ReplaceAll(messagesQuery, "COALESCE(message.associated_message_guid, '')", "''")
+		imdb.messagesQuery, err = imdb.chatDB.Prepare(patchedQuery)
+	} else {
+		imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to prepare message query: %w", err)
 	}
