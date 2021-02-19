@@ -65,7 +65,7 @@ func (imdb *Database) prepareMessages() error {
 		return err
 	}
 	if majorVer < 11 {
-		patchedQuery := strings.ReplaceAll(messagesQuery, "COALESCE(message.associated_message_guid, '')", "''")
+		patchedQuery := strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		imdb.messagesQuery, err = imdb.chatDB.Prepare(patchedQuery)
 	} else {
 		imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
