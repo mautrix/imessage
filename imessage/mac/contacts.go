@@ -69,7 +69,7 @@ func (imdb *Database) loadAddressBook() error {
 			return fmt.Errorf("failed to open address book %s database: %w", currentID, err)
 		}
 		var res *sql.Rows
-		if columnExists(db, "ZABCDRECORD", "ZIMAGEDATA") {
+		if !columnExists(db, "ZABCDRECORD", "ZIMAGEDATA") {
 			patchedContactInfoQuery := strings.ReplaceAll(contactInfoQuery, "ZABCDRECORD.ZIMAGEDATA", "null")
 			res, err = db.Query(patchedContactInfoQuery)
 		} else {
