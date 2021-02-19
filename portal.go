@@ -592,7 +592,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 	portal.messageDedupLock.Lock()
-	portal.messageDedup[msg.Body] = SentMessage{
+	portal.messageDedup[strings.TrimSpace(msg.Body)] = SentMessage{
 		EventID:   evt.ID,
 		Timestamp: time.Now(),
 	}
@@ -714,7 +714,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		if msg.Attachment != nil {
 			dedupKey = msg.Attachment.GetFileName()
 		}
-		dedup, isDup := portal.messageDedup[dedupKey]
+		dedup, isDup := portal.messageDedup[strings.TrimSpace(dedupKey)]
 		if isDup && dedup.Timestamp.Before(msg.Time) {
 			delete(portal.messageDedup, dedupKey)
 			portal.messageDedupLock.Unlock()
