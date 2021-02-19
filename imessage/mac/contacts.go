@@ -29,20 +29,19 @@ import (
 var phoneNumberCleaner = strings.NewReplacer("(", "", ")", "", " ", "", "-", "")
 
 const contactInfoQuery = `
-SELECT ZABCDRECORD.Z_PK, ZABCDPHONENUMBER.ZFULLNUMBER, ZABCDEMAILADDRESS.ZADDRESS, ZABCDRECORD.ZIMAGEDATA, '',
-       ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
+SELECT ZABCDRECORD.Z_PK, ZABCDPHONENUMBER.ZFULLNUMBER, ZABCDEMAILADDRESS.ZADDRESS, ZABCDRECORD.ZIMAGEDATA,
+       ZABCDRECORD.ZIMAGEREFERENCE, ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
 FROM ZABCDRECORD
 LEFT JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
 LEFT JOIN ZABCDEMAILADDRESS ON ZABCDRECORD.Z_PK = ZABCDEMAILADDRESS.ZOWNER
 `
 
-const contactInfoImageReferenceQuery = `
-SELECT ZABCDRECORD.Z_PK, ZABCDPHONENUMBER.ZFULLNUMBER, ZABCDEMAILADDRESS.ZADDRESS, '', ZABCDRECORD.ZIMAGEREFERENCE,
-       ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
-FROM ZABCDRECORD
-LEFT JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
-LEFT JOIN ZABCDEMAILADDRESS ON ZABCDRECORD.Z_PK = ZABCDEMAILADDRESS.ZOWNER
-`
+func columnExists(db *sql.DB, table, column string) bool {
+	row := db.QueryRow(fmt.Sprintf(`SELECT name FROM pragma_table_info("%s") WHERE name=$1;`, table), column)
+	var name string
+	_ = row.Scan(&name)
+	return name == column
+}
 
 func (imdb *Database) loadAddressBook() error {
 	path, err := os.UserHomeDir()
@@ -63,18 +62,18 @@ func (imdb *Database) loadAddressBook() error {
 	}
 	imdb.Contacts = make(map[string]*imessage.Contact)
 	for _, dbPath := range addressDatabases {
-		currentDir := filepath.Dir(dbPath)
-		currentID := filepath.Base(currentDir)
+		currentID := filepath.Base(filepath.Dir(dbPath))
 		var db *sql.DB
 		db, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", dbPath))
 		if err != nil {
 			return fmt.Errorf("failed to open address book %s database: %w", currentID, err)
 		}
 		var res *sql.Rows
-		if _, err = os.Stat(filepath.Join(currentDir, "Images")); err != nil && os.IsNotExist(err) {
-			res, err = db.Query(contactInfoQuery)
+		if columnExists(db, "ZABCDRECORD", "ZIMAGEDATA") {
+			patchedContactInfoQuery := strings.ReplaceAll(contactInfoQuery, "ZABCDRECORD.ZIMAGEDATA", "null")
+			res, err = db.Query(patchedContactInfoQuery)
 		} else {
-			res, err = db.Query(contactInfoImageReferenceQuery)
+			res, err = db.Query(contactInfoQuery)
 		}
 		if err != nil {
 			return fmt.Errorf("error querying address book %s database: %w", currentID, err)
