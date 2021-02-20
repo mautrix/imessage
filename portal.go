@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -210,6 +211,11 @@ func (portal *Portal) handleMessageLoop() {
 }
 
 func (portal *Portal) Backfill() {
+	defer func() {
+		if err := recover(); err != nil {
+			portal.log.Errorln("Panic while backfilling: %v\n%s", err, string(debug.Stack()))
+		}
+	}()
 	portal.backfillLock.Lock()
 	portal.log.Debugln("Preparing to backfill")
 	defer portal.backfillLock.Unlock()
@@ -592,7 +598,6 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 	portal.messageDedupLock.Unlock()
 	if msg.MsgType == event.MsgText {
-		// TODO deduplicate sent messages
 		err := portal.bridge.IM.SendMessage(portal.GUID, msg.Body)
 		if err != nil {
 			portal.log.Errorln("Error sending to iMessage:", err)
@@ -678,6 +683,12 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 }
 
 func (portal *Portal) HandleiMessage(msg *imessage.Message) {
+	defer func() {
+		if err := recover(); err != nil {
+			portal.log.Errorln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
+		}
+	}()
+
 	if msg.Tapback != nil {
 		portal.HandleiMessageTapback(msg)
 		return
