@@ -20,10 +20,14 @@ import (
 	"database/sql"
 	"fmt"
 
+	log "maunium.net/go/maulogger/v2"
+
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 type Database struct {
+	log log.Logger
+
 	chatDBPath    string
 	chatDB        *sql.DB
 	messagesQuery *sql.Stmt
@@ -38,7 +42,9 @@ type Database struct {
 }
 
 func NewChatDatabase() (imessage.API, error) {
-	imdb := &Database{}
+	imdb := &Database{
+		log: log.Sub("iMessage").Sub("Mac"),
+	}
 
 	err := imdb.prepareMessages()
 	if err != nil {
@@ -46,10 +52,10 @@ func NewChatDatabase() (imessage.API, error) {
 	}
 	err = imdb.prepareGroups()
 	if err != nil {
-		// TODO log error
-		legacyErr := imdb.prepareLegacyGroups()
-		if legacyErr != nil {
-			return nil, fmt.Errorf("failed to open group database: %v, and %w", err, legacyErr)
+		imdb.log.Debugln("Failed to open group database: %v. Falling back to message database for querying group members.")
+		err = imdb.prepareLegacyGroups()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open legacy group database: %w", err)
 		}
 	}
 	err = imdb.loadAddressBook()

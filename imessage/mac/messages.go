@@ -132,7 +132,10 @@ func (imdb *Database) GetMessages(chatID string, minDate time.Time) ([]*imessage
 			message.Attachment = &attachment
 		}
 		if len(tapback.TargetGUID) > 0 {
-			message.Tapback = tapback.Parse()
+			message.Tapback, err = tapback.Parse()
+			if err != nil {
+				imdb.log.Warnfln("Failed to parse tapback in %s: %v", message.GUID, err)
+			}
 		}
 		messages = append(messages, &message)
 	}

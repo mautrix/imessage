@@ -17,6 +17,8 @@
 package imessage
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -35,13 +37,19 @@ type Tapback struct {
 	Type       TapbackType
 }
 
-func (tapback *Tapback) Parse() *Tapback {
+var ErrUnknownTapbackTarget = errors.New("unrecognized formatting of tapback target")
+
+func (tapback *Tapback) Parse() (*Tapback, error) {
 	if tapback.Type >= 3000 && tapback.Type < 4000 {
 		tapback.Type -= 1000
 		tapback.Remove = true
 	}
-	tapback.TargetGUID = strings.Split(tapback.TargetGUID, "/")[1]
-	return tapback
+	targetParts := strings.Split(tapback.TargetGUID, "/")
+	if len(targetParts) != 2 {
+		return nil, fmt.Errorf("%w: '%s'", ErrUnknownTapbackTarget, tapback.TargetGUID)
+	}
+	tapback.TargetGUID = targetParts[1]
+	return tapback, nil
 }
 
 type TapbackType int
