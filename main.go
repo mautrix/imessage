@@ -44,11 +44,13 @@ var (
 	Name = "mautrix-imessage"
 	URL  = "https://github.com/tulir/mautrix-imessage"
 	// This is changed when making a release
-	Version = "0.1.5"
+	Version = "0.1.0"
 	// These are filled at build time with the -X linker flag
 	Tag       = "unknown"
 	Commit    = "unknown"
 	BuildTime = "unknown"
+
+	VersionString = ""
 )
 
 func init() {
@@ -57,6 +59,13 @@ func init() {
 	}
 	if Tag != Version && !strings.HasSuffix(Version, "+dev") {
 		Version += "+dev"
+	}
+	if Tag == Version {
+		VersionString = fmt.Sprintf("%s %s (%s)", Name, Tag, BuildTime)
+	} else if len(Commit) > 8 {
+		VersionString = fmt.Sprintf("%s %s.%s (%s)", Name, Version, Commit[:8], BuildTime)
+	} else {
+		VersionString = fmt.Sprintf("%s %s.unknown", Name, Version)
 	}
 }
 
@@ -183,6 +192,7 @@ func (bridge *Bridge) Init() {
 			os.Exit(12)
 		}
 	}
+	bridge.Log.Infoln("Initializing mautrix-imessage", VersionString)
 	bridge.AS.Log = log.Sub("Matrix")
 
 	bridge.Log.Debugln("Initializing database connection")
@@ -351,13 +361,7 @@ func main() {
 		flag.PrintHelp()
 		os.Exit(0)
 	} else if *version {
-		if Tag == Version {
-			fmt.Printf("%s %s (%s)\n", Name, Tag, BuildTime)
-		} else if len(Commit) > 8 {
-			fmt.Printf("%s %s.%s (%s)\n", Name, Version, Commit[:8], BuildTime)
-		} else {
-			fmt.Printf("%s %s.unknown\n", Name, Version)
-		}
+		fmt.Println(VersionString)
 		return
 	}
 
