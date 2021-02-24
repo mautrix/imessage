@@ -28,12 +28,14 @@ import (
 type Database struct {
 	log log.Logger
 
-	chatDBPath    string
-	chatDB        *sql.DB
-	messagesQuery *sql.Stmt
-	chatQuery     *sql.Stmt
-	Messages      chan *imessage.Message
-	stopWatching  chan struct{}
+	chatDBPath           string
+	chatDB               *sql.DB
+	messagesQuery        *sql.Stmt
+	limitedMessagesQuery *sql.Stmt
+	chatQuery            *sql.Stmt
+	recentChatsQuery *sql.Stmt
+	Messages             chan *imessage.Message
+	stopWatching         chan struct{}
 
 	ppDB             *sql.DB
 	groupMemberQuery *sql.Stmt

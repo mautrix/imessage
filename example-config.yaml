@@ -57,6 +57,10 @@ bridge:
     # instead of users having to find an access token and run `login-matrix`
     # manually.
     login_shared_secret: null
+    # Maximum age of chats to sync in days.
+    chat_sync_max_age: 0.5
+    # Maximum number of messages to backfill for new portal rooms.
+    initial_backfill_limit: 100
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"

@@ -193,7 +193,10 @@ func (portal *Portal) Sync() {
 		}
 	}
 
-	portal.Backfill()
+	portal.lockBackfill()
+	portal.log.Debugln("Starting sync backfill")
+	portal.backfill()
+	portal.unlockBackfill()
 }
 
 func (portal *Portal) handleMessageLoop() {
@@ -203,36 +206,44 @@ func (portal *Portal) handleMessageLoop() {
 		case msg := <-portal.Messages:
 			portal.HandleiMessage(msg)
 		case <-portal.backfillStart:
-			portal.log.Debugln("Backfill started, stopping new message processing")
+			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
 		}
 	}
 }
 
-func (portal *Portal) Backfill() {
-	defer func() {
-		if err := recover(); err != nil {
-			portal.log.Errorln("Panic while backfilling: %v\n%s", err, string(debug.Stack()))
-		}
-	}()
+func (portal *Portal) lockBackfill() {
 	portal.backfillLock.Lock()
-	portal.log.Debugln("Preparing to backfill")
-	defer portal.backfillLock.Unlock()
 	portal.backfillWait.Add(1)
 	select {
 	case portal.backfillStart <- struct{}{}:
 	default:
 	}
-	defer portal.backfillWait.Done()
+}
 
+func (portal *Portal) unlockBackfill() {
+	portal.backfillWait.Done()
+	portal.backfillLock.Unlock()
+}
+
+func (portal *Portal) backfill() {
+	defer func() {
+		if err := recover(); err != nil {
+			portal.log.Errorln("Panic while backfilling: %v\n%s", err, string(debug.Stack()))
+		}
+	}()
+
+	var messages []*imessage.Message
+	var err error
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
 	if lastMessage == nil {
-		portal.log.Debugln("No messages found, not backfilling")
-		// TODO initial backfill?
-		return
+		portal.log.Debugfln("Fetching up to %d messages for initial backfill",portal.bridge.Config.Bridge.InitialBackfillLimit)
+		messages, err = portal.bridge.IM.GetMessagesWithLimit(portal.GUID, portal.bridge.Config.Bridge.InitialBackfillLimit)
+	} else {
+		portal.log.Debugfln("Fetching messages since %s for catchup backfill", lastMessage.Time().String())
+		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, lastMessage.Time())
 	}
-	messages, err := portal.bridge.IM.GetMessages(portal.GUID, lastMessage.Time())
 	if err != nil {
 		portal.log.Errorln("Failed to fetch messages for backfilling:", err)
 	} else if len(messages) == 0 {
@@ -420,6 +431,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 	if err != nil {
 		return err
 	}
+	portal.lockBackfill()
 	portal.MXID = resp.RoomID
 	portal.Update()
 	portal.bridge.portalsLock.Lock()
@@ -446,6 +458,11 @@ func (portal *Portal) CreateMatrixRoom() error {
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	}
+	go func() {
+		portal.log.Debugln("Starting initial backfill")
+		defer portal.unlockBackfill()
+		portal.backfill()
+	}()
 	return nil
 }
 

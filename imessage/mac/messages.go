@@ -32,7 +32,7 @@ import (
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
-const messagesQuery = `
+const baseMessagesQuery = `
 SELECT
   message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.service, chat.guid,
   chat.chat_identifier, chat.service_name, COALESCE(handle.id, ''), COALESCE(handle.service, ''),
@@ -45,12 +45,28 @@ JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 LEFT JOIN handle       ON message.handle_id = handle.ROWID
 LEFT JOIN message_attachment_join ON message_attachment_join.message_id = message.ROWID
 LEFT JOIN attachment              ON message_attachment_join.attachment_id = attachment.ROWID
+`
+
+var messagesQuery = baseMessagesQuery + `
 WHERE (chat.guid=$1 OR $1='') AND message.date>$2
 ORDER BY message.date ASC
 `
 
+var limitedMessagesQuery = baseMessagesQuery + `
+WHERE (chat.guid=$1 OR $1='')
+ORDER BY message.date DESC
+LIMIT $2
+`
+
 const chatQuery = `
 SELECT chat_identifier, service_name, display_name FROM chat WHERE guid=$1
+`
+
+const recentChatsQuery = `
+SELECT DISTINCT(chat.guid) FROM message
+JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
+JOIN chat              ON chat_message_join.chat_id = chat.ROWID
+WHERE message.date>$1
 `
 
 func (imdb *Database) prepareMessages() error {
@@ -65,17 +81,24 @@ func (imdb *Database) prepareMessages() error {
 		return err
 	}
 	if !columnExists(imdb.chatDB, "message", "thread_originator_guid") {
-		patchedQuery := strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
-		imdb.messagesQuery, err = imdb.chatDB.Prepare(patchedQuery)
-	} else {
-		imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
+		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
+		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 	}
+	imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare message query: %w", err)
+	}
+	imdb.limitedMessagesQuery, err = imdb.chatDB.Prepare(limitedMessagesQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare limited message query: %w", err)
 	}
 	imdb.chatQuery, err = imdb.chatDB.Prepare(chatQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare chat query: %w", err)
+	}
+	imdb.recentChatsQuery, err = imdb.chatDB.Prepare(recentChatsQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare recent chats query: %w", err)
 	}
 
 	messageChan := make(chan *imessage.Message)
@@ -108,12 +131,7 @@ func (ai *AttachmentInfo) Read() ([]byte, error) {
 	return ioutil.ReadFile(ai.FileName)
 }
 
-func (imdb *Database) GetMessages(chatID string, minDate time.Time) ([]*imessage.Message, error) {
-	res, err := imdb.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
-	if err != nil {
-		return nil, fmt.Errorf("error querying messages: %w", err)
-	}
-	var messages []*imessage.Message
+func (imdb *Database) scanMessages(res *sql.Rows) (messages []*imessage.Message, err error) {
 	for res.Next() {
 		var message imessage.Message
 		var tapback imessage.Tapback
@@ -125,7 +143,8 @@ func (imdb *Database) GetMessages(chatID string, minDate time.Time) ([]*imessage
 			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
 			&attachment.FileName, &attachment.MimeType, &attachment.TransferName)
 		if err != nil {
-			return messages, fmt.Errorf("error scanning row: %w", err)
+			err = fmt.Errorf("error scanning row: %w", err)
+			return
 		}
 		message.Time = time.Unix(imessage.AppleEpoch.Unix(), timestamp)
 		if len(attachment.FileName) > 0 {
@@ -139,7 +158,51 @@ func (imdb *Database) GetMessages(chatID string, minDate time.Time) ([]*imessage
 		}
 		messages = append(messages, &message)
 	}
-	return messages, nil
+	return
+}
+
+func reverseArray(messages []*imessage.Message) {
+	for left, right := 0, len(messages)-1; left < right; left, right = left+1, right-1 {
+		messages[left], messages[right] = messages[right], messages[left]
+	}
+}
+
+func (imdb *Database) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
+	res, err := imdb.limitedMessagesQuery.Query(chatID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("error querying messages with limit: %w", err)
+	}
+	messages, err := imdb.scanMessages(res)
+	if err != nil {
+		return messages, err
+	}
+	reverseArray(messages)
+	return messages, err
+}
+
+func (imdb *Database) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
+	res, err := imdb.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
+	if err != nil {
+		return nil, fmt.Errorf("error querying messages: %w", err)
+	}
+	return imdb.scanMessages(res)
+}
+
+func (imdb *Database) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
+	res, err := imdb.recentChatsQuery.Query(minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
+	if err != nil {
+		return nil, fmt.Errorf("error querying messages: %w", err)
+	}
+	var chats []string
+	for res.Next() {
+		var chatID string
+		err = res.Scan(&chatID)
+		if err != nil {
+			return chats, fmt.Errorf("error scanning row: %w", err)
+		}
+		chats = append(chats, chatID)
+	}
+	return chats, nil
 }
 
 func (imdb *Database) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
@@ -194,7 +257,7 @@ Loop:
 				handleLock.Lock()
 				defer handleLock.Unlock()
 				time.Sleep(50 * time.Millisecond)
-				newMessages, err := imdb.GetMessages("", lastMessageTimestamp)
+				newMessages, err := imdb.GetMessagesSinceDate("", lastMessageTimestamp)
 				if err != nil {
 					// TODO use proper logger
 					fmt.Println("Error reading messages after fsevent:", err)

@@ -24,7 +24,9 @@ import (
 type API interface {
 	Start() error
 	Stop()
-	GetMessages(chatID string, minDate time.Time) ([]*Message, error)
+	GetMessagesSinceDate(chatID string, minDate time.Time) ([]*Message, error)
+	GetMessagesWithLimit(chatID string, limit int) ([]*Message, error)
+	GetChatsWithMessagesAfter(minDate time.Time) ([]string, error)
 	MessageChan() <-chan *Message
 	GetContactInfo(identifier string) (*Contact, error)
 	GetGroupMembers(chatID string) ([]string, error)

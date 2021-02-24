@@ -277,8 +277,26 @@ func (bridge *Bridge) Start() {
 		go bridge.Crypto.Start()
 	}
 
+	go bridge.StartupSync()
+}
+
+func (bridge *Bridge) StartupSync() {
+	alreadySynced := make(map[string]bool)
 	for _, portal := range bridge.GetAllPortals() {
 		if len(portal.MXID) > 0 {
+			portal.Sync()
+			alreadySynced[portal.GUID] = true
+		}
+	}
+	syncChatMaxAge := time.Duration(bridge.Config.Bridge.ChatSyncMaxAge * 24 * 60) * time.Minute
+	chats, err := bridge.IM.GetChatsWithMessagesAfter(time.Now().Add(-syncChatMaxAge))
+	if err != nil {
+		bridge.Log.Errorln("Failed to get chat list to backfill:", err)
+		return
+	}
+	for _, chatID := range chats {
+		if _, isSynced := alreadySynced[chatID]; !isSynced {
+			portal := bridge.GetPortalByGUID(chatID)
 			portal.Sync()
 		}
 	}
