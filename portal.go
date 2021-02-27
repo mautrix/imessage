@@ -327,7 +327,7 @@ func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
 		bridgeInfo.Protocol.ID = "imessage-sms"
 		bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
 	}
-	bridgeInfoStateKey := fmt.Sprintf("net.maunium.imessage://%s/%s",
+	bridgeInfoStateKey := fmt.Sprintf("fi.mau.imessage://%s/%s",
 		strings.ToLower(portal.Identifier.Service), portal.GUID)
 	return bridgeInfoStateKey, bridgeInfo
 }
