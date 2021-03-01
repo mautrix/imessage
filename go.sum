@@ -118,6 +118,8 @@ maunium.net/go/maulogger/v2 v2.2.2 h1:NCw+7Be1GQFm8xXJ4M2C0Q8yLBTx3c5s7UZ4y1anZM
 maunium.net/go/maulogger/v2 v2.2.2/go.mod h1:TYWy7wKwz/tIXTpsx8G3mZseIRiC5DoMxSZazOHy68A=
 maunium.net/go/maulogger/v2 v2.2.3 h1:YnLoE/5ZHwr2nwXya0ik7ramRxMs/Gc934dmj1KrPvs=
 maunium.net/go/maulogger/v2 v2.2.3/go.mod h1:TYWy7wKwz/tIXTpsx8G3mZseIRiC5DoMxSZazOHy68A=
+maunium.net/go/maulogger/v2 v2.2.4 h1:oV2GDeM4fx1uRysdpDC0FcrPg+thFicSd9XzPcYMbVY=
+maunium.net/go/maulogger/v2 v2.2.4/go.mod h1:TYWy7wKwz/tIXTpsx8G3mZseIRiC5DoMxSZazOHy68A=
 maunium.net/go/mautrix v0.8.0 h1:G1jlVslNUTWEqaxuatHAMmzTWnGyoCIc4tAF5GpQJd8=
 maunium.net/go/mautrix v0.8.0/go.mod h1:TtVePxoEaw6+RZDKVajw66Yaj1lqLjH8l4FF3krsqWY=
 maunium.net/go/mautrix v0.8.1-0.20201226134146-471456108062 h1:oAWI4HMtfycWWZwAfquppLoon4zW9GDinVLpPtOFoCc=
@@ -132,3 +134,5 @@ maunium.net/go/mautrix v0.8.3-0.20210217114116-ff59b6bd6506 h1:dEoqQT58VN7cHASAI
 maunium.net/go/mautrix v0.8.3-0.20210217114116-ff59b6bd6506/go.mod h1:wPnHhaYcYVJ57tBU4RfmUYv6zB4CUhK3eWVPv+GYqR8=
 maunium.net/go/mautrix v0.8.4-0.20210223191527-3033d3d53c32 h1:NuWk04DYC3bEjdaDlkq0p8gfboh/8F3zcrDp46v917g=
 maunium.net/go/mautrix v0.8.4-0.20210223191527-3033d3d53c32/go.mod h1:W3yDq9H5qSqo14Gu6rWF9uE5NXLIcmqF7oY0pv5lZs8=
+maunium.net/go/mautrix v0.8.6-0.20210301103502-484a31296e1f h1:nKevAYAa9TTf2FjGRRLozUGgXzs70vsTIqnNIVoWMtg=
+maunium.net/go/mautrix v0.8.6-0.20210301103502-484a31296e1f/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
