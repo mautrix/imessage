@@ -148,6 +148,10 @@ func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {
 	if contact != nil {
 		name = contact.Name()
 	} else {
+		if puppet.Displayname != "" {
+			// Don't update displayname if there's no contact list name available
+			return false
+		}
 		// TODO format if phone number
 		name = puppet.ID
 	}
