@@ -48,6 +48,7 @@ type Message struct {
 type Contact struct {
 	FirstName string
 	LastName  string
+	Nickname  string
 	Avatar    []byte
 	AvatarRef string
 	Phones    []string

@@ -40,7 +40,7 @@ type Database struct {
 	ppDB             *sql.DB
 	groupMemberQuery *sql.Stmt
 
-	Contacts map[string]*imessage.Contact
+	contactStore *ContactStore
 }
 
 func NewChatDatabase() (imessage.API, error) {
@@ -60,10 +60,8 @@ func NewChatDatabase() (imessage.API, error) {
 			return nil, fmt.Errorf("failed to open legacy group database: %w", err)
 		}
 	}
-	err = imdb.loadAddressBook()
-	if err != nil {
-		return nil, fmt.Errorf("failed to read address book: %w", err)
-	}
+
+	imdb.contactStore = NewContactStore()
 
 	return imdb, nil
 }

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const groupMemberQuery = `
@@ -37,6 +38,8 @@ JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 JOIN handle            ON message.handle_id = handle.ROWID
 WHERE chat.guid=$1
 `
+
+var phoneNumberCleaner = strings.NewReplacer("(", "", ")", "", " ", "", "-", "")
 
 func (imdb *Database) prepareGroups() error {
 	path, err := os.UserHomeDir()

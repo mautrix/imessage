@@ -167,6 +167,13 @@ func reverseArray(messages []*imessage.Message) {
 	}
 }
 
+func columnExists(db *sql.DB, table, column string) bool {
+	row := db.QueryRow(fmt.Sprintf(`SELECT name FROM pragma_table_info("%s") WHERE name=$1;`, table), column)
+	var name string
+	_ = row.Scan(&name)
+	return name == column
+}
+
 func (imdb *Database) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
 	res, err := imdb.limitedMessagesQuery.Query(chatID, limit)
 	if err != nil {

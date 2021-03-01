@@ -16,106 +16,98 @@
 
 package mac
 
+//#cgo CFLAGS: -x objective-c -Wno-incompatible-pointer-types
+//#cgo LDFLAGS: -framework Contacts -framework Foundation
+//#include "meowContacts.h"
+import "C"
 import (
-	"database/sql"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"reflect"
+	"unsafe"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
-var phoneNumberCleaner = strings.NewReplacer("(", "", ")", "", " ", "", "-", "")
-
-const contactInfoQuery = `
-SELECT ZABCDRECORD.Z_PK, ZABCDPHONENUMBER.ZFULLNUMBER, ZABCDEMAILADDRESS.ZADDRESS, ZABCDRECORD.ZIMAGEDATA,
-       ZABCDRECORD.ZIMAGEREFERENCE, ZABCDRECORD.ZFIRSTNAME, ZABCDRECORD.ZLASTNAME
-FROM ZABCDRECORD
-LEFT JOIN ZABCDPHONENUMBER ON ZABCDRECORD.Z_PK = ZABCDPHONENUMBER.ZOWNER
-LEFT JOIN ZABCDEMAILADDRESS ON ZABCDRECORD.Z_PK = ZABCDEMAILADDRESS.ZOWNER
-`
-
-func columnExists(db *sql.DB, table, column string) bool {
-	row := db.QueryRow(fmt.Sprintf(`SELECT name FROM pragma_table_info("%s") WHERE name=$1;`, table), column)
-	var name string
-	_ = row.Scan(&name)
-	return name == column
+type ContactStore struct {
+	int       *C.CNContactStore
+	HasAccess bool
 }
 
-func (imdb *Database) loadAddressBook() error {
-	path, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+var actualAuthCallback = make(chan bool)
+
+//export meowAuthCallback
+func meowAuthCallback(granted C.BOOL) {
+	if granted {
+		actualAuthCallback <- true
+	} else {
+		actualAuthCallback <- false
 	}
-	addressBookDir := filepath.Join(path, "Library", "Application Support", "AddressBook", "Sources")
-	var addressDatabases []string
-	err = filepath.Walk(addressBookDir, func(path string, info os.FileInfo, err error) error {
-		name := info.Name()
-		if !info.IsDir() && strings.HasPrefix(name, "Address") && strings.HasSuffix(name, ".abcddb") {
-			addressDatabases = append(addressDatabases, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to walk address book directory: %w", err)
+}
+
+func NewContactStore() *ContactStore {
+	var cs ContactStore
+
+	cs.int = C.meowCreateStore()
+	switch C.meowCheckAuth() {
+	case C.CNAuthorizationStatusNotDetermined:
+		go C.meowRequestAuth(cs.int)
+		cs.HasAccess = <-actualAuthCallback
+	case C.CNAuthorizationStatusDenied:
+		cs.HasAccess = false
+	case C.CNAuthorizationStatusAuthorized:
+		cs.HasAccess = true
 	}
-	imdb.Contacts = make(map[string]*imessage.Contact)
-	for _, dbPath := range addressDatabases {
-		currentID := filepath.Base(filepath.Dir(dbPath))
-		var db *sql.DB
-		db, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", dbPath))
-		if err != nil {
-			return fmt.Errorf("failed to open address book %s database: %w", currentID, err)
-		}
-		var res *sql.Rows
-		if !columnExists(db, "ZABCDRECORD", "ZIMAGEDATA") {
-			patchedContactInfoQuery := strings.ReplaceAll(contactInfoQuery, "ZABCDRECORD.ZIMAGEDATA", "null")
-			res, err = db.Query(patchedContactInfoQuery)
-		} else {
-			res, err = db.Query(contactInfoQuery)
-		}
-		if err != nil {
-			return fmt.Errorf("error querying address book %s database: %w", currentID, err)
-		}
-		contacts := make(map[int]*imessage.Contact)
-		for res.Next() {
-			var id int
-			var number, email, avatarReference, firstName, lastName sql.NullString
-			var avatar []byte
-			err = res.Scan(&id, &number, &email, &avatar, &avatarReference, &firstName, &lastName)
-			if err != nil {
-				return fmt.Errorf("error scanning row in %s: %w", currentID, err)
-			}
-			contact, ok := contacts[id]
-			if !ok {
-				contact = &imessage.Contact{FirstName: firstName.String, LastName: lastName.String, Avatar: avatar, AvatarRef: avatarReference.String}
-				contacts[id] = contact
-			}
-			if number.Valid && len(number.String) > 0 {
-				numberStr := phoneNumberCleaner.Replace(number.String)
-				_, phoneExists := imdb.Contacts[numberStr]
-				if !phoneExists {
-					contact.Phones = append(contact.Phones, numberStr)
-					imdb.Contacts[numberStr] = contact
-				}
-			}
-			if email.Valid && len(email.String) > 0 {
-				_, emailExists := imdb.Contacts[email.String]
-				if !emailExists {
-					contact.Emails = append(contact.Emails, email.String)
-					imdb.Contacts[email.String] = contact
-				}
-			}
-		}
+	return &cs
+}
+
+func gostring(s *C.NSString) string { return C.GoString(C.nsstring2cstring(s)) }
+
+func cncontactToContact(ns *C.CNContact) *imessage.Contact {
+	var contact imessage.Contact
+
+	contact.FirstName = gostring(C.meowGetGivenNameFromContact(ns))
+	contact.LastName = gostring(C.meowGetFamilyNameFromContact(ns))
+	contact.Nickname = gostring(C.meowGetNicknameFromContact(ns))
+
+	emails := C.meowGetEmailAddressesFromContact(ns)
+	contact.Emails = make([]string, int(C.meowGetArrayLength(emails)))
+	for i := range contact.Emails {
+		contact.Emails[i] = gostring(C.meowGetEmailArrayItem(emails, C.ulong(i)))
 	}
-	return nil
+
+	phones := C.meowGetPhoneNumbersFromContact(ns)
+	contact.Phones = make([]string, int(C.meowGetArrayLength(phones)))
+	for i := range contact.Phones {
+		contact.Phones[i] = gostring(C.meowGetPhoneArrayItem(phones, C.ulong(i)))
+	}
+
+	length := int(C.meowGetImageDataLengthFromContact(ns))
+	if length > 0 {
+		contact.Avatar = make([]byte, 0)
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&contact.Avatar))
+		header.Len = length
+		header.Cap = length
+		header.Data = uintptr(C.meowGetImageDataFromContact(ns))
+	}
+
+	return &contact
+}
+
+func (cs *ContactStore) GetByEmail(email string) *imessage.Contact {
+	cnContact := C.meowGetContactByEmail(cs.int, C.CString(email))
+	return cncontactToContact(cnContact)
+}
+
+func (cs *ContactStore) GetByPhone(phone string) *imessage.Contact {
+	cnContact := C.meowGetContactByPhone(cs.int, C.CString(phone))
+	return cncontactToContact(cnContact)
 }
 
 func (imdb *Database) GetContactInfo(identifier string) (*imessage.Contact, error) {
-	contact, ok := imdb.Contacts[identifier]
-	if !ok {
+	if len(identifier) == 0 {
 		return nil, nil
+	} else if identifier[0] == '+' {
+		return imdb.contactStore.GetByPhone(identifier), nil
+	} else {
+		return imdb.contactStore.GetByEmail(identifier), nil
 	}
-	return contact, nil
 }
