@@ -84,14 +84,19 @@ func cncontactToContact(ns *C.CNContact) *imessage.Contact {
 		contact.Phones[i] = gostring(C.meowGetPhoneArrayItem(phones, C.ulong(i)))
 	}
 
-	length := int(C.meowGetImageDataLengthFromContact(ns))
-	if length > 0 {
+	if length := int(C.meowGetImageDataLengthFromContact(ns)); length > 0 {
 		contact.Avatar = make([]byte, 0)
 		header := (*reflect.SliceHeader)(unsafe.Pointer(&contact.Avatar))
 		header.Len = length
 		header.Cap = length
 		// TODO this is dangerous, maybe the data should be copied to a Go-only array?
 		header.Data = uintptr(C.meowGetImageDataFromContact(ns))
+	} else if thumbnailLength := int(C.meowGetThumbnailImageDataLengthFromContact(ns)); thumbnailLength > 0 {
+		contact.Avatar = make([]byte, 0)
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&contact.Avatar))
+		header.Len = thumbnailLength
+		header.Cap = thumbnailLength
+		header.Data = uintptr(C.meowGetThumbnailImageDataFromContact(ns))
 	}
 
 	return &contact

@@ -41,7 +41,7 @@ void meowRequestAuth(CNContactStore *store) {
 CNContact* meowGetContactByPredicate(CNContactStore *store, NSPredicate* predicate) {
 	NSArray* keysToFetch = @[
 		CNContactGivenNameKey, CNContactFamilyNameKey, CNContactNicknameKey,
-		CNContactEmailAddressesKey, CNContactPhoneNumbersKey, CNContactImageDataKey
+		CNContactEmailAddressesKey, CNContactPhoneNumbersKey, CNContactImageDataKey, CNContactThumbnailImageDataKey,
 	];
 	NSError *error;
 	NSArray *contacts = [store unifiedContactsMatchingPredicate:predicate keysToFetch:keysToFetch error:&error];
@@ -74,6 +74,14 @@ unsigned long meowGetImageDataLengthFromContact(CNContact* contact) {
 		return 0;
 	}
 	return contact.imageData.length;
+}
+
+const void* meowGetThumbnailImageDataFromContact(CNContact* contact) { return contact.thumbnailImageData.bytes; }
+unsigned long meowGetThumbnailImageDataLengthFromContact(CNContact* contact) {
+	if (contact.thumbnailImageData == NULL) {
+		return 0;
+	}
+	return contact.thumbnailImageData.length;
 }
 
 NSArray<CNLabeledValue<NSString*>*>* meowGetEmailAddressesFromContact(CNContact* contact)    { return contact.emailAddresses; }

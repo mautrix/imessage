@@ -31,6 +31,8 @@ NSString* meowGetNicknameFromContact(CNContact* contact);
 
 const void* meowGetImageDataFromContact(CNContact* contact);
 unsigned long meowGetImageDataLengthFromContact(CNContact* contact);
+const void* meowGetThumbnailImageDataFromContact(CNContact* contact);
+unsigned long meowGetThumbnailImageDataLengthFromContact(CNContact* contact);
 
 NSArray<CNLabeledValue<NSString*>*>* meowGetEmailAddressesFromContact(CNContact* contact);
 NSArray<CNLabeledValue<CNPhoneNumber*>*>* meowGetPhoneNumbersFromContact(CNContact* contact);
