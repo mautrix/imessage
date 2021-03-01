@@ -17,7 +17,7 @@
 
 const char* nsstring2cstring(NSString *s);
 
-extern void meowAuthCallback(bool);
+extern void meowAuthCallback(int);
 CNAuthorizationStatus meowCheckAuth();
 CNContactStore* meowCreateStore(void);
 void meowRequestAuth(CNContactStore *store);

@@ -34,7 +34,7 @@ CNContactStore* meowCreateStore(void) {
 
 void meowRequestAuth(CNContactStore *store) {
 	[store requestAccessForEntityType:CNEntityTypeContacts completionHandler:^(BOOL granted, NSError * _Nullable error) {
-		meowAuthCallback(granted);
+		meowAuthCallback(granted == YES);
 	}];
 }
 

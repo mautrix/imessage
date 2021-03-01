@@ -35,8 +35,8 @@ type ContactStore struct {
 var actualAuthCallback = make(chan bool)
 
 //export meowAuthCallback
-func meowAuthCallback(granted C.BOOL) {
-	if granted {
+func meowAuthCallback(granted C.int) {
+	if granted == 1 {
 		actualAuthCallback <- true
 	} else {
 		actualAuthCallback <- false
@@ -62,6 +62,10 @@ func NewContactStore() *ContactStore {
 func gostring(s *C.NSString) string { return C.GoString(C.nsstring2cstring(s)) }
 
 func cncontactToContact(ns *C.CNContact) *imessage.Contact {
+	if ns == nil {
+		return nil
+	}
+
 	var contact imessage.Contact
 
 	contact.FirstName = gostring(C.meowGetGivenNameFromContact(ns))
@@ -86,6 +90,7 @@ func cncontactToContact(ns *C.CNContact) *imessage.Contact {
 		header := (*reflect.SliceHeader)(unsafe.Pointer(&contact.Avatar))
 		header.Len = length
 		header.Cap = length
+		// TODO this is dangerous, maybe the data should be copied to a Go-only array?
 		header.Data = uintptr(C.meowGetImageDataFromContact(ns))
 	}
 
@@ -103,7 +108,7 @@ func (cs *ContactStore) GetByPhone(phone string) *imessage.Contact {
 }
 
 func (imdb *Database) GetContactInfo(identifier string) (*imessage.Contact, error) {
-	if len(identifier) == 0 {
+	if !imdb.contactStore.HasAccess || len(identifier) == 0 {
 		return nil, nil
 	} else if identifier[0] == '+' {
 		return imdb.contactStore.GetByPhone(identifier), nil
