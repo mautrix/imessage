@@ -17,7 +17,10 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"mime"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
@@ -154,10 +157,41 @@ func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {
 		if err == nil {
 			puppet.Displayname = newName
 			go puppet.updatePortalName()
-			puppet.Update()
+			return true
 		} else {
 			puppet.log.Warnln("Failed to set display name:", err)
 		}
+	}
+	return false
+}
+
+func (puppet *Puppet) UpdateAvatar(contact *imessage.Contact) bool {
+	if contact == nil || contact.Avatar == nil {
+		return false
+	}
+	avatarHash := sha256.Sum256(contact.Avatar)
+	if *puppet.AvatarHash != avatarHash {
+		puppet.AvatarHash = &avatarHash
+		mimetype := http.DetectContentType(contact.Avatar)
+		extensions, _ := mime.ExtensionsByType(mimetype)
+		extension := ""
+		if extensions != nil {
+			extension = extensions[0]
+		}
+		resp, err := puppet.Intent.UploadBytesWithName(contact.Avatar, mimetype, "image" + extension)
+		if err != nil {
+			puppet.AvatarHash = nil
+			puppet.log.Warnln("Failed to upload avatar:", err)
+			return false
+		}
+		puppet.AvatarURL = resp.ContentURI
+		err = puppet.Intent.SetAvatarURL(puppet.AvatarURL)
+		if err != nil {
+			puppet.AvatarHash = nil
+			puppet.log.Warnln("Failed to set avatar:", err)
+			return false
+		}
+		go puppet.updatePortalAvatar()
 		return true
 	}
 	return false
@@ -181,7 +215,7 @@ func (puppet *Puppet) updatePortalAvatar() {
 			}
 		}
 		portal.AvatarURL = puppet.AvatarURL
-		portal.Avatar = puppet.Avatar
+		portal.AvatarHash = puppet.AvatarHash
 		portal.Update()
 	})
 }
@@ -214,8 +248,7 @@ func (puppet *Puppet) Sync() {
 
 	update := false
 	update = puppet.UpdateName(contact) || update
-	// TODO
-	//update = puppet.UpdateAvatar(source, nil) || update
+	update = puppet.UpdateAvatar(contact) || update
 	if update {
 		puppet.Update()
 	}

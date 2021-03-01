@@ -80,15 +80,23 @@ type Portal struct {
 	GUID string
 	MXID id.RoomID
 
-	Name      string
-	Avatar    string
-	AvatarURL id.ContentURI
-	Encrypted bool
+	Name       string
+	AvatarHash *[32]byte
+	AvatarURL  id.ContentURI
+	Encrypted  bool
+}
+
+func (portal *Portal) avatarHashSlice() []byte {
+	if portal.AvatarHash == nil {
+		return nil
+	}
+	return (*portal.AvatarHash)[:]
 }
 
 func (portal *Portal) Scan(row Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &portal.Avatar, &avatarURL, &portal.Encrypted)
+	var avatarHashSlice []byte
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -97,6 +105,11 @@ func (portal *Portal) Scan(row Scannable) *Portal {
 	}
 	portal.MXID = id.RoomID(mxid.String)
 	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
+	if avatarHashSlice != nil || len(avatarHashSlice) == 32 {
+		var avatarHash [32]byte
+		copy(avatarHash[:], avatarHashSlice)
+		portal.AvatarHash = &avatarHash
+	}
 	return portal
 }
 
@@ -109,7 +122,7 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 
 func (portal *Portal) Insert() {
 	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar, avatar_url, encrypted) VALUES ($1, $2, $3, $4, $5, $6)",
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted)
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
 	}
@@ -121,7 +134,7 @@ func (portal *Portal) Update() {
 		mxid = &portal.MXID
 	}
 	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar=$3, avatar_url=$4, encrypted=$5 WHERE guid=$6",
-		mxid, portal.Name, portal.Avatar, portal.AvatarURL.String(), portal.Encrypted, portal.GUID)
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}

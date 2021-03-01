@@ -60,15 +60,23 @@ type Puppet struct {
 	db  *Database
 	log log.Logger
 
-	ID     string
+	ID          string
 	Displayname string
-	Avatar      string
+	AvatarHash  *[32]byte
 	AvatarURL   id.ContentURI
+}
+
+func (puppet *Puppet) avatarHashSlice() []byte {
+	if puppet.AvatarHash == nil {
+		return nil
+	}
+	return (*puppet.AvatarHash)[:]
 }
 
 func (puppet *Puppet) Scan(row Scannable) *Puppet {
 	var avatarURL sql.NullString
-	err := row.Scan(&puppet.ID, &puppet.Displayname, &puppet.Avatar, &avatarURL)
+	var avatarHashSlice []byte
+	err := row.Scan(&puppet.ID, &puppet.Displayname, &avatarHashSlice, &avatarURL)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			puppet.log.Errorln("Database scan failed:", err)
@@ -76,12 +84,17 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 		return nil
 	}
 	puppet.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
+	if avatarHashSlice != nil || len(avatarHashSlice) == 32 {
+		var avatarHash [32]byte
+		copy(avatarHash[:], avatarHashSlice)
+		puppet.AvatarHash = &avatarHash
+	}
 	return puppet
 }
 
 func (puppet *Puppet) Insert() {
 	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, avatar, avatar_url) VALUES ($1, $2, $3, $4)",
-		puppet.ID, puppet.Displayname, puppet.Avatar, puppet.AvatarURL.String())
+		puppet.ID, puppet.Displayname, puppet.avatarHashSlice(), puppet.AvatarURL.String())
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.ID, err)
 	}
@@ -89,7 +102,7 @@ func (puppet *Puppet) Insert() {
 
 func (puppet *Puppet) Update() {
 	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, avatar=$2, avatar_url=$3 WHERE id=$4",
-		puppet.Displayname, puppet.Avatar, puppet.AvatarURL.String(), puppet.ID)
+		puppet.Displayname, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.ID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s: %v", puppet.ID, err)
 	}

@@ -376,7 +376,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 		puppet.Sync()
 		portal.Name = puppet.Displayname
 		portal.AvatarURL = puppet.AvatarURL
-		portal.Avatar = puppet.Avatar
+		portal.AvatarHash = puppet.AvatarHash
 	}
 
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()

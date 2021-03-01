@@ -50,7 +50,6 @@ type Contact struct {
 	LastName  string
 	Nickname  string
 	Avatar    []byte
-	AvatarRef string
 	Phones    []string
 	Emails    []string
 }

@@ -12,9 +12,9 @@
     * [x] Replies
   * [x] Tapbacks
   * [ ] Read receipts
-  * [ ] User metadata
+  * [x] User metadata
     * [x] Display name
-    * [ ] Avatar
+    * [x] Avatar
   * [ ] Group metadata
     * [x] Display name
     * [x] Member list
