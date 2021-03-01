@@ -174,7 +174,7 @@ func (puppet *Puppet) UpdateAvatar(contact *imessage.Contact) bool {
 		return false
 	}
 	avatarHash := sha256.Sum256(contact.Avatar)
-	if *puppet.AvatarHash != avatarHash {
+	if puppet.AvatarHash == nil || *puppet.AvatarHash != avatarHash {
 		puppet.AvatarHash = &avatarHash
 		mimetype := http.DetectContentType(contact.Avatar)
 		extensions, _ := mime.ExtensionsByType(mimetype)
