@@ -37,7 +37,7 @@ func (pq *PuppetQuery) New() *Puppet {
 }
 
 func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
-	rows, err := pq.db.Query("SELECT id, displayname, avatar, avatar_url FROM puppet")
+	rows, err := pq.db.Query("SELECT id, displayname, avatar_hash, avatar_url FROM puppet")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -49,7 +49,7 @@ func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 }
 
 func (pq *PuppetQuery) Get(id string) *Puppet {
-	row := pq.db.QueryRow("SELECT id, displayname, avatar, avatar_url FROM puppet WHERE id=$1", id)
+	row := pq.db.QueryRow("SELECT id, displayname, avatar_hash, avatar_url FROM puppet WHERE id=$1", id)
 	if row == nil {
 		return nil
 	}
@@ -93,7 +93,7 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 }
 
 func (puppet *Puppet) Insert() {
-	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, avatar, avatar_url) VALUES ($1, $2, $3, $4)",
+	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, avatar_hash, avatar_url) VALUES ($1, $2, $3, $4)",
 		puppet.ID, puppet.Displayname, puppet.avatarHashSlice(), puppet.AvatarURL.String())
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.ID, err)
@@ -101,7 +101,7 @@ func (puppet *Puppet) Insert() {
 }
 
 func (puppet *Puppet) Update() {
-	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, avatar=$2, avatar_url=$3 WHERE id=$4",
+	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, avatar_hash=$2, avatar_url=$3 WHERE id=$4",
 		puppet.Displayname, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.ID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s: %v", puppet.ID, err)

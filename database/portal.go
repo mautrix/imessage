@@ -121,7 +121,7 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar, avatar_url, encrypted) VALUES ($1, $2, $3, $4, $5, $6)",
+	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted) VALUES ($1, $2, $3, $4, $5, $6)",
 		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
@@ -133,7 +133,7 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar=$3, avatar_url=$4, encrypted=$5 WHERE guid=$6",
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5 WHERE guid=$6",
 		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
