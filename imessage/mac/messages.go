@@ -196,7 +196,7 @@ func (imdb *Database) GetMessagesSinceDate(chatID string, minDate time.Time) ([]
 }
 
 func (imdb *Database) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
-	res, err := imdb.recentChatsQuery.Query(minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
+	res, err := imdb.recentChatsQuery.Query(minDate.UnixNano() - imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages: %w", err)
 	}
