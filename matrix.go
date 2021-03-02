@@ -133,6 +133,12 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 	if content.Membership == event.MembershipInvite && id.UserID(evt.GetStateKey()) == mx.as.BotMXID() {
 		mx.HandleBotInvite(evt)
 		return
+	} else if content.Membership == event.MembershipLeave {
+		portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+		if portal != nil {
+			mx.log.Debugfln("Got leave event of %s in %s, checking if it needs to be cleaned up", evt.GetStateKey(), evt.RoomID)
+			portal.CleanupIfEmpty(true)
+		}
 	}
 
 	// TODO handle puppet invites to create chats?

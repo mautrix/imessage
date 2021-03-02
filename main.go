@@ -283,7 +283,8 @@ func (bridge *Bridge) Start() {
 func (bridge *Bridge) StartupSync() {
 	alreadySynced := make(map[string]bool)
 	for _, portal := range bridge.GetAllPortals() {
-		if len(portal.MXID) > 0 {
+		removed := portal.CleanupIfEmpty(true)
+		if !removed && len(portal.MXID) > 0 {
 			portal.Sync()
 			alreadySynced[portal.GUID] = true
 		}

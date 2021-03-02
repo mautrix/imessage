@@ -141,7 +141,7 @@ func (portal *Portal) SyncParticipants() {
 	for _, member := range members {
 		puppet := portal.bridge.GetPuppetByLocalID(member)
 		puppet.Sync()
-		err := puppet.Intent.EnsureJoined(portal.MXID)
+		err = puppet.Intent.EnsureJoined(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", member, portal.MXID, err)
 		}
@@ -932,18 +932,30 @@ func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
 	return users, nil
 }
 
-func (portal *Portal) CleanupIfEmpty() {
+func (portal *Portal) CleanupIfEmpty(deleteIfForbidden bool) bool {
+	if len(portal.MXID) == 0 {
+		return false
+	}
+
 	users, err := portal.GetMatrixUsers()
 	if err != nil {
-		portal.log.Errorfln("Failed to get Matrix user list to determine if portal needs to be cleaned up: %v", err)
-		return
+		if deleteIfForbidden && errors.Is(err, mautrix.MForbidden) {
+			portal.log.Errorfln("Got %v while checking if portal is empty, assuming it's gone", err)
+			portal.Delete()
+			return true
+		} else {
+			portal.log.Errorfln("Failed to get Matrix user list to determine if portal needs to be cleaned up: %v", err)
+		}
+		return false
 	}
 
 	if len(users) == 0 {
 		portal.log.Infoln("Room seems to be empty, cleaning up...")
 		portal.Delete()
 		portal.Cleanup(false)
+		return true
 	}
+	return false
 }
 
 func (portal *Portal) Cleanup(puppetsOnly bool) {
