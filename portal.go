@@ -198,6 +198,9 @@ func (portal *Portal) Sync() {
 			portal.Update()
 			portal.UpdateBridgeInfo()
 		}
+	} else {
+		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
+		puppet.Sync()
 	}
 
 	portal.lockBackfill()
