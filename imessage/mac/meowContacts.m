@@ -16,11 +16,11 @@
 #import <Contacts/Contacts.h>
 #include "meowContacts.h"
 
-const char* nsstring2cstring(NSString *s) {
-    if (s == NULL) { return NULL; }
-
-    const char *cstr = [s UTF8String];
-    return cstr;
+const char* nsstring2cstring(NSString* s) {
+    if (s == NULL) {
+		return NULL;
+    }
+    return [s UTF8String];
 }
 
 CNAuthorizationStatus meowCheckAuth() {
@@ -28,36 +28,41 @@ CNAuthorizationStatus meowCheckAuth() {
 }
 
 CNContactStore* meowCreateStore(void) {
-	CNContactStore *store = [[CNContactStore alloc] init];
-	return store;
+	return [[CNContactStore alloc] init];
 }
 
-void meowRequestAuth(CNContactStore *store) {
+void meowRequestAuth(CNContactStore* store) {
 	[store requestAccessForEntityType:CNEntityTypeContacts completionHandler:^(BOOL granted, NSError * _Nullable error) {
-		meowAuthCallback(granted == YES);
+		char* errorStr1;
+		char* errorStr2;
+		if (error != NULL) {
+			errorStr1 = nsstring2cstring(error.localizedDescription);
+			errorStr2 = nsstring2cstring(error.localizedFailureReason);
+		}
+		meowAuthCallback(granted == YES, errorStr1, errorStr2);
 	}];
 }
 
-CNContact* meowGetContactByPredicate(CNContactStore *store, NSPredicate* predicate) {
+CNContact* meowGetContactByPredicate(CNContactStore* store, NSPredicate* predicate) {
 	NSArray* keysToFetch = @[
 		CNContactGivenNameKey, CNContactFamilyNameKey, CNContactNicknameKey,
 		CNContactEmailAddressesKey, CNContactPhoneNumbersKey, CNContactImageDataKey, CNContactThumbnailImageDataKey,
 	];
-	NSError *error;
-	NSArray *contacts = [store unifiedContactsMatchingPredicate:predicate keysToFetch:keysToFetch error:&error];
+	NSError* error;
+	NSArray* contacts = [store unifiedContactsMatchingPredicate:predicate keysToFetch:keysToFetch error:&error];
 	if (contacts == NULL || contacts.count == 0) {
 		return NULL;
 	}
 	return [contacts objectAtIndex:0];
 }
 
-CNContact* meowGetContactByEmail(CNContactStore *store, char *emailAddressC) {
+CNContact* meowGetContactByEmail(CNContactStore* store, char* emailAddressC) {
 	NSString* emailAddressNS = [NSString stringWithUTF8String:emailAddressC];
 	NSPredicate* predicate = [CNContact predicateForContactsMatchingEmailAddress:emailAddressNS];
 	return meowGetContactByPredicate(store, predicate);
 }
 
-CNContact* meowGetContactByPhone(CNContactStore *store, char *phoneNumberC) {
+CNContact* meowGetContactByPhone(CNContactStore* store, char* phoneNumberC) {
 	NSString* phoneNumberNS = [NSString stringWithUTF8String:phoneNumberC];
 	CNPhoneNumber* phoneNumber = [CNPhoneNumber phoneNumberWithStringValue:phoneNumberNS];
 	NSPredicate* predicate = [CNContact predicateForContactsMatchingPhoneNumber:phoneNumber];

@@ -21,6 +21,7 @@ package mac
 //#include "meowContacts.h"
 import "C"
 import (
+	"fmt"
 	"reflect"
 	"unsafe"
 
@@ -32,31 +33,38 @@ type ContactStore struct {
 	HasAccess bool
 }
 
-var actualAuthCallback = make(chan bool)
+var actualAuthCallback = make(chan error)
 
 //export meowAuthCallback
-func meowAuthCallback(granted C.int) {
+func meowAuthCallback(granted C.int, errorDescription, errorReason *C.char) {
 	if granted == 1 {
-		actualAuthCallback <- true
+		actualAuthCallback <- nil
+	} else if errorDescription != nil {
+		actualAuthCallback <- fmt.Errorf("%s. %s", C.GoString(errorDescription), C.GoString(errorReason))
 	} else {
-		actualAuthCallback <- false
+		actualAuthCallback <- fmt.Errorf("unexpected granted status: %v", granted)
 	}
 }
 
 func NewContactStore() *ContactStore {
-	var cs ContactStore
+	return &ContactStore{
+		int: C.meowCreateStore(),
+	}
+}
 
-	cs.int = C.meowCreateStore()
+func (cs *ContactStore) RequestAccess() error {
 	switch C.meowCheckAuth() {
 	case C.CNAuthorizationStatusNotDetermined:
 		go C.meowRequestAuth(cs.int)
-		cs.HasAccess = <-actualAuthCallback
+		err := <-actualAuthCallback
+		cs.HasAccess = err == nil
+		return err
 	case C.CNAuthorizationStatusDenied:
 		cs.HasAccess = false
 	case C.CNAuthorizationStatusAuthorized:
 		cs.HasAccess = true
 	}
-	return &cs
+	return nil
 }
 
 func gostring(s *C.NSString) string { return C.GoString(C.nsstring2cstring(s)) }

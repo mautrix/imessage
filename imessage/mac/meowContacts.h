@@ -15,15 +15,15 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #import <Contacts/Contacts.h>
 
-const char* nsstring2cstring(NSString *s);
+const char* nsstring2cstring(NSString* s);
 
-extern void meowAuthCallback(int);
+extern void meowAuthCallback(int, char*, char*);
 CNAuthorizationStatus meowCheckAuth();
 CNContactStore* meowCreateStore(void);
 void meowRequestAuth(CNContactStore *store);
 
-CNContact* meowGetContactByEmail(CNContactStore *store, char *emailAddressC);
-CNContact* meowGetContactByPhone(CNContactStore *store, char *phoneNumberC);
+CNContact* meowGetContactByEmail(CNContactStore* store, char* emailAddressC);
+CNContact* meowGetContactByPhone(CNContactStore* store, char* phoneNumberC);
 
 NSString* meowGetGivenNameFromContact(CNContact* contact);
 NSString* meowGetFamilyNameFromContact(CNContact* contact);

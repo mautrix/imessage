@@ -62,7 +62,14 @@ func NewChatDatabase() (imessage.API, error) {
 	}
 
 	imdb.contactStore = NewContactStore()
-	imdb.log.Debugln("Contact access received:", imdb.contactStore.HasAccess)
+	err = imdb.contactStore.RequestAccess()
+	if err != nil {
+		imdb.log.Errorln("Failed to get contact access:", err)
+	} else if imdb.contactStore.HasAccess {
+		imdb.log.Infoln("Contact access is allowed")
+	} else {
+		imdb.log.Warnln("Contact access is not allowed")
+	}
 
 	return imdb, nil
 }
