@@ -15,10 +15,10 @@
   * [x] User metadata
     * [x] Display name
     * [x] Avatar
-  * [ ] Group metadata
+  * [x] Group metadata
     * [x] Display name
     * [x] Member list
-    * [ ] Avatar
+    * [x] Avatar
   * [x] Backfilling history
     * [x] Missed messages
     * [x] When creating portal

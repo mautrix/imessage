@@ -29,8 +29,9 @@ type API interface {
 	GetChatsWithMessagesAfter(minDate time.Time) ([]string, error)
 	MessageChan() <-chan *Message
 	GetContactInfo(identifier string) (*Contact, error)
-	GetGroupMembers(chatID string) ([]string, error)
 	GetChatInfo(chatID string) (*ChatInfo, error)
+	GetGroupMembers(chatID string) ([]string, error)
+	GetGroupAvatar(charID string) (Attachment, error)
 
 	SendMessage(chatID, text string) error
 	SendFile(chatID, filename string, data []byte) error

@@ -19,12 +19,11 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
-	"mime"
-	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/appservice"
@@ -176,13 +175,8 @@ func (puppet *Puppet) UpdateAvatar(contact *imessage.Contact) bool {
 	avatarHash := sha256.Sum256(contact.Avatar)
 	if puppet.AvatarHash == nil || *puppet.AvatarHash != avatarHash {
 		puppet.AvatarHash = &avatarHash
-		mimetype := http.DetectContentType(contact.Avatar)
-		extensions, _ := mime.ExtensionsByType(mimetype)
-		extension := ""
-		if extensions != nil {
-			extension = extensions[0]
-		}
-		resp, err := puppet.Intent.UploadBytesWithName(contact.Avatar, mimetype, "image" + extension)
+		mimeTypeData := mimetype.Detect(contact.Avatar)
+		resp, err := puppet.Intent.UploadBytesWithName(contact.Avatar, mimeTypeData.String(), "image" + mimeTypeData.Extension())
 		if err != nil {
 			puppet.AvatarHash = nil
 			puppet.log.Warnln("Failed to upload avatar:", err)

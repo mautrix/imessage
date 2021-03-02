@@ -27,7 +27,7 @@ CNAuthorizationStatus meowCheckAuth() {
 	return [CNContactStore authorizationStatusForEntityType:CNEntityTypeContacts];
 }
 
-CNContactStore* meowCreateStore(void) {
+CNContactStore* meowCreateStore() {
 	return [[CNContactStore alloc] init];
 }
 

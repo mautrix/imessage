@@ -4,6 +4,7 @@ go 1.14
 
 require (
 	github.com/fsnotify/fsnotify v1.4.9
+	github.com/gabriel-vasile/mimetype v1.1.2
 	github.com/lib/pq v1.9.0
 	github.com/mattn/go-sqlite3 v1.14.6
 	gopkg.in/yaml.v2 v2.3.0

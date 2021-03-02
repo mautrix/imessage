@@ -17,6 +17,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
@@ -147,18 +148,24 @@ func (portal *Portal) SyncParticipants() {
 	}
 }
 
-func (portal *Portal) UpdateName(name string) bool {
-	if portal.Name != name {
-		intent := portal.MainIntent()
-		_, err := intent.SetRoomName(portal.MXID, name)
-		if err == nil {
+func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.EventID {
+	if portal.Name != name || intent != nil {
+		if intent == nil {
+			intent = portal.MainIntent()
+		}
+		resp, err := intent.SetRoomName(portal.MXID, name)
+		if mainIntent := portal.MainIntent(); errors.Is(err, mautrix.MForbidden) && intent != mainIntent {
+			resp, err = mainIntent.SetRoomName(portal.MXID, name)
+		}
+		if err != nil {
+			portal.log.Warnln("Failed to set room name:", err)
+		} else {
 			portal.Name = name
 			portal.UpdateBridgeInfo()
-			return true
+			return &resp.EventID
 		}
-		portal.log.Warnln("Failed to set room name:", err)
 	}
-	return false
+	return nil
 }
 
 func (portal *Portal) Sync() {
@@ -183,7 +190,7 @@ func (portal *Portal) Sync() {
 		}
 		update := false
 		if len(chatInfo.DisplayName) > 0 {
-			update = portal.UpdateName(chatInfo.DisplayName)
+			update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 		}
 		portal.SyncParticipants()
 		// TODO avatar?
@@ -377,6 +384,13 @@ func (portal *Portal) CreateMatrixRoom() error {
 		portal.Name = puppet.Displayname
 		portal.AvatarURL = puppet.AvatarURL
 		portal.AvatarHash = puppet.AvatarHash
+	} else {
+		avatar, err := portal.bridge.IM.GetGroupAvatar(portal.GUID)
+		if err != nil {
+			portal.log.Warnln("Failed to get avatar:", err)
+		} else if avatar != nil {
+			portal.UpdateAvatar(avatar, portal.MainIntent())
+		}
 	}
 
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
@@ -658,6 +672,43 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 }
 
+func (portal *Portal) UpdateAvatar(attachment imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
+	data, err := attachment.Read()
+	if err != nil {
+		portal.log.Errorfln("Failed to read avatar attachment: %v", err)
+		return nil
+	}
+	hash := sha256.Sum256(data)
+	if portal.AvatarHash != nil && hash == *portal.AvatarHash {
+		portal.log.Debugfln("Not updating avatar: hash matches current avatar")
+		return nil
+	}
+	portal.AvatarHash = &hash
+	uploadResp, err := portal.uploadWithRetry(intent, data, attachment.GetMimeType(), MediaUploadRetries)
+	if err != nil {
+		portal.AvatarHash = nil
+		portal.log.Errorfln("Failed to upload avatar attachment: %v", err)
+		return nil
+	}
+	portal.AvatarURL = uploadResp.ContentURI
+	if len(portal.MXID) > 0 {
+		resp, err := intent.SetRoomAvatar(portal.MXID, portal.AvatarURL)
+		if errors.Is(err, mautrix.MForbidden) && intent != portal.MainIntent() {
+			resp, err = portal.MainIntent().SetRoomAvatar(portal.MXID, portal.AvatarURL)
+		}
+		if err != nil {
+			portal.AvatarHash = nil
+			portal.log.Errorfln("Failed to set room avatar: %v", err)
+			return nil
+		}
+		portal.Update()
+		portal.UpdateBridgeInfo()
+		return &resp.EventID
+	} else {
+		return nil
+	}
+}
+
 func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *appservice.IntentAPI) *event.MessageEventContent {
 	if msg.Attachment == nil {
 		return nil
@@ -702,7 +753,7 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 	defer func() {
 		if err := recover(); err != nil {
-			portal.log.Errorln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
+			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
 		}
 	}()
 
@@ -743,11 +794,28 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		} else {
 			portal.messageDedupLock.Unlock()
 		}
-	} else {
+	} else if len(msg.Sender.LocalID) > 0 {
 		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
 		intent = puppet.Intent
+	} else {
+		intent = portal.MainIntent()
 	}
-	if mediaContent := portal.HandleiMessageAttachment(msg, intent); mediaContent != nil {
+	if msg.GroupActionType != imessage.GroupActionNone {
+		var groupUpdateEventID *id.EventID
+		switch msg.GroupActionType {
+		case imessage.GroupActionSetAvatar:
+			if msg.Attachment != nil {
+				groupUpdateEventID = portal.UpdateAvatar(msg.Attachment, intent)
+			}
+		case imessage.GroupActionRemoveAvatar:
+			// TODO
+		case imessage.GroupActionSetName:
+			groupUpdateEventID = portal.UpdateName(msg.NewGroupName, intent)
+		}
+		if groupUpdateEventID != nil {
+			dbMessage.MXID = *groupUpdateEventID
+		}
+	} else if mediaContent := portal.HandleiMessageAttachment(msg, intent); mediaContent != nil {
 		resp, err := portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send attachment in message %s: %v", msg.GUID, err)

@@ -33,6 +33,7 @@ type Database struct {
 	messagesQuery        *sql.Stmt
 	limitedMessagesQuery *sql.Stmt
 	chatQuery            *sql.Stmt
+	groupActionQuery     *sql.Stmt
 	recentChatsQuery     *sql.Stmt
 	Messages             chan *imessage.Message
 	stopWatching         chan struct{}

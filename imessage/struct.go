@@ -43,7 +43,22 @@ type Message struct {
 	Tapback     *Tapback
 
 	Attachment Attachment
+
+	GroupActionType GroupActionType
+	NewGroupName    string
 }
+
+type GroupActionType int
+
+const (
+	GroupActionNone GroupActionType = iota
+	GroupActionSetAvatar
+	GroupActionRemoveAvatar
+
+	// Internal types
+
+	GroupActionSetName GroupActionType = iota + 0xff
+)
 
 type Contact struct {
 	FirstName string

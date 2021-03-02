@@ -27,18 +27,21 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/gabriel-vasile/mimetype"
 	_ "github.com/mattn/go-sqlite3"
+	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 const baseMessagesQuery = `
 SELECT
-  message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.service, chat.guid,
+  message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), COALESCE(message.service, ''), chat.guid,
   chat.chat_identifier, chat.service_name, COALESCE(handle.id, ''), COALESCE(handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
-  COALESCE(attachment.filename, ''), COALESCE(attachment.mime_type, ''), COALESCE(attachment.transfer_name, '')
+  COALESCE(attachment.filename, ''), attachment.mime_type, COALESCE(attachment.transfer_name, ''),
+  message.group_title, message.group_action_type
 FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
@@ -56,6 +59,17 @@ var limitedMessagesQuery = baseMessagesQuery + `
 WHERE (chat.guid=$1 OR $1='')
 ORDER BY message.date DESC
 LIMIT $2
+`
+
+const groupActionQuery = `
+SELECT attachment.filename, attachment.mime_type, attachment.transfer_name
+FROM message
+JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
+JOIN chat              ON chat_message_join.chat_id = chat.ROWID
+LEFT JOIN message_attachment_join ON message_attachment_join.message_id = message.ROWID
+LEFT JOIN attachment              ON message_attachment_join.attachment_id = attachment.ROWID
+WHERE message.group_action_type=$1 AND chat.guid=$2
+ORDER BY message.date DESC LIMIT 1
 `
 
 const chatQuery = `
@@ -84,9 +98,18 @@ func (imdb *Database) prepareMessages() error {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 	}
+	if !columnExists(imdb.chatDB, "message", "group_action_type") {
+		messagesQuery = strings.ReplaceAll(messagesQuery, "message.group_action_type", "0")
+		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "message.group_action_type", "0")
+	}
 	imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare message query: %w", err)
+	}
+	imdb.groupActionQuery, err = imdb.chatDB.Prepare(groupActionQuery)
+	if err != nil {
+		imdb.log.Warnln("Failed to prepare group action query:", err)
+		imdb.groupActionQuery = nil
 	}
 	imdb.limitedMessagesQuery, err = imdb.chatDB.Prepare(limitedMessagesQuery)
 	if err != nil {
@@ -108,12 +131,26 @@ func (imdb *Database) prepareMessages() error {
 
 type AttachmentInfo struct {
 	FileName     string
-	MimeType     string
+	MimeType     sql.NullString
+	triedMagic bool
 	TransferName string
 }
 
 func (ai *AttachmentInfo) GetMimeType() string {
-	return ai.MimeType
+	if !ai.MimeType.Valid {
+		if ai.triedMagic {
+			return ""
+		}
+		ai.triedMagic = true
+		mime, err := mimetype.DetectFile(ai.FileName)
+		if err != nil {
+			log.DefaultLogger.Warnfln("Failed to detect mime type from %s: %v", ai.FileName, err)
+			return ""
+		}
+		ai.MimeType.String = mime.String()
+		ai.MimeType.Valid = true
+	}
+	return ai.MimeType.String
 }
 
 func (ai *AttachmentInfo) GetFileName() string {
@@ -137,11 +174,13 @@ func (imdb *Database) scanMessages(res *sql.Rows) (messages []*imessage.Message,
 		var tapback imessage.Tapback
 		var attachment AttachmentInfo
 		var timestamp int64
+		var newGroupTitle sql.NullString
 		err = res.Scan(&message.GUID, &timestamp, &message.Subject, &message.Text, &message.Service, &message.ChatGUID,
 			&message.Chat.LocalID, &message.Chat.Service, &message.Sender.LocalID, &message.Sender.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
-			&attachment.FileName, &attachment.MimeType, &attachment.TransferName)
+			&attachment.FileName, &attachment.MimeType, &attachment.TransferName,
+			&newGroupTitle, &message.GroupActionType)
 		if err != nil {
 			err = fmt.Errorf("error scanning row: %w", err)
 			return
@@ -149,6 +188,10 @@ func (imdb *Database) scanMessages(res *sql.Rows) (messages []*imessage.Message,
 		message.Time = time.Unix(imessage.AppleEpoch.Unix(), timestamp)
 		if len(attachment.FileName) > 0 {
 			message.Attachment = &attachment
+		}
+		if newGroupTitle.Valid {
+			message.GroupActionType = imessage.GroupActionSetName
+			message.NewGroupName = newGroupTitle.String
 		}
 		if len(tapback.TargetGUID) > 0 {
 			message.Tapback, err = tapback.Parse()
@@ -190,7 +233,7 @@ func (imdb *Database) GetMessagesWithLimit(chatID string, limit int) ([]*imessag
 func (imdb *Database) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	res, err := imdb.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
 	if err != nil {
-		return nil, fmt.Errorf("error querying messages: %w", err)
+		return nil, fmt.Errorf("error querying messages after date: %w", err)
 	}
 	return imdb.scanMessages(res)
 }
@@ -198,7 +241,7 @@ func (imdb *Database) GetMessagesSinceDate(chatID string, minDate time.Time) ([]
 func (imdb *Database) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
 	res, err := imdb.recentChatsQuery.Query(minDate.UnixNano() - imessage.AppleEpoch.UnixNano())
 	if err != nil {
-		return nil, fmt.Errorf("error querying messages: %w", err)
+		return nil, fmt.Errorf("error querying chats with messages after date: %w", err)
 	}
 	var chats []string
 	for res.Next() {
@@ -214,13 +257,26 @@ func (imdb *Database) GetChatsWithMessagesAfter(minDate time.Time) ([]string, er
 
 func (imdb *Database) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
 	row := imdb.chatQuery.QueryRow(chatID)
-	if row == nil || row.Err() == sql.ErrNoRows {
+	if row.Err() == sql.ErrNoRows {
 		return nil, nil
 	}
 	var info imessage.ChatInfo
 	info.Identifier = imessage.ParseIdentifier(chatID)
 	err := row.Scan(&info.Identifier.LocalID, &info.Identifier.Service, &info.DisplayName)
 	return &info, err
+}
+
+func (imdb *Database) GetGroupAvatar(chatID string) (imessage.Attachment, error) {
+	if imdb.groupActionQuery == nil {
+		return nil, nil
+	}
+	row := imdb.groupActionQuery.QueryRow(imessage.GroupActionSetAvatar, chatID)
+	if row.Err() == sql.ErrNoRows {
+		return nil, nil
+	}
+	var avatar AttachmentInfo
+	err := row.Scan(&avatar.FileName, &avatar.MimeType, &avatar.TransferName)
+	return &avatar, err
 }
 
 func (imdb *Database) Stop() {

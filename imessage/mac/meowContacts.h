@@ -17,10 +17,10 @@
 
 const char* nsstring2cstring(NSString* s);
 
-extern void meowAuthCallback(int, char*, char*);
+extern void meowAuthCallback(int granted, char* errorDescription, char* errorReason);
 CNAuthorizationStatus meowCheckAuth();
-CNContactStore* meowCreateStore(void);
-void meowRequestAuth(CNContactStore *store);
+CNContactStore* meowCreateStore();
+void meowRequestAuth(CNContactStore* store);
 
 CNContact* meowGetContactByEmail(CNContactStore* store, char* emailAddressC);
 CNContact* meowGetContactByPhone(CNContactStore* store, char* phoneNumberC);
