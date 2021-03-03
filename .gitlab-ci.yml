@@ -53,8 +53,11 @@ build armv7:
     CGO_ENABLED: 1
     GOARCH: arm
     GOARM: 7
+    IPHONEOS_DEPLOYMENT_TARGET: "7.0"
+    SDK: iphoneos
   before_script:
-  - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
+  - export SDK_PATH=$(xcrun -sdk $SDK -show-sdk-path)
+  - export CLANG=$(xcrun -sdk $SDK -find clang)
   - export LIBRARY_PATH=$HOME/lib
   - export GOROOT=$HOME/Library/Go1.14
   - export GOPATH=$HOME/go-1.14
@@ -62,6 +65,7 @@ build armv7:
   - export PATH=$GOROOT/bin:/opt/homebrew/bin:$PATH
   - export CC=$(pwd)/armv7-clangwrap.sh
   - export CXX=$CC
+  - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
   - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
