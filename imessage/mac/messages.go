@@ -257,12 +257,12 @@ func (imdb *Database) GetChatsWithMessagesAfter(minDate time.Time) ([]string, er
 
 func (imdb *Database) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
 	row := imdb.chatQuery.QueryRow(chatID)
-	if row.Err() == sql.ErrNoRows {
-		return nil, nil
-	}
 	var info imessage.ChatInfo
 	info.Identifier = imessage.ParseIdentifier(chatID)
 	err := row.Scan(&info.Identifier.LocalID, &info.Identifier.Service, &info.DisplayName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	return &info, err
 }
 
@@ -271,11 +271,11 @@ func (imdb *Database) GetGroupAvatar(chatID string) (imessage.Attachment, error)
 		return nil, nil
 	}
 	row := imdb.groupActionQuery.QueryRow(imessage.GroupActionSetAvatar, chatID)
-	if row.Err() == sql.ErrNoRows {
-		return nil, nil
-	}
 	var avatar AttachmentInfo
 	err := row.Scan(&avatar.FileName, &avatar.MimeType, &avatar.TransferName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
 	return &avatar, err
 }
 
