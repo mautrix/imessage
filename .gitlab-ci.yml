@@ -65,7 +65,8 @@ build armv7:
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
   - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
-  - cp /Users/ci/lib/libolm.dylib libolm.3.dylib
+  - ldid -S mautrix-imessage
+  - cp $HOME/lib/libolm.dylib libolm.3.dylib
   artifacts:
     paths:
     - libolm.3.dylib
