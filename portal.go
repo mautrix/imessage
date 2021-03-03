@@ -295,9 +295,9 @@ type BridgeInfoSection struct {
 	AvatarURL   id.ContentURIString `json:"avatar_url,omitempty"`
 	ExternalURL string              `json:"external_url,omitempty"`
 
-	GUID    string `json:"fi.mau.imessage.guid"`
-	Service string `json:"fi.mau.imessage.service"`
-	IsGroup bool   `json:"fi.mau.imessage.is_group"`
+	GUID    string `json:"fi.mau.imessage.guid,omitempty"`
+	Service string `json:"fi.mau.imessage.service,omitempty"`
+	IsGroup bool   `json:"fi.mau.imessage.is_group,omitempty"`
 }
 
 type BridgeInfoContent struct {
