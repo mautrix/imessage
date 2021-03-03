@@ -55,7 +55,7 @@ build armv7:
     GOARM: 7
   before_script:
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
-  - export LIBRARY_PATH=$HOME/lib:/opt/homebrew/lib
+  - export LIBRARY_PATH=$HOME/lib
   - export GOROOT=$HOME/Library/Go1.14
   - export GOPATH=$HOME/go-1.14
   - export CPATH=/opt/homebrew/include
@@ -64,8 +64,8 @@ build armv7:
   - export CXX=$CC
   script:
   - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
-  - install_name_tool -change /Users/ci/lib/libolm.3.dylib @executable_path/libolm.3.dylib mautrix-imessage
-  - cp /Users/ci/lib/libolm.3.dylib .
+  - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
+  - cp /Users/ci/lib/libolm.dylib libolm.3.dylib
   artifacts:
     paths:
     - libolm.3.dylib
