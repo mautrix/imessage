@@ -192,7 +192,7 @@ func (bridge *Bridge) Init() {
 			os.Exit(12)
 		}
 	}
-	bridge.Log.Infoln("Initializing mautrix-imessage", VersionString)
+	bridge.Log.Infoln("Initializing", VersionString)
 	bridge.AS.Log = log.Sub("Matrix")
 
 	bridge.Log.Debugln("Initializing database connection")
