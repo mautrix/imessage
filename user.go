@@ -129,10 +129,13 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	user.log.Debugln("Updating m.direct list on homeserver")
 	var err error
 	if user.bridge.Config.Homeserver.Asmux {
-		urlPath := user.DoublePuppetIntent.BuildBaseURL("_matrix", "client", "unstable", "net.maunium.asmux", "dms")
-		_, err = user.DoublePuppetIntent.MakeFullRequest(method, urlPath, http.Header{
-			"X-Asmux-Auth": {user.bridge.AS.Registration.AppToken},
-		}, chats, nil)
+		url := user.DoublePuppetIntent.BuildBaseURL("_matrix", "client", "unstable", "net.maunium.asmux", "dms")
+		_, err = user.DoublePuppetIntent.MakeFullRequest(mautrix.FullRequest{
+			Method:      method,
+			URL:         url,
+			RequestJSON: chats,
+			Headers:     http.Header{"X-Asmux-Auth": {user.bridge.AS.Registration.AppToken}},
+		})
 	} else {
 		existingChats := make(map[id.UserID][]id.RoomID)
 		err = user.DoublePuppetIntent.GetAccountData(event.AccountDataDirectChats.Type, &existingChats)

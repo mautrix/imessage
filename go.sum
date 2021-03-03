@@ -140,3 +140,9 @@ maunium.net/go/mautrix v0.8.6-0.20210301103502-484a31296e1f h1:nKevAYAa9TTf2FjGR
 maunium.net/go/mautrix v0.8.6-0.20210301103502-484a31296e1f/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
 maunium.net/go/mautrix v0.8.6 h1:JhiA8I+JE3+X8d/JqCIeweDA9lOVwbUlj86Y8RtvDMg=
 maunium.net/go/mautrix v0.8.6/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
+maunium.net/go/mautrix v0.8.7-0.20210303145803-c6872c693f1e h1:sn5EtEcVu7t2QzOl0pjdPw7JI/2F5d7Y5SDpofBrPYg=
+maunium.net/go/mautrix v0.8.7-0.20210303145803-c6872c693f1e/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
+maunium.net/go/mautrix v0.8.7-0.20210303150049-3972a446b234 h1:8mGy++h4/7mojTUYWixvT2d5/HQr4VhrPPk87g/dV00=
+maunium.net/go/mautrix v0.8.7-0.20210303150049-3972a446b234/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
+maunium.net/go/mautrix v0.8.7-0.20210303150327-386db7f168bc h1:UDylNnan9fsP7+pX64vOmyTjNIT7N4Hhk7toIMFY9Js=
+maunium.net/go/mautrix v0.8.7-0.20210303150327-386db7f168bc/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=

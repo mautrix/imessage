@@ -29,10 +29,11 @@ import (
 type IPCCommand string
 
 const (
-	CommandPing     IPCCommand = "ping"
-	CommandStop     IPCCommand = "stop"
-	CommandResponse IPCCommand = "response"
-	CommandError    IPCCommand = "error"
+	CommandPing            IPCCommand = "ping"
+	CommandStop            IPCCommand = "stop"
+	CommandResetEncryption IPCCommand = "reset-encryption"
+	CommandResponse        IPCCommand = "response"
+	CommandError           IPCCommand = "error"
 )
 
 var (
@@ -118,6 +119,9 @@ func (ipc *IPCHandler) Handle(msg *Message) {
 	case CommandStop:
 		ipc.respond(msg.ID, nil)
 		ipc.bridge.stop <- struct{}{}
+	case CommandResetEncryption:
+		ipc.bridge.Crypto.Reset()
+		ipc.respond(msg.ID, PingResponse{true})
 	default:
 		ipc.respond(msg.ID, ErrUnknownCommand)
 	}
