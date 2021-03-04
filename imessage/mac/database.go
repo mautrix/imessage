@@ -55,7 +55,7 @@ func NewChatDatabase() (imessage.API, error) {
 	}
 	err = imdb.prepareGroups()
 	if err != nil {
-		imdb.log.Debugln("Failed to open group database: %v. Falling back to message database for querying group members.")
+		imdb.log.Debugfln("Failed to open group database: %v. Falling back to message database for querying group members.", err)
 		err = imdb.prepareLegacyGroups()
 		if err != nil {
 			return nil, fmt.Errorf("failed to open legacy group database: %w", err)
