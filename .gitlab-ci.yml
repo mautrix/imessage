@@ -7,6 +7,8 @@ build amd64:
   - macos
   - amd64
   stage: build
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: "10.13"
   before_script:
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
@@ -26,6 +28,8 @@ build arm64:
   - macos
   - arm64
   stage: build
+  variables:
+    MACOSX_DEPLOYMENT_TARGET: "10.13"
   before_script:
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   - export LIBRARY_PATH=/opt/homebrew/lib
