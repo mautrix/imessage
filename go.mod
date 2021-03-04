@@ -10,5 +10,5 @@ require (
 	gopkg.in/yaml.v2 v2.3.0
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.2.4
-	maunium.net/go/mautrix v0.8.7-0.20210303150327-386db7f168bc
+	maunium.net/go/mautrix v0.8.7-0.20210304173449-b87e026581a5
 )
