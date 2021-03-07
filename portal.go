@@ -660,6 +660,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			data, err = msg.File.Decrypt(data)
 			if err != nil {
 				portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
+				return
 			}
 		}
 		err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data)
@@ -799,6 +800,10 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		}
 	} else if len(msg.Sender.LocalID) > 0 {
 		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
+		if len(puppet.Displayname) == 0 {
+			portal.log.Debugfln("Displayname of %s is empty, syncing before handling %s", puppet.ID, msg.GUID)
+			puppet.Sync()
+		}
 		intent = puppet.Intent
 	} else {
 		intent = portal.MainIntent()
