@@ -23,29 +23,30 @@ import (
 )
 
 type Message struct {
-	GUID     string
-	Time     time.Time
-	Subject  string
-	Text     string
-	Service  string
-	ChatGUID string
-	Chat     Identifier
-	Sender   Identifier
+	GUID    string    `json:"guid"`
+	Time    time.Time // TODO json
+	Subject string    `json:"subject"`
+	Text    string    `json:"text"`
+	//Service  string `json:"service"`
+	ChatGUID   string `json:"chat_guid"`
+	SenderGUID string `json:"sender_guid"`
+	//Chat     Identifier
+	Sender Identifier
 
-	IsFromMe       bool
+	IsFromMe       bool `json:"is_from_me"`
 	IsRead         bool
 	IsDelivered    bool
 	IsSent         bool
 	IsEmote        bool
 	IsAudioMessage bool
 
-	ReplyToGUID string
-	Tapback     *Tapback
+	ReplyToGUID string   `json:"thread_originator_guid"`
+	Tapback     *Tapback `json:"associated_message"`
 
-	Attachment Attachment
+	Attachment Attachment `json:"attachment"`
 
-	GroupActionType GroupActionType
-	NewGroupName    string
+	GroupActionType GroupActionType `json:"group_action_type"`
+	NewGroupName    string          `json:"new_group_title"`
 }
 
 type GroupActionType int

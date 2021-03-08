@@ -36,8 +36,8 @@ import (
 
 const baseMessagesQuery = `
 SELECT
-  message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), COALESCE(message.service, ''), chat.guid,
-  chat.chat_identifier, chat.service_name, COALESCE(handle.id, ''), COALESCE(handle.service, ''),
+  message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), chat.guid,
+  COALESCE(handle.id, ''), COALESCE(handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
   COALESCE(attachment.filename, ''), attachment.mime_type, COALESCE(attachment.transfer_name, ''),
@@ -175,8 +175,8 @@ func (imdb *Database) scanMessages(res *sql.Rows) (messages []*imessage.Message,
 		var attachment AttachmentInfo
 		var timestamp int64
 		var newGroupTitle sql.NullString
-		err = res.Scan(&message.GUID, &timestamp, &message.Subject, &message.Text, &message.Service, &message.ChatGUID,
-			&message.Chat.LocalID, &message.Chat.Service, &message.Sender.LocalID, &message.Sender.Service,
+		err = res.Scan(&message.GUID, &timestamp, &message.Subject, &message.Text, &message.ChatGUID,
+			&message.Sender.LocalID, &message.Sender.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
 			&attachment.FileName, &attachment.MimeType, &attachment.TransferName,
