@@ -17,6 +17,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -51,6 +52,53 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	bridge.EventProcessor.On(event.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(event.StateEncryption, handler.HandleEncryption)
 	return handler
+}
+
+type BridgeStatus struct {
+	OK        bool  `json:"ok"`
+	Timestamp int64 `json:"timestamp"`
+	TTL       int   `json:"ttl"`
+}
+
+func (mx *MatrixHandler) SendBridgeStatus() {
+	statusData, _ := json.Marshal(BridgeStatus{
+		OK:        true,
+		Timestamp: time.Now().Unix(),
+		TTL:       600,
+	})
+	mx.log.Debugln("Sending bridge status to server")
+	err := mx.bridge.AS.SendWebsocket(appservice.WebsocketCommand{
+		Command: "bridge_status",
+		Data:    statusData,
+	})
+	if err != nil {
+		mx.log.Warnln("Error sending pong status:", err)
+	}
+}
+
+func (mx *MatrixHandler) HandleWebsocketCommands() {
+	for cmd := range mx.as.WebsocketCommands {
+		switch cmd.Command {
+		case "ping":
+			responseData, _ := json.Marshal(BridgeStatus{
+				OK:        true,
+				Timestamp: time.Now().Unix(),
+				TTL:       600,
+			})
+			err := mx.bridge.AS.SendWebsocket(appservice.WebsocketCommand{
+				ReqID:   cmd.ReqID,
+				Command: "response",
+				Data:    responseData,
+			})
+			if err != nil {
+				mx.log.Warnfln("Error responding to command %s %d: %v", cmd.Command, cmd.ReqID, err)
+			} else {
+				mx.log.Debugln("Sent response to", cmd.Command, cmd.ReqID)
+			}
+		default:
+			mx.log.Warnfln("Unknown websocket command %s %d / %s", cmd.Command, cmd.ReqID, cmd.Data)
+		}
+	}
 }
 
 func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {

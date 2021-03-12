@@ -180,6 +180,7 @@ func (bridge *Bridge) Init() {
 		_, _ = fmt.Fprintln(os.Stderr, "Failed to initialize AppService:", err)
 		os.Exit(11)
 	}
+	bridge.AS.PrepareWebsocket()
 	_, _ = bridge.AS.Init()
 	bridge.Bot = bridge.AS.BotIntent()
 
@@ -225,8 +226,11 @@ func (bridge *Bridge) Init() {
 }
 
 func (bridge *Bridge) startWebsocket() {
+	onConnect := func() {
+		go bridge.MatrixHandler.SendBridgeStatus()
+	}
 	for {
-		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy)
+		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy, onConnect)
 		if err != nil {
 			bridge.Log.Errorln("Error in appservice websocket:", err)
 		}
@@ -269,6 +273,7 @@ func (bridge *Bridge) Start() {
 	go bridge.startWebsocket()
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
+	go bridge.MatrixHandler.HandleWebsocketCommands()
 	bridge.Log.Debugln("Stating iMessage handler")
 	go bridge.IMHandler.Start()
 	bridge.Log.Debugln("Starting IPC loop")
@@ -279,6 +284,7 @@ func (bridge *Bridge) Start() {
 	}
 
 	go bridge.StartupSync()
+	bridge.Log.Infoln("Initialization complete")
 }
 
 func (bridge *Bridge) StartupSync() {
@@ -302,6 +308,7 @@ func (bridge *Bridge) StartupSync() {
 			portal.Sync()
 		}
 	}
+	bridge.Log.Infoln("Startup sync complete")
 }
 
 func (bridge *Bridge) UpdateBotProfile() {
