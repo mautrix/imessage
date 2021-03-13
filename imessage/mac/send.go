@@ -18,12 +18,14 @@ package mac
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -83,8 +85,19 @@ func runOsascript(script string, args ...string) error {
 	return nil
 }
 
+func (imdb *Database) runOsascriptWithRetry(script string, args ...string) error {
+	err := runOsascript(script, args...)
+	exitErr := &exec.ExitError{}
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && strings.Contains(err.Error(), "-1728") {
+		imdb.log.Warnln("Retrying failed send in 1 second: %v", err)
+		time.Sleep(1 * time.Second)
+		err = runOsascript(script, args...)
+	}
+	return err
+}
+
 func (imdb *Database) SendMessage(chatID, text string) error {
-	return runOsascript(sendMessage, chatID, text)
+	return imdb.runOsascriptWithRetry(sendMessage, chatID, text)
 }
 
 func (imdb *Database) SendFile(chatID, filename string, data []byte) error {
@@ -97,7 +110,7 @@ func (imdb *Database) SendFile(chatID, filename string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to write data to temp file: %w", err)
 	}
-	err = runOsascript(sendFile, chatID, filePath)
+	err = imdb.runOsascriptWithRetry(sendFile, chatID, filePath)
 	go func() {
 		// TODO maybe log when the file gets removed
 		// Random sleep to make sure the message has time to get sent
