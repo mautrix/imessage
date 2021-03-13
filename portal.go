@@ -635,6 +635,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		err := portal.bridge.IM.SendMessage(portal.GUID, msg.Body)
 		if err != nil {
 			portal.log.Errorln("Error sending to iMessage:", err)
+			portal.sendErrorMessage(err.Error())
 		} else {
 			portal.log.Debugln("Handled Matrix message", evt.ID)
 		}
@@ -666,6 +667,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data)
 		if err != nil {
 			portal.log.Errorln("Error sending file to iMessage:", err)
+			portal.sendErrorMessage(err.Error())
 		} else {
 			portal.log.Debugln("Handled Matrix file message", evt.ID)
 		}
