@@ -36,7 +36,7 @@ import (
 
 const baseMessagesQuery = `
 SELECT
-  message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), chat.guid,
+  message.ROWID, message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), chat.guid,
   COALESCE(handle.id, ''), COALESCE(handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
@@ -48,6 +48,11 @@ JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 LEFT JOIN handle       ON message.handle_id = handle.ROWID
 LEFT JOIN message_attachment_join ON message_attachment_join.message_id = message.ROWID
 LEFT JOIN attachment              ON message_attachment_join.attachment_id = attachment.ROWID
+`
+
+var newMessagesQuery = baseMessagesQuery + `
+WHERE message.ROWID > $1
+ORDER BY message.date ASC
 `
 
 var messagesQuery = baseMessagesQuery + `
@@ -97,10 +102,12 @@ func (imdb *Database) prepareMessages() error {
 	if !columnExists(imdb.chatDB, "message", "thread_originator_guid") {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
+		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 	}
 	if !columnExists(imdb.chatDB, "message", "group_action_type") {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "message.group_action_type", "0")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "message.group_action_type", "0")
+		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "message.group_action_type", "0")
 	}
 	imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
 	if err != nil {
@@ -114,6 +121,10 @@ func (imdb *Database) prepareMessages() error {
 	imdb.limitedMessagesQuery, err = imdb.chatDB.Prepare(limitedMessagesQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare limited message query: %w", err)
+	}
+	imdb.newMessagesQuery, err = imdb.chatDB.Prepare(newMessagesQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare new message query: %w", err)
 	}
 	imdb.chatQuery, err = imdb.chatDB.Prepare(chatQuery)
 	if err != nil {
@@ -175,7 +186,7 @@ func (imdb *Database) scanMessages(res *sql.Rows) (messages []*imessage.Message,
 		var attachment AttachmentInfo
 		var timestamp int64
 		var newGroupTitle sql.NullString
-		err = res.Scan(&message.GUID, &timestamp, &message.Subject, &message.Text, &message.ChatGUID,
+		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &message.ChatGUID,
 			&message.Sender.LocalID, &message.Sender.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
@@ -234,6 +245,14 @@ func (imdb *Database) GetMessagesSinceDate(chatID string, minDate time.Time) ([]
 	res, err := imdb.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages after date: %w", err)
+	}
+	return imdb.scanMessages(res)
+}
+
+func (imdb *Database) getMessagesSinceRowID(rowID int) ([]*imessage.Message, error) {
+	res, err := imdb.newMessagesQuery.Query(rowID)
+	if err != nil {
+		return nil, fmt.Errorf("error querying messages after rowid: %w", err)
 	}
 	return imdb.scanMessages(res)
 }
@@ -305,7 +324,11 @@ func (imdb *Database) Start() error {
 	var dropEvents bool
 	var handleLock sync.Mutex
 	nonSentMessages := make(map[string]bool)
-	lastMessageTimestamp := time.Now()
+	var lastRowID int
+	err = imdb.chatDB.QueryRow("SELECT MAX(ROWID) FROM message").Scan(&lastRowID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch last row ID: %w", err)
+	}
 Loop:
 	for {
 		select {
@@ -320,16 +343,14 @@ Loop:
 				handleLock.Lock()
 				defer handleLock.Unlock()
 				time.Sleep(50 * time.Millisecond)
-				newMessages, err := imdb.GetMessagesSinceDate("", lastMessageTimestamp)
+				newMessages, err := imdb.getMessagesSinceRowID(lastRowID)
 				if err != nil {
-					// TODO use proper logger
-					fmt.Println("Error reading messages after fsevent:", err)
-					//return fmt.Errorf("error reading messages after fsevent: %w", err)
+					imdb.log.Warnln("Error reading messages after fsevent:", err)
 				}
 				dropEvents = false
 				for _, message := range newMessages {
-					if message.Time.After(lastMessageTimestamp) {
-						lastMessageTimestamp = message.Time
+					if message.RowID > lastRowID {
+						lastRowID = message.RowID
 					}
 
 					if !message.IsSent {

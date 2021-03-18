@@ -23,6 +23,8 @@ import (
 )
 
 type Message struct {
+	RowID int `json:"-"`
+
 	GUID    string    `json:"guid"`
 	Time    time.Time // TODO json
 	Subject string    `json:"subject"`

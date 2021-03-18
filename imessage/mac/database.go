@@ -32,6 +32,7 @@ type Database struct {
 	chatDB               *sql.DB
 	messagesQuery        *sql.Stmt
 	limitedMessagesQuery *sql.Stmt
+	newMessagesQuery     *sql.Stmt
 	chatQuery            *sql.Stmt
 	groupActionQuery     *sql.Stmt
 	recentChatsQuery     *sql.Stmt
