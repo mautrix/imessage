@@ -33,7 +33,6 @@ type API interface {
 	MessageChan() <-chan *Message
 	GetContactInfo(identifier string) (*Contact, error)
 	GetChatInfo(chatID string) (*ChatInfo, error)
-	GetGroupMembers(chatID string) ([]string, error)
 	GetGroupAvatar(charID string) (Attachment, error)
 
 	SendMessage(chatID, text string) error

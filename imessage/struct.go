@@ -64,12 +64,13 @@ const (
 )
 
 type Contact struct {
-	FirstName string
-	LastName  string
-	Nickname  string
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
+	Nickname  string `json:"nickname,omitempty"`
 	Avatar    []byte
-	Phones    []string
-	Emails    []string
+	AvatarB64 string   `json:"avatar,omitempty"`
+	Phones    []string `json:"phones,omitempty"`
+	Emails    []string `json:"emails,omitempty"`
 }
 
 func (contact *Contact) Name() string {
@@ -96,8 +97,9 @@ type Attachment interface {
 }
 
 type ChatInfo struct {
-	Identifier
-	DisplayName string
+	Identifier  `json:"-"`
+	DisplayName string   `json:"title"`
+	Members     []string `json:"members"`
 }
 
 type Identifier struct {

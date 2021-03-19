@@ -281,7 +281,10 @@ func (imdb *Database) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
 	err := row.Scan(&info.Identifier.LocalID, &info.Identifier.Service, &info.DisplayName)
 	if err == sql.ErrNoRows {
 		return nil, nil
+	} else if err != nil {
+		return &info, err
 	}
+	info.Members, err = imdb.GetGroupMembers(chatID)
 	return &info, err
 }
 

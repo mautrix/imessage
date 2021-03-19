@@ -132,16 +132,11 @@ type Portal struct {
 	Identifier       imessage.Identifier
 }
 
-func (portal *Portal) SyncParticipants() {
-	members, err := portal.bridge.IM.GetGroupMembers(portal.GUID)
-	if err != nil {
-		portal.log.Errorln("Failed to get group members:", err)
-		return
-	}
-	for _, member := range members {
+func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
+	for _, member := range chatInfo.Members {
 		puppet := portal.bridge.GetPuppetByLocalID(member)
 		puppet.Sync()
-		err = puppet.Intent.EnsureJoined(portal.MXID)
+		err := puppet.Intent.EnsureJoined(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", member, portal.MXID, err)
 		}
@@ -193,7 +188,7 @@ func (portal *Portal) Sync() {
 			if len(chatInfo.DisplayName) > 0 {
 				update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 			}
-			portal.SyncParticipants()
+			portal.SyncParticipants(chatInfo)
 			// TODO avatar?
 			if update {
 				portal.Update()
@@ -475,7 +470,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 	}
 
 	if !portal.IsPrivateChat() {
-		portal.SyncParticipants()
+		portal.SyncParticipants(chatInfo)
 	} else {
 		if portal.bridge.user.DoublePuppetIntent != nil {
 			_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)

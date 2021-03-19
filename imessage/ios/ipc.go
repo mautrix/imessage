@@ -17,6 +17,7 @@
 package ios
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
@@ -26,18 +27,8 @@ import (
 )
 
 const (
-	CommandSendMessage       = "send_message"
-	CommandSendMedia         = "send_media"
-	CommandSendTapback       = "send_tapback"
-	CommandSendReadReceipt   = "send_read_receipt"
-	CommandGetChats          = "get_chats"
-	CommandGetChat           = "get_chat"
-	CommandGetContact        = "get_contact"
-	CommandGetMessagesAfter  = "get_messages_after"
-	CommandGetRecentMessages = "get_recent_messages"
-
-	CommandIncomingMessage     = "message"
-	CommandIncomingReadReceipt = "read_receipt"
+	IncomingMessage     ipc.Command = "message"
+	IncomingReadReceipt ipc.Command = "read_receipt"
 )
 
 type iOSConnector struct {
@@ -51,7 +42,7 @@ func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
 		IPC: bridge.GetIPC(),
 		log: bridge.GetLog().Sub("iMessage").Sub("iOS"),
 	}
-	ios.IPC.SetHandler(CommandIncomingMessage, ios.handleIncomingMessage)
+	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
 	return ios, nil
 }
 
@@ -95,15 +86,15 @@ func (ios iOSConnector) MessageChan() <-chan *imessage.Message {
 }
 
 func (ios iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
-	return nil, nil
+	var resp imessage.Contact
+	err := ios.IPC.RequestWait(context.Background(), ReqGetContact, &GetContactRequest{UserGUID: identifier}, &resp)
+	return &resp, err
 }
 
 func (ios iOSConnector) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
-	return nil, nil
-}
-
-func (ios iOSConnector) GetGroupMembers(chatID string) ([]string, error) {
-	return []string{}, nil
+	var resp imessage.ChatInfo
+	err := ios.IPC.RequestWait(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID}, &resp)
+	return &resp, err
 }
 
 func (ios iOSConnector) GetGroupAvatar(charID string) (imessage.Attachment, error) {
@@ -111,7 +102,11 @@ func (ios iOSConnector) GetGroupAvatar(charID string) (imessage.Attachment, erro
 }
 
 func (ios iOSConnector) SendMessage(chatID, text string) error {
-	return nil
+	// TODO get GUID from response
+	return ios.IPC.RequestWait(context.Background(), ReqSendMessage, &SendMessageRequest{
+		ChatGUID: chatID,
+		Text:     text,
+	}, nil)
 }
 
 func (ios iOSConnector) SendFile(chatID, filename string, data []byte) error {

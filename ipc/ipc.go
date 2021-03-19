@@ -39,14 +39,16 @@ var (
 	ErrUnknownCommand = errors.New("unknown command")
 )
 
+type Command string
+
 type Message struct {
-	Command string          `json:"command"`
+	Command Command         `json:"command"`
 	ID      int             `json:"id"`
 	Data    json.RawMessage `json:"data"`
 }
 
 type OutgoingMessage struct {
-	Command string      `json:"command"`
+	Command Command     `json:"command"`
 	ID      int         `json:"id,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
 }
@@ -59,7 +61,7 @@ type Processor struct {
 	stdout *json.Encoder
 	stdin  *json.Decoder
 
-	handlers   map[string]HandlerFunc
+	handlers   map[Command]HandlerFunc
 	waiters    map[int]chan<- *Message
 	waiterLock sync.Mutex
 	reqID      int32
@@ -71,7 +73,7 @@ func NewProcessor(logger log.Logger) *Processor {
 		log:      logger.Sub("IPC"),
 		stdout:   json.NewEncoder(os.Stdout),
 		stdin:    json.NewDecoder(os.Stdin),
-		handlers: make(map[string]HandlerFunc),
+		handlers: make(map[Command]HandlerFunc),
 		waiters:  make(map[int]chan<- *Message),
 	}
 }
@@ -110,7 +112,7 @@ func (ipc *Processor) Loop() {
 	}
 }
 
-func (ipc *Processor) Request(cmd string, data interface{}) (<-chan *Message, error) {
+func (ipc *Processor) Request(cmd Command, data interface{}) (<-chan *Message, error) {
 	respChan := make(chan *Message, 1)
 	reqID := int(atomic.AddInt32(&ipc.reqID, 1))
 	ipc.waiterLock.Lock()
@@ -128,16 +130,35 @@ func (ipc *Processor) Request(cmd string, data interface{}) (<-chan *Message, er
 	return respChan, err
 }
 
-func (ipc *Processor) RequestWait(ctx context.Context, cmd string, reqData interface{}, respData interface{}) error {
+type Error struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (err Error) Error() string {
+	return fmt.Sprintf("%s: %s", err.Code, err.Message)
+}
+
+func (ipc *Processor) RequestWait(ctx context.Context, cmd Command, reqData interface{}, respData interface{}) error {
 	respChan, err := ipc.Request(cmd, reqData)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	select {
 	case rawData := <-respChan:
-		err = json.Unmarshal(rawData.Data, &respData)
-		if err != nil {
-			return fmt.Errorf("failed to parse response: %w", err)
+		if rawData.Command == "error" {
+			var respErr Error
+			err = json.Unmarshal(rawData.Data, &respErr)
+			if err != nil {
+				return fmt.Errorf("failed to parse error response: %w", err)
+			}
+			return respErr
+		}
+		if respData != nil {
+			err = json.Unmarshal(rawData.Data, &respData)
+			if err != nil {
+				return fmt.Errorf("failed to parse response: %w", err)
+			}
 		}
 		return nil
 	case <-ctx.Done():
@@ -176,6 +197,6 @@ func (ipc *Processor) respond(id int, response interface{}) {
 	}
 }
 
-func (ipc *Processor) SetHandler(command string, handler HandlerFunc) {
+func (ipc *Processor) SetHandler(command Command, handler HandlerFunc) {
 	ipc.handlers[command] = handler
 }
