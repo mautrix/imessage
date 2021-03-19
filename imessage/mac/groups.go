@@ -41,39 +41,39 @@ WHERE chat.guid=$1
 
 var phoneNumberCleaner = strings.NewReplacer("(", "", ")", "", " ", "", "-", "")
 
-func (imdb *Database) prepareGroups() error {
+func (mac *macOSDatabase) prepareGroups() error {
 	path, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
 	ppPath := filepath.Join(path, "Library", "PersonalizationPortrait", "PPSQLDatabase.db")
-	imdb.ppDB, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", ppPath))
+	mac.ppDB, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", ppPath))
 	if err != nil {
-		imdb.ppDB = nil
+		mac.ppDB = nil
 		return err
 	}
-	imdb.groupMemberQuery, err = imdb.ppDB.Prepare(groupMemberQuery)
+	mac.groupMemberQuery, err = mac.ppDB.Prepare(groupMemberQuery)
 	if err != nil {
-		_ = imdb.ppDB.Close()
-		imdb.ppDB = nil
-		imdb.groupMemberQuery = nil
+		_ = mac.ppDB.Close()
+		mac.ppDB = nil
+		mac.groupMemberQuery = nil
 		return fmt.Errorf("failed to prepare group member query: %w", err)
 	}
 	return nil
 }
 
-func (imdb *Database) prepareLegacyGroups() error {
+func (mac *macOSDatabase) prepareLegacyGroups() error {
 	var err error
-	imdb.groupMemberQuery, err = imdb.chatDB.Prepare(legacyGroupMemberQuery)
+	mac.groupMemberQuery, err = mac.chatDB.Prepare(legacyGroupMemberQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare legacy group query: %w", err)
 	}
 	return nil
 }
 
-func (imdb *Database) GetGroupMembers(chatID string) ([]string, error) {
-	res, err := imdb.groupMemberQuery.Query(chatID)
+func (mac *macOSDatabase) GetGroupMembers(chatID string) ([]string, error) {
+	res, err := mac.groupMemberQuery.Query(chatID)
 	if err != nil {
 		return nil, fmt.Errorf("error querying group members: %w", err)
 	}

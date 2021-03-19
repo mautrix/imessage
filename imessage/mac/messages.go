@@ -88,55 +88,55 @@ JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 WHERE message.date>$1
 `
 
-func (imdb *Database) prepareMessages() error {
+func (mac *macOSDatabase) prepareMessages() error {
 	path, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	imdb.chatDBPath = filepath.Join(path, "Library", "Messages", "chat.db")
-	imdb.chatDB, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", imdb.chatDBPath))
+	mac.chatDBPath = filepath.Join(path, "Library", "Messages", "chat.db")
+	mac.chatDB, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", mac.chatDBPath))
 	if err != nil {
 		return err
 	}
-	if !columnExists(imdb.chatDB, "message", "thread_originator_guid") {
+	if !columnExists(mac.chatDB, "message", "thread_originator_guid") {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 	}
-	if !columnExists(imdb.chatDB, "message", "group_action_type") {
+	if !columnExists(mac.chatDB, "message", "group_action_type") {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "message.group_action_type", "0")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "message.group_action_type", "0")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "message.group_action_type", "0")
 	}
-	imdb.messagesQuery, err = imdb.chatDB.Prepare(messagesQuery)
+	mac.messagesQuery, err = mac.chatDB.Prepare(messagesQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare message query: %w", err)
 	}
-	imdb.groupActionQuery, err = imdb.chatDB.Prepare(groupActionQuery)
+	mac.groupActionQuery, err = mac.chatDB.Prepare(groupActionQuery)
 	if err != nil {
-		imdb.log.Warnln("Failed to prepare group action query:", err)
-		imdb.groupActionQuery = nil
+		mac.log.Warnln("Failed to prepare group action query:", err)
+		mac.groupActionQuery = nil
 	}
-	imdb.limitedMessagesQuery, err = imdb.chatDB.Prepare(limitedMessagesQuery)
+	mac.limitedMessagesQuery, err = mac.chatDB.Prepare(limitedMessagesQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare limited message query: %w", err)
 	}
-	imdb.newMessagesQuery, err = imdb.chatDB.Prepare(newMessagesQuery)
+	mac.newMessagesQuery, err = mac.chatDB.Prepare(newMessagesQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare new message query: %w", err)
 	}
-	imdb.chatQuery, err = imdb.chatDB.Prepare(chatQuery)
+	mac.chatQuery, err = mac.chatDB.Prepare(chatQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare chat query: %w", err)
 	}
-	imdb.recentChatsQuery, err = imdb.chatDB.Prepare(recentChatsQuery)
+	mac.recentChatsQuery, err = mac.chatDB.Prepare(recentChatsQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare recent chats query: %w", err)
 	}
 
 	messageChan := make(chan *imessage.Message)
-	imdb.Messages = messageChan
+	mac.Messages = messageChan
 	return nil
 }
 
@@ -179,7 +179,7 @@ func (ai *AttachmentInfo) Read() ([]byte, error) {
 	return ioutil.ReadFile(ai.FileName)
 }
 
-func (imdb *Database) scanMessages(res *sql.Rows) (messages []*imessage.Message, err error) {
+func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Message, err error) {
 	for res.Next() {
 		var message imessage.Message
 		var tapback imessage.Tapback
@@ -207,7 +207,7 @@ func (imdb *Database) scanMessages(res *sql.Rows) (messages []*imessage.Message,
 		if len(tapback.TargetGUID) > 0 {
 			message.Tapback, err = tapback.Parse()
 			if err != nil {
-				imdb.log.Warnfln("Failed to parse tapback in %s: %v", message.GUID, err)
+				mac.log.Warnfln("Failed to parse tapback in %s: %v", message.GUID, err)
 			}
 		}
 		messages = append(messages, &message)
@@ -228,12 +228,12 @@ func columnExists(db *sql.DB, table, column string) bool {
 	return name == column
 }
 
-func (imdb *Database) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
-	res, err := imdb.limitedMessagesQuery.Query(chatID, limit)
+func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
+	res, err := mac.limitedMessagesQuery.Query(chatID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages with limit: %w", err)
 	}
-	messages, err := imdb.scanMessages(res)
+	messages, err := mac.scanMessages(res)
 	if err != nil {
 		return messages, err
 	}
@@ -241,24 +241,24 @@ func (imdb *Database) GetMessagesWithLimit(chatID string, limit int) ([]*imessag
 	return messages, err
 }
 
-func (imdb *Database) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
-	res, err := imdb.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
+func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
+	res, err := mac.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages after date: %w", err)
 	}
-	return imdb.scanMessages(res)
+	return mac.scanMessages(res)
 }
 
-func (imdb *Database) getMessagesSinceRowID(rowID int) ([]*imessage.Message, error) {
-	res, err := imdb.newMessagesQuery.Query(rowID)
+func (mac *macOSDatabase) getMessagesSinceRowID(rowID int) ([]*imessage.Message, error) {
+	res, err := mac.newMessagesQuery.Query(rowID)
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages after rowid: %w", err)
 	}
-	return imdb.scanMessages(res)
+	return mac.scanMessages(res)
 }
 
-func (imdb *Database) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
-	res, err := imdb.recentChatsQuery.Query(minDate.UnixNano() - imessage.AppleEpoch.UnixNano())
+func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
+	res, err := mac.recentChatsQuery.Query(minDate.UnixNano() - imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying chats with messages after date: %w", err)
 	}
@@ -274,8 +274,8 @@ func (imdb *Database) GetChatsWithMessagesAfter(minDate time.Time) ([]string, er
 	return chats, nil
 }
 
-func (imdb *Database) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
-	row := imdb.chatQuery.QueryRow(chatID)
+func (mac *macOSDatabase) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
+	row := mac.chatQuery.QueryRow(chatID)
 	var info imessage.ChatInfo
 	info.Identifier = imessage.ParseIdentifier(chatID)
 	err := row.Scan(&info.Identifier.LocalID, &info.Identifier.Service, &info.DisplayName)
@@ -284,15 +284,15 @@ func (imdb *Database) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
 	} else if err != nil {
 		return &info, err
 	}
-	info.Members, err = imdb.GetGroupMembers(chatID)
+	info.Members, err = mac.GetGroupMembers(chatID)
 	return &info, err
 }
 
-func (imdb *Database) GetGroupAvatar(chatID string) (imessage.Attachment, error) {
-	if imdb.groupActionQuery == nil {
+func (mac *macOSDatabase) GetGroupAvatar(chatID string) (imessage.Attachment, error) {
+	if mac.groupActionQuery == nil {
 		return nil, nil
 	}
-	row := imdb.groupActionQuery.QueryRow(imessage.GroupActionSetAvatar, chatID)
+	row := mac.groupActionQuery.QueryRow(imessage.GroupActionSetAvatar, chatID)
 	var avatar AttachmentInfo
 	err := row.Scan(&avatar.FileName, &avatar.MimeType, &avatar.TransferName)
 	if err == sql.ErrNoRows {
@@ -301,15 +301,15 @@ func (imdb *Database) GetGroupAvatar(chatID string) (imessage.Attachment, error)
 	return &avatar, err
 }
 
-func (imdb *Database) Stop() {
-	imdb.stopWatching <- struct{}{}
+func (mac *macOSDatabase) Stop() {
+	mac.stopWatching <- struct{}{}
 }
 
-func (imdb *Database) MessageChan() <-chan *imessage.Message {
-	return imdb.Messages
+func (mac *macOSDatabase) MessageChan() <-chan *imessage.Message {
+	return mac.Messages
 }
 
-func (imdb *Database) Start() error {
+func (mac *macOSDatabase) Start() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create fsnotify watcher: %w", err)
@@ -317,9 +317,9 @@ func (imdb *Database) Start() error {
 	defer watcher.Close()
 
 	stop := make(chan struct{}, 1)
-	imdb.stopWatching = stop
+	mac.stopWatching = stop
 
-	err = watcher.Add(filepath.Dir(imdb.chatDBPath))
+	err = watcher.Add(filepath.Dir(mac.chatDBPath))
 	if err != nil {
 		return fmt.Errorf("failed to add chat DB to fsnotify watcher: %w", err)
 	}
@@ -328,7 +328,7 @@ func (imdb *Database) Start() error {
 	var handleLock sync.Mutex
 	nonSentMessages := make(map[string]bool)
 	var lastRowID int
-	err = imdb.chatDB.QueryRow("SELECT MAX(ROWID) FROM message").Scan(&lastRowID)
+	err = mac.chatDB.QueryRow("SELECT MAX(ROWID) FROM message").Scan(&lastRowID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch last row ID: %w", err)
 	}
@@ -346,9 +346,9 @@ Loop:
 				handleLock.Lock()
 				defer handleLock.Unlock()
 				time.Sleep(50 * time.Millisecond)
-				newMessages, err := imdb.getMessagesSinceRowID(lastRowID)
+				newMessages, err := mac.getMessagesSinceRowID(lastRowID)
 				if err != nil {
-					imdb.log.Warnln("Error reading messages after fsevent:", err)
+					mac.log.Warnln("Error reading messages after fsevent:", err)
 				}
 				dropEvents = false
 				for _, message := range newMessages {
@@ -363,7 +363,7 @@ Loop:
 						continue
 					}
 
-					imdb.Messages <- message
+					mac.Messages <- message
 				}
 			}()
 		case err := <-watcher.Errors:

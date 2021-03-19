@@ -25,7 +25,7 @@ import (
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
-type Database struct {
+type macOSDatabase struct {
 	log log.Logger
 
 	chatDBPath           string
@@ -46,34 +46,34 @@ type Database struct {
 }
 
 func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
-	imdb := &Database{
+	mac := &macOSDatabase{
 		log: bridge.GetLog().Sub("iMessage").Sub("Mac"),
 	}
 
-	err := imdb.prepareMessages()
+	err := mac.prepareMessages()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open message database: %w", err)
 	}
-	err = imdb.prepareGroups()
+	err = mac.prepareGroups()
 	if err != nil {
-		imdb.log.Debugfln("Failed to open group database: %v. Falling back to message database for querying group members.", err)
-		err = imdb.prepareLegacyGroups()
+		mac.log.Debugfln("Failed to open group database: %v. Falling back to message database for querying group members.", err)
+		err = mac.prepareLegacyGroups()
 		if err != nil {
 			return nil, fmt.Errorf("failed to open legacy group database: %w", err)
 		}
 	}
 
-	imdb.contactStore = NewContactStore()
-	err = imdb.contactStore.RequestAccess()
+	mac.contactStore = NewContactStore()
+	err = mac.contactStore.RequestAccess()
 	if err != nil {
-		imdb.log.Errorln("Failed to get contact access:", err)
-	} else if imdb.contactStore.HasAccess {
-		imdb.log.Infoln("Contact access is allowed")
+		mac.log.Errorln("Failed to get contact access:", err)
+	} else if mac.contactStore.HasAccess {
+		mac.log.Infoln("Contact access is allowed")
 	} else {
-		imdb.log.Warnln("Contact access is not allowed")
+		mac.log.Warnln("Contact access is not allowed")
 	}
 
-	return imdb, nil
+	return mac, nil
 }
 
 func init() {

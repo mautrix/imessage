@@ -85,22 +85,22 @@ func runOsascript(script string, args ...string) error {
 	return nil
 }
 
-func (imdb *Database) runOsascriptWithRetry(script string, args ...string) error {
+func (mac *macOSDatabase) runOsascriptWithRetry(script string, args ...string) error {
 	err := runOsascript(script, args...)
 	exitErr := &exec.ExitError{}
 	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && strings.Contains(err.Error(), "-1728") {
-		imdb.log.Warnln("Retrying failed send in 1 second: %v", err)
+		mac.log.Warnln("Retrying failed send in 1 second: %v", err)
 		time.Sleep(1 * time.Second)
 		err = runOsascript(script, args...)
 	}
 	return err
 }
 
-func (imdb *Database) SendMessage(chatID, text string) error {
-	return imdb.runOsascriptWithRetry(sendMessage, chatID, text)
+func (mac *macOSDatabase) SendMessage(chatID, text string) error {
+	return mac.runOsascriptWithRetry(sendMessage, chatID, text)
 }
 
-func (imdb *Database) SendFile(chatID, filename string, data []byte) error {
+func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) error {
 	dir, err := ioutil.TempDir("", "mautrix-imessage-upload")
 	if err != nil {
 		return fmt.Errorf("failed to create temp dir: %w", err)
@@ -110,7 +110,7 @@ func (imdb *Database) SendFile(chatID, filename string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to write data to temp file: %w", err)
 	}
-	err = imdb.runOsascriptWithRetry(sendFile, chatID, filePath)
+	err = mac.runOsascriptWithRetry(sendFile, chatID, filePath)
 	go func() {
 		// TODO maybe log when the file gets removed
 		// Random sleep to make sure the message has time to get sent

@@ -19,7 +19,6 @@ package ipc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,7 +35,7 @@ const (
 )
 
 var (
-	ErrUnknownCommand = errors.New("unknown command")
+	ErrUnknownCommand = Error{"unknown-command", "Unknown command"}
 )
 
 type Command string
@@ -51,6 +50,15 @@ type OutgoingMessage struct {
 	Command Command     `json:"command"`
 	ID      int         `json:"id,omitempty"`
 	Data    interface{} `json:"data,omitempty"`
+}
+
+type Error struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (err Error) Error() string {
+	return fmt.Sprintf("%s: %s", err.Code, err.Message)
 }
 
 type HandlerFunc func(message json.RawMessage) interface{}
@@ -112,7 +120,7 @@ func (ipc *Processor) Loop() {
 	}
 }
 
-func (ipc *Processor) Request(cmd Command, data interface{}) (<-chan *Message, error) {
+func (ipc *Processor) RequestAsync(cmd Command, data interface{}) (<-chan *Message, error) {
 	respChan := make(chan *Message, 1)
 	reqID := int(atomic.AddInt32(&ipc.reqID, 1))
 	ipc.waiterLock.Lock()
@@ -130,17 +138,8 @@ func (ipc *Processor) Request(cmd Command, data interface{}) (<-chan *Message, e
 	return respChan, err
 }
 
-type Error struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
-
-func (err Error) Error() string {
-	return fmt.Sprintf("%s: %s", err.Code, err.Message)
-}
-
-func (ipc *Processor) RequestWait(ctx context.Context, cmd Command, reqData interface{}, respData interface{}) error {
-	respChan, err := ipc.Request(cmd, reqData)
+func (ipc *Processor) Request(ctx context.Context, cmd Command, reqData interface{}, respData interface{}) error {
+	respChan, err := ipc.RequestAsync(cmd, reqData)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
@@ -186,7 +185,15 @@ func (ipc *Processor) respond(id int, response interface{}) {
 	resp := OutgoingMessage{Command: CommandResponse, ID: id, Data: response}
 	respErr, isError := response.(error)
 	if isError {
-		resp.Data = respErr.Error()
+		_, isRealError := respErr.(Error)
+		if isRealError {
+			resp.Data = respErr
+		} else {
+			resp.Data = Error{
+				Code:    "error",
+				Message: respErr.Error(),
+			}
+		}
 		resp.Command = CommandError
 	}
 	ipc.lock.Lock()

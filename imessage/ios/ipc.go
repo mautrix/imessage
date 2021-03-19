@@ -50,15 +50,15 @@ func init() {
 	imessage.Implementations["ios"] = NewiOSConnector
 }
 
-func (ios iOSConnector) Start() error {
+func (ios *iOSConnector) Start() error {
 	return nil
 }
 
-func (ios iOSConnector) Stop() {
+func (ios *iOSConnector) Stop() {
 
 }
 
-func (ios iOSConnector) handleIncomingMessage(data json.RawMessage) interface{} {
+func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{} {
 	var message imessage.Message
 	err := json.Unmarshal(data, &message)
 	if err != nil {
@@ -69,46 +69,46 @@ func (ios iOSConnector) handleIncomingMessage(data json.RawMessage) interface{} 
 	return nil
 }
 
-func (ios iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
+func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	return nil, nil
 }
 
-func (ios iOSConnector) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
+func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
 	return nil, nil
 }
 
-func (ios iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
+func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
 	return []string{}, nil
 }
 
-func (ios iOSConnector) MessageChan() <-chan *imessage.Message {
+func (ios *iOSConnector) MessageChan() <-chan *imessage.Message {
 	return ios.messageChan
 }
 
-func (ios iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
+func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
 	var resp imessage.Contact
-	err := ios.IPC.RequestWait(context.Background(), ReqGetContact, &GetContactRequest{UserGUID: identifier}, &resp)
+	err := ios.IPC.Request(context.Background(), ReqGetContact, &GetContactRequest{UserGUID: identifier}, &resp)
 	return &resp, err
 }
 
-func (ios iOSConnector) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
+func (ios *iOSConnector) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
 	var resp imessage.ChatInfo
-	err := ios.IPC.RequestWait(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID}, &resp)
+	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID}, &resp)
 	return &resp, err
 }
 
-func (ios iOSConnector) GetGroupAvatar(charID string) (imessage.Attachment, error) {
+func (ios *iOSConnector) GetGroupAvatar(charID string) (imessage.Attachment, error) {
 	return nil, nil
 }
 
-func (ios iOSConnector) SendMessage(chatID, text string) error {
+func (ios *iOSConnector) SendMessage(chatID, text string) error {
 	// TODO get GUID from response
-	return ios.IPC.RequestWait(context.Background(), ReqSendMessage, &SendMessageRequest{
+	return ios.IPC.Request(context.Background(), ReqSendMessage, &SendMessageRequest{
 		ChatGUID: chatID,
 		Text:     text,
 	}, nil)
 }
 
-func (ios iOSConnector) SendFile(chatID, filename string, data []byte) error {
+func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) error {
 	return nil
 }

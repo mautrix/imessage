@@ -120,12 +120,12 @@ func (cs *ContactStore) GetByPhone(phone string) *imessage.Contact {
 	return cncontactToContact(cnContact)
 }
 
-func (imdb *Database) GetContactInfo(identifier string) (*imessage.Contact, error) {
-	if !imdb.contactStore.HasAccess || len(identifier) == 0 {
+func (mac *macOSDatabase) GetContactInfo(identifier string) (*imessage.Contact, error) {
+	if !mac.contactStore.HasAccess || len(identifier) == 0 {
 		return nil, nil
 	} else if identifier[0] == '+' {
-		return imdb.contactStore.GetByPhone(identifier), nil
+		return mac.contactStore.GetByPhone(identifier), nil
 	} else {
-		return imdb.contactStore.GetByEmail(identifier), nil
+		return mac.contactStore.GetByEmail(identifier), nil
 	}
 }
