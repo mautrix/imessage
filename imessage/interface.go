@@ -19,6 +19,9 @@ package imessage
 import (
 	"fmt"
 	"time"
+
+	"go.mau.fi/mautrix-imessage/ipc"
+	log "maunium.net/go/maulogger/v2"
 )
 
 type API interface {
@@ -37,17 +40,24 @@ type API interface {
 	SendFile(chatID, filename string, data []byte) error
 }
 
+type Bridge interface {
+	GetIPC() *ipc.Processor
+	GetLog() log.Logger
+	GetConnectorConfig() *PlatformConfig
+}
+
 var AppleEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
-var Implementations = make(map[string]func() (API, error))
+var Implementations = make(map[string]func(Bridge) (API, error))
 
 type PlatformConfig struct {
 	Platform string `yaml:"platform"`
 }
 
-func NewAPI(cfg *PlatformConfig) (API, error) {
+func NewAPI(bridge Bridge) (API, error) {
+	cfg := bridge.GetConnectorConfig()
 	impl, ok := Implementations[cfg.Platform]
 	if !ok {
 		return nil, fmt.Errorf("no such platform \"%s\"", cfg.Platform)
 	}
-	return impl()
+	return impl(bridge)
 }

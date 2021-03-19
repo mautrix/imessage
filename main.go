@@ -17,6 +17,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -36,7 +37,9 @@ import (
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/database/upgrades"
 	"go.mau.fi/mautrix-imessage/imessage"
+	_ "go.mau.fi/mautrix-imessage/imessage/ios"
 	_ "go.mau.fi/mautrix-imessage/imessage/mac"
+	"go.mau.fi/mautrix-imessage/ipc"
 )
 
 var (
@@ -112,7 +115,7 @@ type Bridge struct {
 	Crypto         Crypto
 	IM             imessage.API
 	IMHandler      *iMessageHandler
-	IPC            *IPCHandler
+	IPC            *ipc.Processor
 
 	user          *User
 	portalsByMXID map[id.RoomID]*Portal
@@ -213,8 +216,12 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Debugln("Initializing Matrix event handler")
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
 
+	bridge.IPC = ipc.NewProcessor(bridge.Log)
+	bridge.IPC.SetHandler("reset-encryption", bridge.ipcResetEncryption)
+	bridge.IPC.SetHandler("ping", bridge.ipcPing)
+
 	bridge.Log.Debugln("Initializing iMessage connector")
-	bridge.IM, err = imessage.NewAPI(bridge.Config.IMessage)
+	bridge.IM, err = imessage.NewAPI(bridge)
 	if err != nil {
 		bridge.Log.Fatalln("Failed to initialize iMessage connector:", err)
 		os.Exit(14)
@@ -222,7 +229,31 @@ func (bridge *Bridge) Init() {
 
 	bridge.IMHandler = NewiMessageHandler(bridge)
 	bridge.Crypto = NewCryptoHelper(bridge)
-	bridge.IPC = NewIPCHandler(bridge)
+}
+
+type PingResponse struct {
+	OK bool `json:"ok"`
+}
+
+func (bridge *Bridge) GetIPC() *ipc.Processor {
+	return bridge.IPC
+}
+
+func (bridge *Bridge) GetLog() log.Logger {
+	return bridge.Log
+}
+
+func (bridge *Bridge) GetConnectorConfig() *imessage.PlatformConfig {
+	return bridge.Config.IMessage
+}
+
+func (bridge *Bridge) ipcResetEncryption(_ json.RawMessage) interface{} {
+	bridge.Crypto.Reset()
+	return PingResponse{true}
+}
+
+func (bridge *Bridge) ipcPing(_ json.RawMessage) interface{} {
+	return PingResponse{true}
 }
 
 func (bridge *Bridge) startWebsocket() {
@@ -296,7 +327,7 @@ func (bridge *Bridge) StartupSync() {
 			alreadySynced[portal.GUID] = true
 		}
 	}
-	syncChatMaxAge := time.Duration(bridge.Config.Bridge.ChatSyncMaxAge * 24 * 60) * time.Minute
+	syncChatMaxAge := time.Duration(bridge.Config.Bridge.ChatSyncMaxAge*24*60) * time.Minute
 	chats, err := bridge.IM.GetChatsWithMessagesAfter(time.Now().Add(-syncChatMaxAge))
 	if err != nil {
 		bridge.Log.Errorln("Failed to get chat list to backfill:", err)

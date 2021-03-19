@@ -188,15 +188,19 @@ func (portal *Portal) Sync() {
 		if err != nil {
 			portal.log.Errorln("Failed to get chat info:", err)
 		}
-		update := false
-		if len(chatInfo.DisplayName) > 0 {
-			update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
-		}
-		portal.SyncParticipants()
-		// TODO avatar?
-		if update {
-			portal.Update()
-			portal.UpdateBridgeInfo()
+		if chatInfo != nil {
+			update := false
+			if len(chatInfo.DisplayName) > 0 {
+				update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
+			}
+			portal.SyncParticipants()
+			// TODO avatar?
+			if update {
+				portal.Update()
+				portal.UpdateBridgeInfo()
+			}
+		} else {
+			portal.log.Warnln("Didn't get any chat info")
 		}
 	} else {
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
@@ -379,7 +383,11 @@ func (portal *Portal) CreateMatrixRoom() error {
 		// TODO if we want a `pm` command or something, this check won't work
 		return fmt.Errorf("failed to get chat info: %w", err)
 	}
-	portal.Name = chatInfo.DisplayName
+	if chatInfo != nil {
+		portal.Name = chatInfo.DisplayName
+	} else {
+		portal.log.Warnln("Didn't get any chat info")
+	}
 
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)

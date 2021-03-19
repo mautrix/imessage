@@ -45,9 +45,9 @@ type Database struct {
 	contactStore *ContactStore
 }
 
-func NewChatDatabase() (imessage.API, error) {
+func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
 	imdb := &Database{
-		log: log.Sub("iMessage").Sub("Mac"),
+		log: bridge.GetLog().Sub("iMessage").Sub("Mac"),
 	}
 
 	err := imdb.prepareMessages()
