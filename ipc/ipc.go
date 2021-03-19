@@ -61,6 +61,14 @@ func (err Error) Error() string {
 	return fmt.Sprintf("%s: %s", err.Code, err.Message)
 }
 
+func (err Error) Is(other error) bool {
+	otherErr, ok := other.(Error)
+	if !ok {
+		return false
+	}
+	return otherErr.Code == err.Code
+}
+
 type HandlerFunc func(message json.RawMessage) interface{}
 
 type Processor struct {
