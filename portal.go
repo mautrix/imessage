@@ -259,10 +259,20 @@ func (portal *Portal) backfill() {
 		portal.log.Debugln("Nothing to backfill")
 	} else {
 		portal.log.Infofln("Backfilling %d messages", len(messages))
+		var lastReadEvent id.EventID
 		for _, message := range messages {
-			portal.HandleiMessage(message)
+			mxid := portal.HandleiMessage(message)
+			if message.IsRead || message.IsFromMe {
+				lastReadEvent = mxid
+			}
 		}
 		portal.log.Infoln("Backfill finished")
+		if len(lastReadEvent) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
+			err = portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, lastReadEvent)
+			if err != nil {
+				portal.log.Warnfln("Failed to mark %s as read with double puppet: %v", lastReadEvent, err)
+			}
+		}
 	}
 }
 
@@ -759,7 +769,7 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 	return &content
 }
 
-func (portal *Portal) HandleiMessage(msg *imessage.Message) {
+func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	defer func() {
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
@@ -768,10 +778,10 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 
 	if msg.Tapback != nil {
 		portal.HandleiMessageTapback(msg)
-		return
+		return ""
 	} else if portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID) != nil {
 		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
-		return
+		return ""
 	}
 
 	dbMessage := portal.bridge.DB.Message.New()
@@ -784,7 +794,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		intent = portal.bridge.user.DoublePuppetIntent
 		if intent == nil {
 			portal.log.Debugfln("Dropping own message in %s as double puppeting is not initialized", msg.ChatGUID)
-			return
+			return ""
 		}
 		portal.messageDedupLock.Lock()
 		dedupKey := msg.Text
@@ -799,7 +809,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 			dbMessage.MXID = dedup.EventID
 			portal.sendDeliveryReceipt(dbMessage.MXID)
 			dbMessage.Insert()
-			return
+			return dbMessage.MXID
 		} else {
 			portal.messageDedupLock.Unlock()
 		}
@@ -832,7 +842,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		resp, err := portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send attachment in message %s: %v", msg.GUID, err)
-			return
+			return ""
 		}
 		portal.log.Debugfln("Handled iMessage attachment in %s -> %s", msg.GUID, resp.EventID)
 		dbMessage.MXID = resp.EventID
@@ -847,7 +857,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
-			return
+			return ""
 		}
 		portal.log.Debugfln("Handled iMessage %s -> %s", msg.GUID, resp.EventID)
 		dbMessage.MXID = resp.EventID
@@ -858,6 +868,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) {
 	} else {
 		portal.log.Debugfln("Unhandled message %s", msg.GUID)
 	}
+	return dbMessage.MXID
 }
 
 func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
