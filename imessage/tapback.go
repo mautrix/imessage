@@ -19,6 +19,7 @@ package imessage
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -33,22 +34,39 @@ const (
 
 type Tapback struct {
 	TargetGUID string
+	TargetPart int
 	Remove     bool
 	Type       TapbackType
 }
 
-var ErrUnknownTapbackTarget = errors.New("unrecognized formatting of tapback target")
+var (
+	ErrUnknownNormalTapbackTarget = errors.New("unrecognized formatting of normal tapback target")
+	ErrInvalidTapbackTargetPart   = errors.New("tapback target part index is invalid")
+	ErrUnknownTapbackTargetType   = errors.New("unrecognized tapback target type")
+)
 
 func (tapback *Tapback) Parse() (*Tapback, error) {
 	if tapback.Type >= 3000 && tapback.Type < 4000 {
 		tapback.Type -= 1000
 		tapback.Remove = true
 	}
-	targetParts := strings.Split(tapback.TargetGUID, "/")
-	if len(targetParts) != 2 {
-		return nil, fmt.Errorf("%w: '%s'", ErrUnknownTapbackTarget, tapback.TargetGUID)
+	if strings.HasPrefix(tapback.TargetGUID, "bp:") {
+		tapback.TargetGUID = tapback.TargetGUID[len("bp:"):]
+	} else if strings.HasPrefix(tapback.TargetGUID, "p:") {
+		targetParts := strings.Split(tapback.TargetGUID[len("p:"):], "/")
+		if len(targetParts) == 2 {
+			var err error
+			tapback.TargetPart, err = strconv.Atoi(targetParts[0])
+			if err != nil {
+				return nil, fmt.Errorf("%w: '%s' (%v)", ErrInvalidTapbackTargetPart, tapback.TargetGUID, err)
+			}
+			tapback.TargetGUID = targetParts[1]
+		} else {
+			return nil, fmt.Errorf("%w: '%s'", ErrUnknownNormalTapbackTarget, tapback.TargetGUID)
+		}
+	} else {
+		return nil, fmt.Errorf("%w: '%s'", ErrUnknownTapbackTargetType, tapback.TargetGUID)
 	}
-	tapback.TargetGUID = targetParts[1]
 	return tapback, nil
 }
 
