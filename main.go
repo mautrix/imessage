@@ -70,6 +70,8 @@ func init() {
 	} else {
 		VersionString = fmt.Sprintf("%s %s.unknown", Name, Version)
 	}
+
+	mautrix.DefaultUserAgent = fmt.Sprintf("mautrix-imessage/%s %s", Version, mautrix.DefaultUserAgent)
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
