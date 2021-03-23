@@ -482,11 +482,11 @@ func (portal *Portal) CreateMatrixRoom() error {
 	if !portal.IsPrivateChat() {
 		portal.SyncParticipants(chatInfo)
 	} else {
-		if portal.bridge.user.DoublePuppetIntent != nil {
-			_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
-		}
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
+	}
+	if portal.bridge.user.DoublePuppetIntent != nil {
+		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
 	}
 	go func() {
 		portal.log.Debugln("Starting initial backfill")
