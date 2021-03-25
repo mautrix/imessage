@@ -999,6 +999,10 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 		portal.log.Errorln("Failed to get portal members for cleanup:", err)
 		return
 	}
+	if _, isJoined := members.Joined[portal.bridge.user.MXID]; !puppetsOnly && !isJoined {
+		// Kick the user even if they're not joined in case they're invited.
+		_, _ = intent.KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: portal.bridge.user.MXID, Reason: "Deleting portal"})
+	}
 	for member := range members.Joined {
 		if member == intent.UserID {
 			continue
