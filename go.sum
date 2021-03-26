@@ -152,3 +152,5 @@ maunium.net/go/mautrix v0.9.2-0.20210312135809-77e23d55acb5 h1:ATIs3qcFngROq3BQ5
 maunium.net/go/mautrix v0.9.2-0.20210312135809-77e23d55acb5/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
 maunium.net/go/mautrix v0.9.3-0.20210322082106-6002723adfdd h1:F4dF0/Ua9dcVuDUlIcFj16Kvt4p85+RrJl62/uh16Z0=
 maunium.net/go/mautrix v0.9.3-0.20210322082106-6002723adfdd/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
+maunium.net/go/mautrix v0.9.3 h1:v7tcbsD5xhCGqLv4V/CU0eqIgmGk3PlB8Ca7r1J85dA=
+maunium.net/go/mautrix v0.9.3/go.mod h1:mckyHSKKyI0PQF2K9MgWMMDUWH1meCNggE28ILTLuMg=
