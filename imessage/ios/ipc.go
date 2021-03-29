@@ -39,7 +39,7 @@ func floatToTime(unix float64) time.Time {
 }
 
 func timeToFloat(time time.Time) float64 {
-	return float64(time.UnixNano()) + float64(time.Nanosecond()) / 1e9
+	return float64(time.Unix()) + float64(time.Nanosecond()) / 1e9
 }
 
 type iOSConnector struct {
