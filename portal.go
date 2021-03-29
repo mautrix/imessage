@@ -105,7 +105,9 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		Identifier:    imessage.ParseIdentifier(dbPortal.GUID),
 		Messages:      make(chan *imessage.Message, 100),
 		backfillStart: make(chan struct{}),
-		messageDedup:  make(map[string]SentMessage),
+	}
+	if bridge.Config.IMessage.Platform == "mac" {
+		portal.messageDedup = make(map[string]SentMessage)
 	}
 	go portal.handleMessageLoop()
 	return portal
@@ -638,23 +640,20 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		// TODO log
 		return
 	}
-	portal.messageDedupLock.Lock()
-	portal.messageDedup[strings.TrimSpace(msg.Body)] = SentMessage{
-		EventID:   evt.ID,
-		Timestamp: time.Now(),
-	}
-	portal.messageDedupLock.Unlock()
-	if msg.MsgType == event.MsgText {
-		err := portal.bridge.IM.SendMessage(portal.GUID, msg.Body)
-		if err != nil {
-			portal.log.Errorln("Error sending to iMessage:", err)
-			portal.sendErrorMessage(err.Error())
-		} else {
-			portal.log.Debugln("Handled Matrix message", evt.ID)
+	if portal.messageDedup != nil {
+		portal.messageDedupLock.Lock()
+		portal.messageDedup[strings.TrimSpace(msg.Body)] = SentMessage{
+			EventID:   evt.ID,
+			Timestamp: time.Now(),
 		}
+		portal.messageDedupLock.Unlock()
+	}
+	var err error
+	var resp *imessage.SendResponse
+	if msg.MsgType == event.MsgText {
+		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body)
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		var data []byte
-		var err error
 		var url id.ContentURI
 		if msg.File != nil {
 			url, err = msg.File.URL.Parse()
@@ -677,13 +676,21 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 				return
 			}
 		}
-		err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data)
-		if err != nil {
-			portal.log.Errorln("Error sending file to iMessage:", err)
-			portal.sendErrorMessage(err.Error())
-		} else {
-			portal.log.Debugln("Handled Matrix file message", evt.ID)
-		}
+		resp, err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data)
+	}
+	if err != nil {
+		portal.log.Errorln("Error sending to iMessage:", err)
+		portal.sendErrorMessage(err.Error())
+	} else if resp != nil {
+		dbMessage := portal.bridge.DB.Message.New()
+		dbMessage.ChatGUID = portal.GUID
+		dbMessage.GUID = resp.GUID
+		dbMessage.MXID = evt.ID
+		dbMessage.Timestamp = resp.UnixTime / int64(time.Millisecond)
+		dbMessage.Insert()
+		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
+	} else {
+		portal.log.Debugln("Handled Matrix message", evt.ID, "(waiting for echo)")
 	}
 }
 
@@ -769,6 +776,30 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 	return &content
 }
 
+func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Message) bool {
+	if portal.messageDedup == nil {
+		return false
+	}
+	portal.messageDedupLock.Lock()
+	dedupKey := msg.Text
+	if msg.Attachment != nil {
+		dedupKey = msg.Attachment.GetFileName()
+	}
+	dedup, isDup := portal.messageDedup[strings.TrimSpace(dedupKey)]
+	if isDup && dedup.Timestamp.Before(msg.Time) {
+		delete(portal.messageDedup, dedupKey)
+		portal.messageDedupLock.Unlock()
+		portal.log.Debugfln("Received echo for Matrix message %s -> %s", dedup.EventID, msg.GUID)
+		dbMessage.MXID = dedup.EventID
+		portal.sendDeliveryReceipt(dbMessage.MXID)
+		dbMessage.Insert()
+		return true
+	} else {
+		portal.messageDedupLock.Unlock()
+		return false
+	}
+}
+
 func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	defer func() {
 		if err := recover(); err != nil {
@@ -797,22 +828,8 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 			portal.log.Debugfln("Dropping own message in %s as double puppeting is not initialized", msg.ChatGUID)
 			return ""
 		}
-		portal.messageDedupLock.Lock()
-		dedupKey := msg.Text
-		if msg.Attachment != nil {
-			dedupKey = msg.Attachment.GetFileName()
-		}
-		dedup, isDup := portal.messageDedup[strings.TrimSpace(dedupKey)]
-		if isDup && dedup.Timestamp.Before(msg.Time) {
-			delete(portal.messageDedup, dedupKey)
-			portal.messageDedupLock.Unlock()
-			portal.log.Debugfln("Received echo for Matrix message %s -> %s", dedup.EventID, msg.GUID)
-			dbMessage.MXID = dedup.EventID
-			portal.sendDeliveryReceipt(dbMessage.MXID)
-			dbMessage.Insert()
+		if portal.isDuplicate(dbMessage, msg) {
 			return dbMessage.MXID
-		} else {
-			portal.messageDedupLock.Unlock()
 		}
 	} else if len(msg.Sender.LocalID) > 0 {
 		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)

@@ -27,6 +27,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 const sendMessage = `
@@ -51,8 +53,8 @@ end run
 func runOsascript(script string, args ...string) error {
 	args = append([]string{"-"}, args...)
 	cmd := exec.Command("osascript", args...)
-	var errors bytes.Buffer
-	cmd.Stderr = &errors
+	var errorBuf bytes.Buffer
+	cmd.Stderr = &errorBuf
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -78,9 +80,9 @@ func runOsascript(script string, args ...string) error {
 	}
 	err = cmd.Wait()
 	if err != nil {
-		return fmt.Errorf("failed to wait for osascript: %w (stderr: %s)", err, errors.String())
-	} else if errors.Len() > 0 {
-		return fmt.Errorf("osascript returned error: %s", errors.String())
+		return fmt.Errorf("failed to wait for osascript: %w (stderr: %s)", err, errorBuf.String())
+	} else if errorBuf.Len() > 0 {
+		return fmt.Errorf("osascript returned error: %s", errorBuf.String())
 	}
 	return nil
 }
@@ -96,19 +98,19 @@ func (mac *macOSDatabase) runOsascriptWithRetry(script string, args ...string) e
 	return err
 }
 
-func (mac *macOSDatabase) SendMessage(chatID, text string) error {
-	return mac.runOsascriptWithRetry(sendMessage, chatID, text)
+func (mac *macOSDatabase) SendMessage(chatID, text string) (*imessage.SendResponse, error) {
+	return nil, mac.runOsascriptWithRetry(sendMessage, chatID, text)
 }
 
-func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) error {
+func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
 	dir, err := ioutil.TempDir("", "mautrix-imessage-upload")
 	if err != nil {
-		return fmt.Errorf("failed to create temp dir: %w", err)
+		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	filePath := filepath.Join(dir, filename)
 	err = ioutil.WriteFile(filePath, data, 0640)
 	if err != nil {
-		return fmt.Errorf("failed to write data to temp file: %w", err)
+		return nil, fmt.Errorf("failed to write data to temp file: %w", err)
 	}
 	err = mac.runOsascriptWithRetry(sendFile, chatID, filePath)
 	go func() {
@@ -118,5 +120,5 @@ func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) error {
 		os.Remove(filePath)
 		os.Remove(dir)
 	}()
-	return err
+	return nil, err
 }

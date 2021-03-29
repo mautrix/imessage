@@ -67,6 +67,7 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 		ios.log.Warnln("Failed to parse incoming message: %v", err)
 		return nil
 	}
+	message.Time = time.Unix(0, message.UnixTime)
 	select {
 	case ios.messageChan <- &message:
 	default:
@@ -107,12 +108,16 @@ func (ios *iOSConnector) GetGroupAvatar(charID string) (imessage.Attachment, err
 	return nil, nil
 }
 
-func (ios *iOSConnector) SendMessage(chatID, text string) error {
-	// TODO get GUID from response
-	return ios.IPC.Request(context.Background(), ReqSendMessage, &SendMessageRequest{
+func (ios *iOSConnector) SendMessage(chatID, text string) (*imessage.SendResponse, error) {
+	var resp imessage.SendResponse
+	err := ios.IPC.Request(context.Background(), ReqSendMessage, &SendMessageRequest{
 		ChatGUID: chatID,
 		Text:     text,
-	}, nil)
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, err
 }
 
 func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) error {

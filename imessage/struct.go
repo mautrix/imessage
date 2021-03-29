@@ -25,10 +25,11 @@ import (
 type Message struct {
 	RowID int `json:"-"`
 
-	GUID    string    `json:"guid"`
-	Time    time.Time // TODO json
-	Subject string    `json:"subject"`
-	Text    string    `json:"text"`
+	GUID     string    `json:"guid"`
+	Time     time.Time `json:"-"`
+	UnixTime int64     `json:"timestamp"`
+	Subject  string    `json:"subject"`
+	Text     string    `json:"text"`
 	//Service  string `json:"service"`
 	ChatGUID   string `json:"chat_guid"`
 	SenderGUID string `json:"sender_guid"`
@@ -36,7 +37,7 @@ type Message struct {
 	Sender Identifier
 
 	IsFromMe       bool `json:"is_from_me"`
-	IsRead         bool
+	IsRead         bool `json:"is_read"`
 	IsDelivered    bool
 	IsSent         bool
 	IsEmote        bool
@@ -124,4 +125,13 @@ func (id Identifier) String() string {
 		typeChar = '+'
 	}
 	return fmt.Sprintf("%s;%c;%s", id.Service, typeChar, id.LocalID)
+}
+
+type SendResponse struct {
+	GUID     string    `json:"guid"`
+	UnixTime int64     `json:"timestamp"`
+}
+
+func (sr *SendResponse) Time() time.Time {
+	return time.Unix(0, sr.UnixTime)
 }

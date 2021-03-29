@@ -35,8 +35,8 @@ type API interface {
 	GetChatInfo(chatID string) (*ChatInfo, error)
 	GetGroupAvatar(charID string) (Attachment, error)
 
-	SendMessage(chatID, text string) error
-	SendFile(chatID, filename string, data []byte) error
+	SendMessage(chatID, text string) (*SendResponse, error)
+	SendFile(chatID, filename string, data []byte) (*SendResponse, error)
 }
 
 type Bridge interface {
