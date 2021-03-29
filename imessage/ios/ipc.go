@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"time"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -31,6 +32,15 @@ const (
 	IncomingMessage     ipc.Command = "message"
 	IncomingReadReceipt ipc.Command = "read_receipt"
 )
+
+func floatToTime(unix float64) time.Time {
+	sec, dec := math.Modf(unix)
+	return time.Unix(int64(sec), int64(dec*(1e9)))
+}
+
+func timeToFloat(time time.Time) float64 {
+	return float64(time.UnixNano()) + float64(time.Nanosecond()) / 1e9
+}
 
 type iOSConnector struct {
 	IPC         *ipc.Processor
@@ -68,7 +78,7 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 		ios.log.Warnln("Failed to parse incoming message: %v", err)
 		return nil
 	}
-	message.Time = time.Unix(0, message.UnixTime)
+	message.Time = floatToTime(message.UnixTime)
 	select {
 	case ios.messageChan <- &message:
 	default:
@@ -80,7 +90,7 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) (resp []*imessage.Message, err error) {
 	return resp, ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetMessagesAfterRequest{
 		ChatGUID:  chatID,
-		Timestamp: minDate.UnixNano(),
+		Timestamp: timeToFloat(minDate),
 	}, &resp)
 }
 
@@ -93,7 +103,7 @@ func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) (resp []
 
 func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []string, err error) {
 	return resp, ios.IPC.Request(context.Background(), ReqGetChats, &GetChatsRequest{
-		MinTimestamp: minDate.UnixNano(),
+		MinTimestamp: timeToFloat(minDate),
 	}, &resp)
 }
 

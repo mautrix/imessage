@@ -27,7 +27,7 @@ type Message struct {
 
 	GUID     string    `json:"guid"`
 	Time     time.Time `json:"-"`
-	UnixTime int64     `json:"timestamp"`
+	UnixTime float64   `json:"timestamp"`
 	Subject  string    `json:"subject"`
 	Text     string    `json:"text"`
 	//Service  string `json:"service"`
@@ -129,9 +129,6 @@ func (id Identifier) String() string {
 
 type SendResponse struct {
 	GUID     string    `json:"guid"`
-	UnixTime int64     `json:"timestamp"`
-}
-
-func (sr *SendResponse) Time() time.Time {
-	return time.Unix(0, sr.UnixTime)
+	Time     time.Time `json:"-"`
+	UnixTime float64   `json:"timestamp"`
 }

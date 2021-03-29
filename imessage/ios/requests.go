@@ -56,7 +56,7 @@ type GetChatRequest struct {
 }
 
 type GetChatsRequest struct {
-	MinTimestamp int64 `json:"min_timestamp"`
+	MinTimestamp float64 `json:"min_timestamp"`
 }
 
 type GetContactRequest struct {
@@ -69,6 +69,6 @@ type GetRecentMessagesRequest struct {
 }
 
 type GetMessagesAfterRequest struct {
-	ChatGUID  string `json:"chat_guid"`
-	Timestamp int64  `json:"timestamp"`
+	ChatGUID  string  `json:"chat_guid"`
+	Timestamp float64 `json:"timestamp"`
 }

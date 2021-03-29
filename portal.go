@@ -249,7 +249,7 @@ func (portal *Portal) backfill() {
 	var err error
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
 	if lastMessage == nil {
-		portal.log.Debugfln("Fetching up to %d messages for initial backfill",portal.bridge.Config.Bridge.InitialBackfillLimit)
+		portal.log.Debugfln("Fetching up to %d messages for initial backfill", portal.bridge.Config.Bridge.InitialBackfillLimit)
 		messages, err = portal.bridge.IM.GetMessagesWithLimit(portal.GUID, portal.bridge.Config.Bridge.InitialBackfillLimit)
 	} else {
 		portal.log.Debugfln("Fetching messages since %s for catchup backfill", lastMessage.Time().String())
@@ -686,7 +686,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		dbMessage.ChatGUID = portal.GUID
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
-		dbMessage.Timestamp = resp.UnixTime / int64(time.Millisecond)
+		dbMessage.Timestamp = resp.Time.UnixNano() / 1e6
 		dbMessage.Insert()
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
