@@ -30,6 +30,8 @@ const (
 	TapbackLaugh
 	TapbackEmphasis
 	TapbackQuestion
+
+	TapbackRemoveOffset = 1000
 )
 
 type Tapback struct {
@@ -47,7 +49,7 @@ var (
 
 func (tapback *Tapback) Parse() (*Tapback, error) {
 	if tapback.Type >= 3000 && tapback.Type < 4000 {
-		tapback.Type -= 1000
+		tapback.Type -= TapbackRemoveOffset
 		tapback.Remove = true
 	}
 	if strings.HasPrefix(tapback.TargetGUID, "bp:") {

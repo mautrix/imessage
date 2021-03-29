@@ -49,6 +49,7 @@ func (imh *iMessageHandler) Start() {
 }
 
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
+	imh.log.Debugfln("Received incoming message: %+v", msg)
 	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
 	if len(portal.MXID) == 0 {
 		err := portal.CreateMatrixRoom()

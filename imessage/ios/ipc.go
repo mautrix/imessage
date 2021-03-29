@@ -41,6 +41,8 @@ func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
 	ios := &iOSConnector{
 		IPC: bridge.GetIPC(),
 		log: bridge.GetLog().Sub("iMessage").Sub("iOS"),
+
+		messageChan: make(chan *imessage.Message, 256),
 	}
 	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
 	return ios, nil
@@ -65,7 +67,11 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 		ios.log.Warnln("Failed to parse incoming message: %v", err)
 		return nil
 	}
-	ios.messageChan <- &message
+	select {
+	case ios.messageChan <- &message:
+	default:
+		ios.log.Warnln("Incoming message buffer is full")
+	}
 	return nil
 }
 

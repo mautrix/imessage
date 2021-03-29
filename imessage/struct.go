@@ -42,13 +42,13 @@ type Message struct {
 	IsEmote        bool
 	IsAudioMessage bool
 
-	ReplyToGUID string   `json:"thread_originator_guid"`
-	Tapback     *Tapback `json:"associated_message"`
+	ReplyToGUID string   `json:"thread_originator_guid,omitempty"`
+	Tapback     *Tapback `json:"associated_message,omitempty"`
 
-	Attachment Attachment `json:"attachment"`
+	Attachment Attachment `json:"attachment,omitempty"`
 
-	GroupActionType GroupActionType `json:"group_action_type"`
-	NewGroupName    string          `json:"new_group_title"`
+	GroupActionType GroupActionType `json:"group_action_type,omitempty"`
+	NewGroupName    string          `json:"new_group_title,omitempty"`
 }
 
 type GroupActionType int

@@ -784,6 +784,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 		return ""
 	}
 
+	portal.log.Debugln("Starting handling of iMessage", msg.GUID)
 	dbMessage := portal.bridge.DB.Message.New()
 	dbMessage.ChatGUID = portal.GUID
 	dbMessage.SenderGUID = msg.Sender.String()
@@ -872,6 +873,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 }
 
 func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
+	portal.log.Debugln("Starting handling of iMessage tapback", msg.GUID, "to", msg.Tapback.TargetGUID)
 	target := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.Tapback.TargetGUID)
 	if target == nil {
 		portal.log.Debugln("Unknown tapback target", msg.Tapback.TargetGUID)
@@ -881,7 +883,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	if msg.IsFromMe {
 		intent = portal.bridge.user.DoublePuppetIntent
 		if intent == nil {
-			portal.log.Debugfln("Dropping own message in %s as double puppeting is not initialized", msg.ChatGUID)
+			portal.log.Debugfln("Dropping own tapback in %s as double puppeting is not initialized", msg.ChatGUID)
 			return
 		}
 	} else {

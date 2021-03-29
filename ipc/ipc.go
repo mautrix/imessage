@@ -106,7 +106,7 @@ func (ipc *Processor) Loop() {
 			break
 		}
 
-		ipc.log.Debugfln("Received IPC command: %+v", msg)
+		ipc.log.Debugfln("Received IPC command: %s/%d - %s", msg.Command, msg.ID, msg.Data)
 		if msg.Command == "response" || msg.Command == "error" {
 			ipc.waiterLock.Lock()
 			waiter, ok := ipc.waiters[msg.ID]
