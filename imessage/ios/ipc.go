@@ -19,6 +19,7 @@ package ios
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -76,16 +77,24 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 	return nil
 }
 
-func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
-	return nil, nil
+func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) (resp []*imessage.Message, err error) {
+	return resp, ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetMessagesAfterRequest{
+		ChatGUID:  chatID,
+		Timestamp: minDate.UnixNano(),
+	}, &resp)
 }
 
-func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
-	return nil, nil
+func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) (resp []*imessage.Message, err error) {
+	return resp, ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetRecentMessagesRequest{
+		ChatGUID: chatID,
+		Limit:    limit,
+	}, &resp)
 }
 
-func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
-	return []string{}, nil
+func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []string, err error) {
+	return resp, ios.IPC.Request(context.Background(), ReqGetChats, &GetChatsRequest{
+		MinTimestamp: minDate.UnixNano(),
+	}, &resp)
 }
 
 func (ios *iOSConnector) MessageChan() <-chan *imessage.Message {
@@ -104,7 +113,7 @@ func (ios *iOSConnector) GetChatInfo(chatID string) (*imessage.ChatInfo, error) 
 	return &resp, err
 }
 
-func (ios *iOSConnector) GetGroupAvatar(charID string) (imessage.Attachment, error) {
+func (ios *iOSConnector) GetGroupAvatar(chatID string) (imessage.Attachment, error) {
 	return nil, nil
 }
 
@@ -120,6 +129,6 @@ func (ios *iOSConnector) SendMessage(chatID, text string) (*imessage.SendRespons
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) error {
-	return nil
+func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
+	return nil, errors.New("sending files is not implemented yet")
 }

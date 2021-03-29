@@ -62,3 +62,13 @@ type GetChatsRequest struct {
 type GetContactRequest struct {
 	UserGUID string `json:"user_guid"`
 }
+
+type GetRecentMessagesRequest struct {
+	ChatGUID string `json:"chat_guid"`
+	Limit    int    `json:"limit"`
+}
+
+type GetMessagesAfterRequest struct {
+	ChatGUID  string `json:"chat_guid"`
+	Timestamp int64  `json:"timestamp"`
+}
