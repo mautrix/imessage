@@ -71,6 +71,13 @@ func (ios *iOSConnector) Stop() {
 
 }
 
+func postprocessMessage(message *imessage.Message) {
+	if !message.IsFromMe {
+		message.Sender = imessage.ParseIdentifier(message.JSONSenderGUID)
+	}
+	message.Time = floatToTime(message.JSONUnixTime)
+}
+
 func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{} {
 	var message imessage.Message
 	err := json.Unmarshal(data, &message)
@@ -78,7 +85,7 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 		ios.log.Warnln("Failed to parse incoming message: %v", err)
 		return nil
 	}
-	message.Time = floatToTime(message.UnixTime)
+	postprocessMessage(&message)
 	select {
 	case ios.messageChan <- &message:
 	default:
@@ -87,18 +94,28 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 	return nil
 }
 
-func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) (resp []*imessage.Message, err error) {
-	return resp, ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetMessagesAfterRequest{
+func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
+	resp := make([]*imessage.Message, 0)
+	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetMessagesAfterRequest{
 		ChatGUID:  chatID,
 		Timestamp: timeToFloat(minDate),
 	}, &resp)
+	for _, msg := range resp {
+		postprocessMessage(msg)
+	}
+	return resp, err
 }
 
-func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) (resp []*imessage.Message, err error) {
-	return resp, ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetRecentMessagesRequest{
+func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
+	resp := make([]*imessage.Message, 0)
+	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetRecentMessagesRequest{
 		ChatGUID: chatID,
 		Limit:    limit,
 	}, &resp)
+	for _, msg := range resp {
+		postprocessMessage(msg)
+	}
+	return resp, err
 }
 
 func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []string, err error) {

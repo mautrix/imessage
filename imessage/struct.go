@@ -25,16 +25,14 @@ import (
 type Message struct {
 	RowID int `json:"-"`
 
-	GUID     string    `json:"guid"`
-	Time     time.Time `json:"-"`
-	UnixTime float64   `json:"timestamp"`
-	Subject  string    `json:"subject"`
-	Text     string    `json:"text"`
-	//Service  string `json:"service"`
-	ChatGUID   string `json:"chat_guid"`
-	SenderGUID string `json:"sender_guid"`
-	//Chat     Identifier
-	Sender Identifier
+	GUID           string     `json:"guid"`
+	Time           time.Time  `json:"-"`
+	JSONUnixTime   float64    `json:"timestamp"`
+	Subject        string     `json:"subject"`
+	Text           string     `json:"text"`
+	ChatGUID       string     `json:"chat_guid"`
+	JSONSenderGUID string     `json:"sender_guid"`
+	Sender         Identifier `json:"-"`
 
 	IsFromMe       bool `json:"is_from_me"`
 	IsRead         bool `json:"is_read"`
@@ -120,6 +118,9 @@ func ParseIdentifier(guid string) Identifier {
 }
 
 func (id Identifier) String() string {
+	if len(id.LocalID) == 0 {
+		return ""
+	}
 	typeChar := '-'
 	if id.IsGroup {
 		typeChar = '+'
