@@ -687,6 +687,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
 		dbMessage.Timestamp = resp.Time.UnixNano() / 1e6
+		portal.sendDeliveryReceipt(evt.ID)
 		dbMessage.Insert()
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
