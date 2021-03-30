@@ -79,3 +79,10 @@ func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
 func init() {
 	imessage.Implementations["mac"] = NewChatDatabase
 }
+
+func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
+	return imessage.ConnectorCapabilities{
+		MessageSendResponses: false,
+		SendTapbacks:         false,
+	}
+}

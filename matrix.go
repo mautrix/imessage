@@ -300,5 +300,12 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
+	if mx.shouldIgnoreEvent(evt) {
+		return
+	}
 
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	if portal != nil {
+		portal.HandleMatrixReaction(evt)
+	}
 }

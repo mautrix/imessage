@@ -106,7 +106,7 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		Messages:      make(chan *imessage.Message, 100),
 		backfillStart: make(chan struct{}),
 	}
-	if bridge.Config.IMessage.Platform == "mac" {
+	if !bridge.IM.Capabilities().MessageSendResponses {
 		portal.messageDedup = make(map[string]SentMessage)
 	}
 	go portal.handleMessageLoop()
@@ -695,7 +695,39 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 }
 
 func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
-
+	if !portal.bridge.IM.Capabilities().SendTapbacks {
+		return
+	}
+	portal.log.Debugln("Starting handling of Matrix reaction", evt.ID)
+	if reaction, ok := evt.Content.Parsed.(*event.ReactionEventContent); !ok || reaction.RelatesTo.Type != event.RelAnnotation {
+		portal.log.Debugfln("Ignoring reaction %s due to unknown m.relates_to data", evt.ID)
+	} else if tapbackType := imessage.TapbackFromEmoji(reaction.RelatesTo.Key); tapbackType == 0 {
+		portal.log.Debugfln("Unknown reaction type %s in %s", reaction.RelatesTo.Key, reaction.RelatesTo.EventID)
+	} else if target := portal.bridge.DB.Message.GetByMXID(reaction.RelatesTo.EventID); target == nil {
+		portal.log.Debugfln("Unknown reaction target %s", reaction.RelatesTo.EventID)
+	} else if existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, ""); existing != nil && existing.Type == tapbackType {
+		portal.log.Debugfln("Ignoring outgoing tapback to %s/%s: type is same", reaction.RelatesTo.EventID, target.GUID)
+	} else if resp, err := portal.bridge.IM.SendTapback(portal.GUID, target.GUID, tapbackType, false); err != nil {
+		portal.log.Errorfln("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
+	} else if existing == nil {
+		// TODO should tapback GUID and timestamp be stored?
+		portal.log.Debugln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
+		tapback := portal.bridge.DB.Tapback.New()
+		tapback.ChatGUID = portal.GUID
+		tapback.MessageGUID = target.GUID
+		tapback.Type = tapbackType
+		tapback.MXID = evt.ID
+		tapback.Insert()
+	} else {
+		portal.log.Debugln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
+		_, err = portal.MainIntent().RedactEvent(portal.MXID, existing.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to redact old tapback %s to %s: %v", existing.MXID, target.MXID, err)
+		}
+		existing.Type = tapbackType
+		existing.MXID = evt.ID
+		existing.Update()
+	}
 }
 
 func (portal *Portal) UpdateAvatar(attachment imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
@@ -916,18 +948,18 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		}
 		_, err := intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
-			portal.log.Warnfln("Failed to remove tapback from %s: %v", msg.Sender.LocalID, err)
+			portal.log.Warnfln("Failed to remove tapback from %s: %v", msg.SenderText(), err)
 		}
 		existing.Delete()
 		return
 	} else if existing != nil && existing.Type == msg.Tapback.Type {
-		portal.log.Debugfln("Ignoring tapback from %s to %s: type is same", msg.Sender.LocalID, target.GUID)
+		portal.log.Debugfln("Ignoring tapback from %s to %s: type is same", msg.SenderText(), target.GUID)
 		return
 	}
 
 	resp, err := intent.SendReaction(portal.MXID, target.MXID, msg.Tapback.Type.Emoji())
 	if err != nil {
-		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.Sender.LocalID, err)
+		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.SenderText(), err)
 		return
 	}
 
@@ -942,7 +974,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	} else {
 		_, err = intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
-			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.Sender.LocalID, err)
+			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
 		}
 		existing.Type = msg.Tapback.Type
 		existing.MXID = resp.EventID

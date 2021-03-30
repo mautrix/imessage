@@ -39,7 +39,7 @@ func floatToTime(unix float64) time.Time {
 }
 
 func timeToFloat(time time.Time) float64 {
-	return float64(time.Unix()) + float64(time.Nanosecond()) / 1e9
+	return float64(time.Unix()) + float64(time.Nanosecond())/1e9
 }
 
 type iOSConnector struct {
@@ -71,11 +71,20 @@ func (ios *iOSConnector) Stop() {
 
 }
 
-func postprocessMessage(message *imessage.Message) {
+func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 	if !message.IsFromMe {
 		message.Sender = imessage.ParseIdentifier(message.JSONSenderGUID)
 	}
 	message.Time = floatToTime(message.JSONUnixTime)
+	if message.Tapback != nil {
+		_, err := message.Tapback.Parse()
+		if err != nil {
+			ios.log.Warnfln("Failed to parse tapback in %s: %v", message.GUID, err)
+		}
+	}
+	if len(message.NewGroupName) > 0 {
+		message.GroupActionType = imessage.GroupActionSetName
+	}
 }
 
 func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{} {
@@ -85,7 +94,7 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 		ios.log.Warnln("Failed to parse incoming message: %v", err)
 		return nil
 	}
-	postprocessMessage(&message)
+	ios.postprocessMessage(&message)
 	select {
 	case ios.messageChan <- &message:
 	default:
@@ -101,7 +110,7 @@ func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) 
 		Timestamp: timeToFloat(minDate),
 	}, &resp)
 	for _, msg := range resp {
-		postprocessMessage(msg)
+		ios.postprocessMessage(msg)
 	}
 	return resp, err
 }
@@ -113,7 +122,7 @@ func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) ([]*imes
 		Limit:    limit,
 	}, &resp)
 	for _, msg := range resp {
-		postprocessMessage(msg)
+		ios.postprocessMessage(msg)
 	}
 	return resp, err
 }
@@ -158,4 +167,31 @@ func (ios *iOSConnector) SendMessage(chatID, text string) (*imessage.SendRespons
 
 func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
 	return nil, errors.New("sending files is not implemented yet")
+}
+
+func (ios *iOSConnector) SendTapback(chatID, targetGUID string, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
+	if remove {
+		tapback += imessage.TapbackRemoveOffset
+	}
+	var resp imessage.SendResponse
+	err := ios.IPC.Request(context.Background(), ReqSendTapback, &SendTapbackRequest{
+		ChatGUID:   chatID,
+		TargetGUID: targetGUID,
+		Type:       tapback,
+	}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, err
+}
+
+func (ios *iOSConnector) SendReadReceipt(chatID, readUpTo string) error {
+	return nil
+}
+
+func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
+	return imessage.ConnectorCapabilities{
+		MessageSendResponses: true,
+		SendTapbacks:         true,
+	}
 }

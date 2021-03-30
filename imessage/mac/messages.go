@@ -204,6 +204,9 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 			message.GroupActionType = imessage.GroupActionSetName
 			message.NewGroupName = newGroupTitle.String
 		}
+		if message.IsFromMe {
+			message.Sender.LocalID = ""
+		}
 		if len(tapback.TargetGUID) > 0 {
 			message.Tapback, err = tapback.Parse()
 			if err != nil {

@@ -122,3 +122,11 @@ func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) (*imess
 	}()
 	return nil, err
 }
+
+func (mac *macOSDatabase) SendTapback(chatID, targetGUID string, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
+	return nil, nil
+}
+
+func (mac *macOSDatabase) SendReadReceipt(chatID, readUpTo string) error {
+	return nil
+}

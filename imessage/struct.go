@@ -50,6 +50,13 @@ type Message struct {
 	NewGroupName    string          `json:"new_group_title,omitempty"`
 }
 
+func (msg *Message) SenderText() string {
+	if msg.IsFromMe {
+		return "self"
+	}
+	return msg.Sender.LocalID
+}
+
 type GroupActionType int
 
 const (
@@ -132,4 +139,9 @@ type SendResponse struct {
 	GUID     string    `json:"guid"`
 	Time     time.Time `json:"-"`
 	UnixTime float64   `json:"timestamp"`
+}
+
+type ConnectorCapabilities struct {
+	MessageSendResponses bool
+	SendTapbacks         bool
 }
