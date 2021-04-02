@@ -75,23 +75,20 @@ func (tapback *Tapback) Parse() (*Tapback, error) {
 type TapbackType int
 
 func TapbackFromEmoji(emoji string) TapbackType {
-	if strings.HasSuffix(emoji, "\ufe0f") {
-		emoji = emoji[:len(emoji)-1]
-	}
-	switch emoji {
-	case "\u2665", "\u2764", "\U0001f499", "\U0001f49a", "\U0001f90e", "\U0001f5a4", "\U0001f90d", "\U0001f9e1",
-		"\U0001f49b", "\U0001f49c", "\U0001f496", "\u2763", "\U0001f495", "\U0001f49f":
-		// "♥", "❤", "💙", "💚", "🤎", "🖤", "🤍", "🧡", "💛", "💜", "💖", "❣", "💕", "💟"
+	switch []rune(emoji)[0] {
+	case '\u2665', '\u2764', '\U0001f499', '\U0001f49a', '\U0001f90e', '\U0001f5a4', '\U0001f90d', '\U0001f9e1',
+		'\U0001f49b', '\U0001f49c', '\U0001f496', '\u2763', '\U0001f495', '\U0001f49f':
+		// '♥', '❤', '💙', '💚', '🤎', '🖤', '🤍', '🧡', '💛', '💜', '💖', '❣', '💕', '💟'
 		return TapbackLove
-	case "\U0001f44d": // "👍"
+	case '\U0001f44d': // '👍'
 		return TapbackLike
-	case "\U0001f44e": // "👎"
+	case '\U0001f44e': // '👎'
 		return TapbackDislike
-	case "\U0001f602", "\U0001f639", "\U0001f606", "\U0001f923": // "😂", "😹", "😆", "🤣"
+	case '\U0001f602', '\U0001f639', '\U0001f606', '\U0001f923': // '😂', '😹', '😆', '🤣'
 		return TapbackLaugh
-	case "\u2755", "\u2757", "\u203c": // "❕", "❗", "‼",
+	case '\u2755', '\u2757', '\u203c': // '❕', '❗', '‼',
 		return TapbackEmphasis
-	case "\u2753", "\u2754": // "❓", "❔"
+	case '\u2753', '\u2754': // '❓', '❔'
 		return TapbackQuestion
 	default:
 		return 0
