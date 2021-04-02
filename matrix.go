@@ -249,13 +249,14 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 
 	if mx.bridge.Crypto.WaitForSession(evt.RoomID, content.SenderKey, content.SessionID, extendedTimeout) {
 		mx.log.Debugfln("Got session %s after waiting more, trying to decrypt %s again", content.SessionID, evt.ID)
-		decrypted, err := mx.bridge.Crypto.Decrypt(evt)
+		var decrypted *event.Event
+		decrypted, err = mx.bridge.Crypto.Decrypt(evt)
 		if err == nil {
 			mx.bridge.EventProcessor.Dispatch(decrypted)
 			_, _ = mx.bridge.Bot.RedactEvent(evt.RoomID, resp.EventID)
 			return
 		}
-		mx.log.Warnfln("Failed to decrypt %s: %v", err)
+		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
 		update.Body = fmt.Sprintf("\u26a0 Your message was not bridged: %v", err)
 	} else {
 		mx.log.Debugfln("Didn't get %s, giving up on %s", content.SessionID, evt.ID)
@@ -271,7 +272,10 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 			EventID: resp.EventID,
 		}
 	}
-	_, _ = mx.bridge.Bot.SendMessageEvent(evt.RoomID, event.EventMessage, &update)
+	_, err = mx.bridge.Bot.SendMessageEvent(evt.RoomID, event.EventMessage, &update)
+	if err != nil {
+		mx.log.Debugfln("Failed to update decryption error notice %s: %v", resp.EventID, err)
+	}
 }
 
 func (mx *MatrixHandler) HandleMessage(evt *event.Event) {

@@ -119,10 +119,29 @@ func (helper *CryptoHelper) allowKeyShare(device *crypto.DeviceIdentity, info ev
 	}
 }
 
+func (helper *CryptoHelper) checkWeirdDatabaseState() {
+	var accountCount, olmSessionCount int
+	err := helper.store.DB.QueryRow("SELECT COUNT(*) FROM crypto_account").Scan(&accountCount)
+	if err != nil {
+		helper.log.Debugln("Error checking number of crypto_account rows:", err)
+	}
+	err = helper.store.DB.QueryRow("SELECT COUNT(*) FROM crypto_olm_session").Scan(&olmSessionCount)
+	if err != nil {
+		helper.log.Debugln("Error checking number of crypto_olm_session rows:", err)
+	}
+	if accountCount > 0 || olmSessionCount > 0 {
+		helper.log.Warnfln("Device ID was not found in database, but there are some accounts (%d) or olm sessions (%d). Clearing database to be safe.", accountCount, olmSessionCount)
+		helper.clearDatabase()
+	}
+}
+
 func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	deviceID := helper.store.FindDeviceID()
 	if len(deviceID) > 0 {
-		helper.log.Debugln("Found existing device ID for bot in database:", deviceID)
+		helper.log.Debugfln("Found existing device ID for bot in database: %s", deviceID)
+	} else {
+		helper.log.Debugfln("No device ID found in database, logging in with new device")
+		helper.checkWeirdDatabaseState()
 	}
 	client, err := mautrix.NewClient(helper.bridge.AS.HomeserverURL, "", "")
 	if err != nil {
@@ -149,9 +168,7 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to log in as bridge bot: %w", err)
 	}
-	if len(deviceID) == 0 {
-		helper.store.DeviceID = resp.DeviceID
-	}
+	helper.store.DeviceID = resp.DeviceID
 	return client, nil
 }
 
@@ -169,12 +186,7 @@ func (helper *CryptoHelper) Start() {
 	}
 }
 
-func (helper *CryptoHelper) Reset() {
-	helper.lock.Lock()
-	defer helper.lock.Unlock()
-	helper.log.Infoln("Resetting end-to-bridge encryption device")
-	helper.Stop()
-	helper.log.Debugln("Crypto syncer stopped, clearing database")
+func (helper *CryptoHelper) clearDatabase() {
 	_, err := helper.store.DB.Exec("DELETE FROM crypto_account")
 	if err != nil {
 		helper.log.Warnln("Failed to clear crypto_account table:", err)
@@ -191,8 +203,17 @@ func (helper *CryptoHelper) Reset() {
 	//_, _ = helper.store.DB.Exec("DELETE FROM crypto_tracked_user")
 	//_, _ = helper.store.DB.Exec("DELETE FROM crypto_cross_signing_keys")
 	//_, _ = helper.store.DB.Exec("DELETE FROM crypto_cross_signing_signatures")
+}
+
+func (helper *CryptoHelper) Reset() {
+	helper.lock.Lock()
+	defer helper.lock.Unlock()
+	helper.log.Infoln("Resetting end-to-bridge encryption device")
+	helper.Stop()
+	helper.log.Debugln("Crypto syncer stopped, clearing database")
+	helper.clearDatabase()
 	helper.log.Debugln("Crypto database cleared, logging out of all sessions")
-	_, err = helper.client.LogoutAll()
+	_, err := helper.client.LogoutAll()
 	if err != nil {
 		helper.log.Warnln("Failed to log out all devices:", err)
 	}
