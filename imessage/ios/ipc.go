@@ -162,7 +162,9 @@ func (ios *iOSConnector) GetChatInfo(chatID string) (*imessage.ChatInfo, error) 
 }
 
 func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
-	return nil, nil
+	var resp imessage.Attachment
+	err := ios.IPC.Request(context.Background(), ReqGetChatAvatar, &GetChatRequest{ChatGUID: chatID}, &resp)
+	return &resp, err
 }
 
 func (ios *iOSConnector) SendMessage(chatID, text string) (*imessage.SendResponse, error) {

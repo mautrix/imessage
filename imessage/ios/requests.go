@@ -28,6 +28,7 @@ const (
 	ReqSendReadReceipt   ipc.Command = "send_read_receipt"
 	ReqGetChats          ipc.Command = "get_chats"
 	ReqGetChat           ipc.Command = "get_chat"
+	ReqGetChatAvatar     ipc.Command = "get_chat_avatar"
 	ReqGetContact        ipc.Command = "get_contact"
 	ReqGetMessagesAfter  ipc.Command = "get_messages_after"
 	ReqGetRecentMessages ipc.Command = "get_recent_messages"
