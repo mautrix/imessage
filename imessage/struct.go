@@ -18,8 +18,14 @@ package imessage
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gabriel-vasile/mimetype"
+	log "maunium.net/go/maulogger/v2"
 )
 
 type Message struct {
@@ -44,7 +50,7 @@ type Message struct {
 	ReplyToGUID string   `json:"thread_originator_guid,omitempty"`
 	Tapback     *Tapback `json:"associated_message,omitempty"`
 
-	Attachment Attachment `json:"attachment,omitempty"`
+	Attachment *Attachment `json:"attachment,omitempty"`
 
 	GroupActionType GroupActionType `json:"group_action_type,omitempty"`
 	NewGroupName    string          `json:"new_group_title,omitempty"`
@@ -96,10 +102,42 @@ func (contact *Contact) Name() string {
 	return ""
 }
 
-type Attachment interface {
-	GetMimeType() string
-	GetFileName() string
-	Read() ([]byte, error)
+type Attachment struct {
+	PathOnDisk string `json:"path_on_disk"`
+	FileName   string `json:"file_name"`
+	MimeType   string `json:"mime_type,omitempty"`
+	triedMagic bool
+}
+
+func (attachment *Attachment) GetMimeType() string {
+	if attachment.MimeType == "" {
+		if attachment.triedMagic {
+			return ""
+		}
+		attachment.triedMagic = true
+		mime, err := mimetype.DetectFile(attachment.PathOnDisk)
+		if err != nil {
+			log.DefaultLogger.Warnfln("Failed to detect mime type from %s: %v", attachment.PathOnDisk, err)
+			return ""
+		}
+		attachment.MimeType = mime.String()
+	}
+	return attachment.MimeType
+}
+
+func (attachment *Attachment) GetFileName() string {
+	return attachment.FileName
+}
+
+func (attachment *Attachment) Read() ([]byte, error) {
+	if strings.HasPrefix(attachment.PathOnDisk, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get home directory: %w", err)
+		}
+		attachment.PathOnDisk = filepath.Join(home, attachment.PathOnDisk[2:])
+	}
+	return ioutil.ReadFile(attachment.PathOnDisk)
 }
 
 type ChatInfo struct {

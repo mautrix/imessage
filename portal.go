@@ -731,7 +731,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	}
 }
 
-func (portal *Portal) UpdateAvatar(attachment imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
+func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
 	data, err := attachment.Read()
 	if err != nil {
 		portal.log.Errorfln("Failed to read avatar attachment: %v", err)
@@ -790,7 +790,7 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 	} else {
 		content.URL = uploadResp.ContentURI.CUString()
 	}
-	content.Body = msg.Attachment.GetFileName()
+	content.Body = msg.Attachment.FileName
 	content.Info = &event.FileInfo{
 		MimeType: msg.Attachment.GetMimeType(),
 		Size:     len(data),
@@ -816,7 +816,7 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 	portal.messageDedupLock.Lock()
 	dedupKey := msg.Text
 	if msg.Attachment != nil {
-		dedupKey = msg.Attachment.GetFileName()
+		dedupKey = msg.Attachment.FileName
 	}
 	dedup, isDup := portal.messageDedup[strings.TrimSpace(dedupKey)]
 	if isDup && dedup.Timestamp.Before(msg.Time) {

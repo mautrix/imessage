@@ -39,10 +39,8 @@ type SendMessageRequest struct {
 }
 
 type SendMediaRequest struct {
-	ChatGUID     string `json:"chat_guid"`
-	FileName     string `json:"file_name"`
-	TransferName string `json:"transfer_name"`
-	MimeType     string `json:"mime_type"`
+	ChatGUID string `json:"chat_guid"`
+	imessage.Attachment
 }
 
 type SendTapbackRequest struct {

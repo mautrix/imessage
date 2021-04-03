@@ -19,7 +19,6 @@ package mac
 import (
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,10 +26,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/gabriel-vasile/mimetype"
 	_ "github.com/mattn/go-sqlite3"
-	log "maunium.net/go/maulogger/v2"
-
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
@@ -40,7 +36,7 @@ SELECT
   COALESCE(handle.id, ''), COALESCE(handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
-  COALESCE(attachment.filename, ''), attachment.mime_type, COALESCE(attachment.transfer_name, ''),
+  COALESCE(attachment.filename, ''), COALESCE(attachment.mime_type, ''), COALESCE(attachment.transfer_name, ''),
   message.group_title, message.group_action_type
 FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
@@ -140,64 +136,25 @@ func (mac *macOSDatabase) prepareMessages() error {
 	return nil
 }
 
-type AttachmentInfo struct {
-	FileName     string
-	MimeType     sql.NullString
-	triedMagic bool
-	TransferName string
-}
-
-func (ai *AttachmentInfo) GetMimeType() string {
-	if !ai.MimeType.Valid {
-		if ai.triedMagic {
-			return ""
-		}
-		ai.triedMagic = true
-		mime, err := mimetype.DetectFile(ai.FileName)
-		if err != nil {
-			log.DefaultLogger.Warnfln("Failed to detect mime type from %s: %v", ai.FileName, err)
-			return ""
-		}
-		ai.MimeType.String = mime.String()
-		ai.MimeType.Valid = true
-	}
-	return ai.MimeType.String
-}
-
-func (ai *AttachmentInfo) GetFileName() string {
-	return ai.TransferName
-}
-
-func (ai *AttachmentInfo) Read() ([]byte, error) {
-	if strings.HasPrefix(ai.FileName, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get home directory: %w", err)
-		}
-		ai.FileName = filepath.Join(home, ai.FileName[2:])
-	}
-	return ioutil.ReadFile(ai.FileName)
-}
-
 func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Message, err error) {
 	for res.Next() {
 		var message imessage.Message
 		var tapback imessage.Tapback
-		var attachment AttachmentInfo
+		var attachment imessage.Attachment
 		var timestamp int64
 		var newGroupTitle sql.NullString
 		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &message.ChatGUID,
 			&message.Sender.LocalID, &message.Sender.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
-			&attachment.FileName, &attachment.MimeType, &attachment.TransferName,
+			&attachment.PathOnDisk, &attachment.MimeType, &attachment.FileName,
 			&newGroupTitle, &message.GroupActionType)
 		if err != nil {
 			err = fmt.Errorf("error scanning row: %w", err)
 			return
 		}
 		message.Time = time.Unix(imessage.AppleEpoch.Unix(), timestamp)
-		if len(attachment.FileName) > 0 {
+		if len(attachment.PathOnDisk) > 0 {
 			message.Attachment = &attachment
 		}
 		if newGroupTitle.Valid {
@@ -291,13 +248,13 @@ func (mac *macOSDatabase) GetChatInfo(chatID string) (*imessage.ChatInfo, error)
 	return &info, err
 }
 
-func (mac *macOSDatabase) GetGroupAvatar(chatID string) (imessage.Attachment, error) {
+func (mac *macOSDatabase) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
 	if mac.groupActionQuery == nil {
 		return nil, nil
 	}
 	row := mac.groupActionQuery.QueryRow(imessage.GroupActionSetAvatar, chatID)
-	var avatar AttachmentInfo
-	err := row.Scan(&avatar.FileName, &avatar.MimeType, &avatar.TransferName)
+	var avatar imessage.Attachment
+	err := row.Scan(&avatar.PathOnDisk, &avatar.MimeType, &avatar.FileName)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
