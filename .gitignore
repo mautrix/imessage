@@ -2,6 +2,7 @@
 
 *.yaml
 !example-config.yaml
+!example-registration.yaml
 
 *.session
 *.json

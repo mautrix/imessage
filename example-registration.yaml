@@ -1,0 +1,18 @@
+# appservice -> id from the config
+id: imessage
+# appservice -> as_token and hs_token from the config
+as_token: random string
+hs_token: random string
+namespaces:
+  users:
+    # The localpart here is username_template from the config, but .+ instead of {{.}}
+    - regex: '@imessage_.+:example\.com'
+      exclusive: true
+    # Localpart here is appservice -> bot -> username from the config
+    - regex: '@imessagebot:example\.com'
+      exclusive: true
+# Address that Synapse uses to contact mautrix-wsproxy
+url: "http://wsproxy.address:29331"
+# Put a new random string here, it doesn't affect anything else
+sender_localpart: random string
+rate_limited: false
