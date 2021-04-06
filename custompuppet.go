@@ -83,6 +83,7 @@ func (user *User) newDoublePuppetIntent() (*appservice.IntentAPI, error) {
 		return nil, err
 	}
 	client.Logger = user.bridge.AS.Log.Sub(string(user.MXID))
+	client.Client = user.bridge.AS.HTTPClient
 
 	ia := user.bridge.AS.NewIntentAPI("custom")
 	ia.Client = client
