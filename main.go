@@ -318,6 +318,7 @@ func (bridge *Bridge) Start() {
 
 	go bridge.StartupSync()
 	bridge.Log.Infoln("Initialization complete")
+	go bridge.PeriodicSync()
 }
 
 func (bridge *Bridge) StartupSync() {
@@ -325,7 +326,7 @@ func (bridge *Bridge) StartupSync() {
 	for _, portal := range bridge.GetAllPortals() {
 		removed := portal.CleanupIfEmpty(true)
 		if !removed && len(portal.MXID) > 0 {
-			portal.Sync()
+			portal.Sync(true)
 			alreadySynced[portal.GUID] = true
 		}
 	}
@@ -338,10 +339,22 @@ func (bridge *Bridge) StartupSync() {
 	for _, chatID := range chats {
 		if _, isSynced := alreadySynced[chatID]; !isSynced {
 			portal := bridge.GetPortalByGUID(chatID)
-			portal.Sync()
+			portal.Sync(true)
 		}
 	}
 	bridge.Log.Infoln("Startup sync complete")
+}
+
+func (bridge *Bridge) PeriodicSync() {
+	for {
+		time.Sleep(time.Hour)
+		bridge.Log.Infoln("Executing periodic chat/contact info sync")
+		for _, portal := range bridge.GetAllPortals() {
+			if len(portal.MXID) > 0 {
+				portal.Sync(false)
+			}
+		}
+	}
 }
 
 func (bridge *Bridge) UpdateBotProfile() {

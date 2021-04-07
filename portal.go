@@ -165,7 +165,7 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 	return nil
 }
 
-func (portal *Portal) Sync() {
+func (portal *Portal) Sync(backfill bool) {
 	portal.log.Infoln("Syncing portal")
 
 	if len(portal.MXID) == 0 {
@@ -204,10 +204,12 @@ func (portal *Portal) Sync() {
 		puppet.Sync()
 	}
 
-	portal.lockBackfill()
-	portal.log.Debugln("Starting sync backfill")
-	portal.backfill()
-	portal.unlockBackfill()
+	if backfill {
+		portal.lockBackfill()
+		portal.log.Debugln("Starting sync backfill")
+		portal.backfill()
+		portal.unlockBackfill()
+	}
 }
 
 func (portal *Portal) handleMessageLoop() {
