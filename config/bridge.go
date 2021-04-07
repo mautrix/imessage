@@ -94,15 +94,15 @@ func (bc BridgeConfig) FormatDisplayname(name string) string {
 	return buf.String()
 }
 
-func (bc BridgeConfig) FormatUsername(id string) string {
-	if strings.HasPrefix(id, "+") {
-		if _, err := strconv.Atoi(id[1:]); err == nil {
-			id = id[1:]
+func (bc BridgeConfig) FormatUsername(username string) string {
+	if strings.HasPrefix(username, "+") {
+		if _, err := strconv.Atoi(username[1:]); err == nil {
+			username = username[1:]
 		}
 	} else {
-		id = strings.ReplaceAll(strings.ToLower(id), "@", "=40")
+		username = id.EncodeUserLocalpart(username)
 	}
 	var buf bytes.Buffer
-	bc.usernameTemplate.Execute(&buf, id)
+	bc.usernameTemplate.Execute(&buf, username)
 	return buf.String()
 }

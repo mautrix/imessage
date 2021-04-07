@@ -49,7 +49,12 @@ func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (string, bool) {
 	localID := match[1]
 
 	if strings.Contains(localID, "=40") {
-		return strings.ReplaceAll(localID, "=40", "@"), true
+		localpart, err := id.DecodeUserLocalpart(localID)
+		if err != nil {
+			bridge.Log.Debugfln("Failed to decode user localpart '%s': %v", localID, err)
+			return "", false
+		}
+		return localpart, true
 	} else {
 		number, err := strconv.Atoi(localID)
 		if err != nil {
