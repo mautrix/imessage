@@ -549,19 +549,23 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 	return portal.sendMessageWithRetry(intent, eventType, content, timestamp, MessageSendRetries)
 }
 
-func isGatewayError(err error) bool {
+func isNetworkError(err error) bool {
 	if err == nil {
 		return false
 	}
 	var httpErr mautrix.HTTPError
-	return errors.As(err, &httpErr) && (httpErr.IsStatus(http.StatusBadGateway) || httpErr.IsStatus(http.StatusGatewayTimeout))
+	// If the error is not a HTTP response, always retry
+	return !errors.As(err, &httpErr) || httpErr.Response == nil ||
+		// If the error is a HTTP response with a 502-504 status code, also retry
+		httpErr.IsStatus(http.StatusBadGateway) || httpErr.IsStatus(http.StatusServiceUnavailable) || httpErr.IsStatus(http.StatusGatewayTimeout)
+	// Otherwise it's a different HTTP error, so don't retry
 }
 
 func (portal *Portal) sendMessageWithRetry(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64, retries int) (*mautrix.RespSendEvent, error) {
 	for ; ; retries-- {
 		resp, err := portal.sendMessageDirect(intent, eventType, content, timestamp)
-		if retries > 0 && isGatewayError(err) {
-			portal.log.Warnfln("Got gateway error trying to send message, retrying in %d seconds", int(BadGatewaySleep.Seconds()))
+		if retries > 0 && isNetworkError(err) {
+			portal.log.Warnfln("Got network error trying to send message, retrying in %d seconds: %v", int(BadGatewaySleep.Seconds()), err)
 			time.Sleep(BadGatewaySleep)
 		} else {
 			return resp, err
@@ -606,8 +610,8 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 func (portal *Portal) uploadWithRetry(intent *appservice.IntentAPI, data []byte, mimeType string, retries int) (*mautrix.RespMediaUpload, error) {
 	for ; ; retries-- {
 		uploaded, err := intent.UploadBytes(data, mimeType)
-		if isGatewayError(err) {
-			portal.log.Warnfln("Got gateway error trying to upload media, retrying in %d seconds", int(BadGatewaySleep.Seconds()))
+		if isNetworkError(err) {
+			portal.log.Warnfln("Got network error trying to upload media, retrying in %d seconds: %v", int(BadGatewaySleep.Seconds()), err)
 			time.Sleep(BadGatewaySleep)
 		} else {
 			return uploaded, err
