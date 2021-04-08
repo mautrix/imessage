@@ -22,8 +22,8 @@ config file.
 ## IPC
 The protocol is based on sending JSON objects separated by newlines (`\n`).
 
-Requests can be sent in both directions. Requests must contain a `command` field
-that specifies the type of request.
+Requests can be sent in both directions. Requests must contain a `command`
+field that specifies the type of request.
 
 Requests can also contain an `id` field  with an integer value, which is used
 when responding to the request. If the `id` field is not present, a response
@@ -79,6 +79,19 @@ Error response:
 }
 ```
 
+Another error response:
+
+```json
+{
+  "command": "error",
+  "id": 123,
+  "data": {
+    "code": "unknown_command",
+    "message": "Unknown command 'get_chat'"
+  }
+}
+```
+
 ### Requests
 
 #### to Brooklyn
@@ -105,17 +118,21 @@ Error response:
 	* Response should be an array of chat GUIDs
 * Get group chat info (request type `get_chat`)
 	* `chat_guid` (str) - Group chat identifier, e.g. `iMessage;+;chat123456`
-	* Response contains `title` (displayname of group) and `members` (list of participant user identifiers)
+	* Response contains `title` (displayname of group) and `members` (list of
+	  participant user identifiers)
 * Get group chat avatar (request type `get_chat_avatar`)
 	* `chat_guid` (str) - Group chat identifier
-	* Response contains the same data as message `attachment`s: `mime_type`, `path_on_disk` and `file_name`
+	* Response contains the same data as message `attachment`s: `mime_type`,
+	  `path_on_disk` and `file_name`
 * Get contact info (request type `get_contact`)
-	* `user_guid` (str) - User identifier, e.g. `iMessage;-;+123456` or `SMS;-;+123456`
+	* `user_guid` (str) - User identifier, e.g. `iMessage;-;+123456`
+	  or `SMS;-;+123456`
 	* Returns contact info
 		* `first_name` (str)
 		* `last_name` (str)
 		* `nickname` (str)
-		* `avatar` (base64 str) - The avatar image data. I think they're small enough that it doesn't need to go through the disk.
+		* `avatar` (base64 str) - The avatar image data. I think they're small
+		  enough that it doesn't need to go through the disk.
 		* `phones` (list of str)
 		* `emails` (list of str)
 * Get messages after a specific timestamp (request type `get_messages_after`)
@@ -132,8 +149,10 @@ Error response:
 	* `timestamp` (double) - Unix timestamp
 	* `subject` (str) - Message subject, usually empty
 	* `text` (str) - Message text
-	* `chat_guid` (str) - Chat identifier, e.g. `iMessage;+;chat<number>`, `iMessage;-;+123456` or `SMS;-;+123456`
-	* `sender_guid` (str) - User identifier, e.g. `iMessage;-;+123456` or `SMS;-;+123456`. Not required if `is_from_me` is true.
+	* `chat_guid` (str) - Chat identifier, e.g. `iMessage;+;chat<number>`,
+	  `iMessage;-;+123456` or `SMS;-;+123456`
+	* `sender_guid` (str) - User identifier, e.g. `iMessage;-;+123456` or
+	  `SMS;-;+123456`. Not required if `is_from_me` is true.
 	* `is_from_me` (bool) - True if the message was sent by the local user
 	* `thread_originator_guid` (str, UUID, optional) - The thread originator message ID
 	* `attachment` (object, optional) - Attachment info (media messages, maybe stickers?)
@@ -150,3 +169,7 @@ Error response:
 	* `is_from_me` (bool) - True if the read receipt is from the local user (e.g. from another device)
 	* `chat_guid` (str) - The chat where the read receipt is
 	* `read_up_to` (str, UUID) - The GUID of the last read message
+* Chat info changes and new chats (request type `chat`)
+  * Same info as `get_chat` responses: `title` and `members`, plus a `chat_guid` field to identify the chat.
+* Contact info changes (request type `contact`)
+  * Same info as `get_contact` responses, plus a `user_guid` field to identify the contact.
