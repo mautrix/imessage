@@ -84,6 +84,14 @@ JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 WHERE message.date>$1
 `
 
+const newReceiptsQuery = `
+SELECT chat.guid, message.guid, message.is_from_me, message.date_read
+FROM message
+JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
+JOIN chat              ON chat_message_join.chat_id = chat.ROWID
+WHERE date_read>$1 AND is_read=1
+`
+
 func (mac *macOSDatabase) prepareMessages() error {
 	path, err := os.UserHomeDir()
 	if err != nil {
@@ -122,6 +130,10 @@ func (mac *macOSDatabase) prepareMessages() error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare new message query: %w", err)
 	}
+	mac.newReceiptsQuery, err = mac.chatDB.Prepare(newReceiptsQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare new receipt query: %w", err)
+	}
 	mac.chatQuery, err = mac.chatDB.Prepare(chatQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare chat query: %w", err)
@@ -131,8 +143,8 @@ func (mac *macOSDatabase) prepareMessages() error {
 		return fmt.Errorf("failed to prepare recent chats query: %w", err)
 	}
 
-	messageChan := make(chan *imessage.Message)
-	mac.Messages = messageChan
+	mac.Messages = make(chan *imessage.Message)
+	mac.ReadReceipts = make(chan *imessage.ReadReceipt)
 	return nil
 }
 
@@ -217,6 +229,49 @@ func (mac *macOSDatabase) getMessagesSinceRowID(rowID int) ([]*imessage.Message,
 	return mac.scanMessages(res)
 }
 
+func (mac *macOSDatabase) getReadReceiptsSince(minDate time.Time) ([]*imessage.ReadReceipt, time.Time, error) {
+	origMinDate := minDate.UnixNano() - imessage.AppleEpoch.UnixNano()
+	res, err := mac.newReceiptsQuery.Query(origMinDate)
+	if err != nil {
+		return nil, minDate, fmt.Errorf("error querying read receipts after date: %w", err)
+	}
+	var receipts []*imessage.ReadReceipt
+	for res.Next() {
+		var chatGUID, messageGUID string
+		var messageIsFromMe bool
+		var newMinDate int64
+		err = res.Scan(&chatGUID, &messageGUID, &messageIsFromMe, &newMinDate)
+		if err != nil {
+			return receipts, minDate, fmt.Errorf("error scanning row: %w", err)
+		}
+		if newMinDate > origMinDate {
+			minDate = time.Unix(imessage.AppleEpoch.Unix(), newMinDate)
+		}
+
+		receipt := &imessage.ReadReceipt{
+			ChatGUID: chatGUID,
+			ReadUpTo: messageGUID,
+		}
+		if messageIsFromMe {
+			// For messages from me, the receipt is not from me, and vice versa.
+			receipt.IsFromMe = false
+			if imessage.ParseIdentifier(chatGUID).IsGroup {
+				// We don't get read receipts from other users in groups,
+				// so skip our own messages.
+				continue
+			} else {
+				// The read receipt is on our own message and it's a private chat,
+				// which means the read receipt is from the private chat recipient.
+				receipt.SenderGUID = chatGUID
+			}
+		} else {
+			receipt.IsFromMe = true
+		}
+		receipts = append(receipts, receipt)
+	}
+	return receipts, minDate, nil
+}
+
 func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
 	res, err := mac.recentChatsQuery.Query(minDate.UnixNano() - imessage.AppleEpoch.UnixNano())
 	if err != nil {
@@ -269,6 +324,10 @@ func (mac *macOSDatabase) MessageChan() <-chan *imessage.Message {
 	return mac.Messages
 }
 
+func (mac *macOSDatabase) ReadReceiptChan() <-chan *imessage.ReadReceipt {
+	return mac.ReadReceipts
+}
+
 func (mac *macOSDatabase) Start() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -287,6 +346,7 @@ func (mac *macOSDatabase) Start() error {
 	var dropEvents bool
 	var handleLock sync.Mutex
 	nonSentMessages := make(map[string]bool)
+	minReceiptTime := time.Now()
 	var lastRowID int
 	err = mac.chatDB.QueryRow("SELECT MAX(ROWID) FROM message").Scan(&lastRowID)
 	if err != nil {
@@ -324,6 +384,14 @@ Loop:
 					}
 
 					mac.Messages <- message
+				}
+				var newReceipts []*imessage.ReadReceipt
+				newReceipts, minReceiptTime, err = mac.getReadReceiptsSince(minReceiptTime)
+				if err != nil {
+					mac.log.Warnln("Error reading receipts after fsevent:", err)
+				}
+				for _, receipt := range newReceipts {
+					mac.ReadReceipts <- receipt
 				}
 			}()
 		case err := <-watcher.Errors:

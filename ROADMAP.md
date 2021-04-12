@@ -20,7 +20,7 @@
 | Replies             | ✔️    | ❓️  |
 | Tapbacks            | ✔️    | ❓️  |
 | Own read receipts   | ✔️    | ❌  |
-| Other read receipts | ❌    | ❌  |
+| Other read receipts | ✔    | ❌  |
 | User metadata       | ✔️    | ✔️  |
 | Group metadata      | ✔️    | ✔️  |
 | Backfilling history | ✔️    | ✔️  |

@@ -18,6 +18,7 @@ package main
 
 import (
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/appservice"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
@@ -38,10 +39,13 @@ func NewiMessageHandler(bridge *Bridge) *iMessageHandler {
 
 func (imh *iMessageHandler) Start() {
 	messages := imh.bridge.IM.MessageChan()
+	readReceipts := imh.bridge.IM.ReadReceiptChan()
 	for {
 		select {
 		case msg := <-messages:
 			imh.HandleMessage(msg)
+		case rr := <-readReceipts:
+			imh.HandleReadReceipt(rr)
 		case <-imh.stop:
 			break
 		}
@@ -60,6 +64,34 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 		}
 	}
 	portal.Messages <- msg
+}
+
+func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
+	portal := imh.bridge.GetPortalByGUID(rr.ChatGUID)
+	if len(portal.MXID) == 0 {
+		return
+	}
+	var intent *appservice.IntentAPI
+	if rr.IsFromMe {
+		intent = imh.bridge.user.DoublePuppetIntent
+	} else if rr.SenderGUID == rr.ChatGUID {
+		intent = portal.MainIntent()
+	} else {
+		portal.log.Debugfln("Dropping unexpected read receipt %+v", *rr)
+		return
+	}
+	if intent == nil {
+		return
+	}
+	message := imh.bridge.DB.Message.GetByGUID(portal.GUID, rr.ReadUpTo)
+	if message == nil {
+		portal.log.Debugfln("Dropping read receipt for %s: message not found in db", rr.ReadUpTo)
+		return
+	}
+	err := intent.MarkRead(portal.MXID, message.MXID)
+	if err != nil {
+		portal.log.Warnln("Failed to send read receipt for %s from %s: %v", message.MXID, intent.UserID)
+	}
 }
 
 func (imh *iMessageHandler) Stop() {

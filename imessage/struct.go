@@ -63,6 +63,13 @@ func (msg *Message) SenderText() string {
 	return msg.Sender.LocalID
 }
 
+type ReadReceipt struct {
+	SenderGUID string `json:"sender_guid"`
+	IsFromMe   bool   `json:"is_from_me"`
+	ChatGUID   string `json:"chat_guid"`
+	ReadUpTo   string `json:"read_up_to"`
+}
+
 type GroupActionType int
 
 const (

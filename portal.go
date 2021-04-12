@@ -217,7 +217,7 @@ func (portal *Portal) handleMessageLoop() {
 	for {
 		select {
 		case msg := <-portal.Messages:
-			portal.HandleiMessage(msg)
+			portal.HandleiMessage(msg, false)
 		case <-portal.backfillStart:
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
@@ -265,7 +265,7 @@ func (portal *Portal) backfill() {
 		portal.log.Infofln("Backfilling %d messages", len(messages))
 		var lastReadEvent id.EventID
 		for _, message := range messages {
-			mxid := portal.HandleiMessage(message)
+			mxid := portal.HandleiMessage(message, true)
 			if message.IsRead || message.IsFromMe {
 				lastReadEvent = mxid
 			}
@@ -839,7 +839,7 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 	}
 }
 
-func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
+func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.EventID {
 	defer func() {
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
@@ -921,6 +921,12 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	}
 	if len(dbMessage.MXID) > 0 {
 		portal.sendDeliveryReceipt(dbMessage.MXID)
+		if !isBackfill && !msg.IsFromMe && msg.IsRead && portal.bridge.user.DoublePuppetIntent != nil {
+			err := portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, dbMessage.MXID)
+			if err != nil {
+				portal.log.Warnln("Failed to mark %s as read after bridging: %v", dbMessage.MXID, err)
+			}
+		}
 		dbMessage.Insert()
 	} else {
 		portal.log.Debugfln("Unhandled message %s", msg.GUID)

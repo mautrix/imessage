@@ -33,10 +33,12 @@ type macOSDatabase struct {
 	messagesQuery        *sql.Stmt
 	limitedMessagesQuery *sql.Stmt
 	newMessagesQuery     *sql.Stmt
+	newReceiptsQuery     *sql.Stmt
 	chatQuery            *sql.Stmt
 	groupActionQuery     *sql.Stmt
 	recentChatsQuery     *sql.Stmt
 	Messages             chan *imessage.Message
+	ReadReceipts         chan *imessage.ReadReceipt
 	stopWatching         chan struct{}
 
 	ppDB             *sql.DB

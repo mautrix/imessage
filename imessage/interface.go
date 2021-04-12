@@ -31,6 +31,7 @@ type API interface {
 	GetMessagesWithLimit(chatID string, limit int) ([]*Message, error)
 	GetChatsWithMessagesAfter(minDate time.Time) ([]string, error)
 	MessageChan() <-chan *Message
+	ReadReceiptChan() <-chan *ReadReceipt
 	GetContactInfo(identifier string) (*Contact, error)
 	GetChatInfo(chatID string) (*ChatInfo, error)
 	GetGroupAvatar(charID string) (*Attachment, error)

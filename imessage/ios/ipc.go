@@ -51,6 +51,7 @@ type iOSConnector struct {
 	IPC         *ipc.Processor
 	log         log.Logger
 	messageChan chan *imessage.Message
+	receiptChan chan *imessage.ReadReceipt
 }
 
 func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -59,8 +60,10 @@ func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
 		log: bridge.GetLog().Sub("iMessage").Sub("iOS"),
 
 		messageChan: make(chan *imessage.Message, 256),
+		receiptChan: make(chan *imessage.ReadReceipt, 32),
 	}
 	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
+	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
 	return ios, nil
 }
 
@@ -108,6 +111,22 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 	return nil
 }
 
+func (ios *iOSConnector) handleIncomingReadReceipt(data json.RawMessage) interface{} {
+	var receipt imessage.ReadReceipt
+	err := json.Unmarshal(data, &receipt)
+	if err != nil {
+		ios.log.Warnln("Failed to parse incoming read receipt: %v", err)
+		return nil
+	}
+
+	select {
+	case ios.receiptChan <- &receipt:
+	default:
+		ios.log.Warnln("Incoming receipt buffer is full")
+	}
+	return nil
+}
+
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetMessagesAfterRequest{
@@ -140,6 +159,10 @@ func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []st
 
 func (ios *iOSConnector) MessageChan() <-chan *imessage.Message {
 	return ios.messageChan
+}
+
+func (ios *iOSConnector) ReadReceiptChan() <-chan *imessage.ReadReceipt {
+	return ios.receiptChan
 }
 
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
@@ -191,7 +214,7 @@ func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessa
 
 	var resp imessage.SendResponse
 	err = ios.IPC.Request(context.Background(), ReqSendMedia, &SendMediaRequest{
-		ChatGUID:   chatID,
+		ChatGUID: chatID,
 		Attachment: imessage.Attachment{
 			FileName:   filename,
 			PathOnDisk: filePath,
