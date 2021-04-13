@@ -83,6 +83,8 @@ func (mac *macOSDatabase) GetGroupMembers(chatID string) ([]string, error) {
 		err = res.Scan(&user)
 		if err != nil {
 			return users, fmt.Errorf("error scanning row: %w", err)
+		} else if len(user) == 0 {
+			continue
 		}
 		if user[0] == '+' {
 			user = phoneNumberCleaner.Replace(user)
