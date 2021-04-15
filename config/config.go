@@ -83,6 +83,7 @@ func (config *Config) MakeAppService() (*appservice.AppService, error) {
 	as := appservice.Create()
 	as.HomeserverDomain = config.Homeserver.Domain
 	as.HomeserverURL = config.Homeserver.Address
+	as.DefaultHTTPRetries = 4
 	var err error
 	as.Registration, err = config.GetRegistration()
 	return as, err

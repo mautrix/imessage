@@ -20,7 +20,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"net/http"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -541,39 +540,7 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
 }
 
-const MessageSendRetries = 5
-const MediaUploadRetries = 5
-const BadGatewaySleep = 5 * time.Second
-
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
-	return portal.sendMessageWithRetry(intent, eventType, content, timestamp, MessageSendRetries)
-}
-
-func isNetworkError(err error) bool {
-	if err == nil {
-		return false
-	}
-	var httpErr mautrix.HTTPError
-	// If the error is not a HTTP response, always retry
-	return !errors.As(err, &httpErr) || httpErr.Response == nil ||
-		// If the error is a HTTP response with a 502-504 status code, also retry
-		httpErr.IsStatus(http.StatusBadGateway) || httpErr.IsStatus(http.StatusServiceUnavailable) || httpErr.IsStatus(http.StatusGatewayTimeout)
-	// Otherwise it's a different HTTP error, so don't retry
-}
-
-func (portal *Portal) sendMessageWithRetry(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64, retries int) (*mautrix.RespSendEvent, error) {
-	for ; ; retries-- {
-		resp, err := portal.sendMessageDirect(intent, eventType, content, timestamp)
-		if retries > 0 && isNetworkError(err) {
-			portal.log.Warnfln("Got network error trying to send message, retrying in %d seconds: %v", int(BadGatewaySleep.Seconds()), err)
-			time.Sleep(BadGatewaySleep)
-		} else {
-			return resp, err
-		}
-	}
-}
-
-func (portal *Portal) sendMessageDirect(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content}
 	if timestamp != 0 && intent.IsCustomPuppet {
 		wrappedContent.Raw = map[string]interface{}{
@@ -605,18 +572,6 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 		URL:           "",
 	}
 	return file.Encrypt(data), "application/octet-stream", file
-}
-
-func (portal *Portal) uploadWithRetry(intent *appservice.IntentAPI, data []byte, mimeType string, retries int) (*mautrix.RespMediaUpload, error) {
-	for ; ; retries-- {
-		uploaded, err := intent.UploadBytes(data, mimeType)
-		if isNetworkError(err) {
-			portal.log.Warnfln("Got network error trying to upload media, retrying in %d seconds: %v", int(BadGatewaySleep.Seconds()), err)
-			time.Sleep(BadGatewaySleep)
-		} else {
-			return uploaded, err
-		}
-	}
 }
 
 func (portal *Portal) sendErrorMessage(message string) id.EventID {
@@ -749,7 +704,7 @@ func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *apps
 		return nil
 	}
 	portal.AvatarHash = &hash
-	uploadResp, err := portal.uploadWithRetry(intent, data, attachment.GetMimeType(), MediaUploadRetries)
+	uploadResp, err := intent.UploadBytes(data, attachment.GetMimeType())
 	if err != nil {
 		portal.AvatarHash = nil
 		portal.log.Errorfln("Failed to upload avatar attachment: %v", err)
@@ -784,7 +739,7 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 		return nil
 	}
 	data, uploadMime, uploadInfo := portal.encryptFile(data, msg.Attachment.GetMimeType())
-	uploadResp, err := portal.uploadWithRetry(intent, data, uploadMime, MediaUploadRetries)
+	uploadResp, err := intent.UploadBytes(data, uploadMime)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
 		return nil
