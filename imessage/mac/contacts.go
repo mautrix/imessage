@@ -23,6 +23,7 @@ import "C"
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"unsafe"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -93,39 +94,41 @@ func cncontactToContact(ns *C.CNContact) *imessage.Contact {
 	}
 
 	if length := int(C.meowGetImageDataLengthFromContact(ns)); length > 0 {
-		contact.Avatar = make([]byte, 0)
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&contact.Avatar))
+		avatarData := make([]byte, 0)
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&avatarData))
 		header.Len = length
 		header.Cap = length
-		// TODO this is dangerous, maybe the data should be copied to a Go-only array?
 		header.Data = uintptr(C.meowGetImageDataFromContact(ns))
-	} else if thumbnailLength := int(C.meowGetThumbnailImageDataLengthFromContact(ns)); thumbnailLength > 0 {
-		contact.Avatar = make([]byte, 0)
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&contact.Avatar))
-		header.Len = thumbnailLength
-		header.Cap = thumbnailLength
-		header.Data = uintptr(C.meowGetThumbnailImageDataFromContact(ns))
+		// The avatar data pointer comes from Objective-C, so we copy the data into a Go-managed array here.
+		contact.Avatar = make([]byte, len(avatarData))
+		copy(contact.Avatar, avatarData)
 	}
 
 	return &contact
 }
 
-func (cs *ContactStore) GetByEmail(email string) *imessage.Contact {
-	cnContact := C.meowGetContactByEmail(cs.int, C.CString(email))
-	return cncontactToContact(cnContact)
-}
-
-func (cs *ContactStore) GetByPhone(phone string) *imessage.Contact {
-	cnContact := C.meowGetContactByPhone(cs.int, C.CString(phone))
-	return cncontactToContact(cnContact)
-}
-
 func (mac *macOSDatabase) GetContactInfo(identifier string) (*imessage.Contact, error) {
 	if !mac.contactStore.HasAccess || len(identifier) == 0 {
 		return nil, nil
-	} else if identifier[0] == '+' {
-		return mac.contactStore.GetByPhone(identifier), nil
-	} else {
-		return mac.contactStore.GetByEmail(identifier), nil
 	}
+
+	// Locking the OS thread seems to prevent random SIGSEGV's from the NSAutoreleasePool being drained.
+	// I don't know why, but it's probably something to do with memory management and/or threading.
+	runtime.LockOSThread()
+	// This makes a NSAutoreleasePool, which enables Objective-C's memory management.
+	pool := C.meowMakePool()
+
+	var cnContact *C.CNContact
+	if identifier[0] == '+' {
+		cnContact = C.meowGetContactByPhone(mac.contactStore.int, C.CString(identifier))
+	} else {
+		cnContact = C.meowGetContactByEmail(mac.contactStore.int, C.CString(identifier))
+	}
+	goContact := cncontactToContact(cnContact)
+
+	// Release all memory Obj-C stuff was using and unlock the OS thread.
+	C.meowReleasePool(pool)
+	runtime.UnlockOSThread()
+
+	return goContact, nil
 }

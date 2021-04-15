@@ -31,11 +31,12 @@ NSString* meowGetNicknameFromContact(CNContact* contact);
 
 const void* meowGetImageDataFromContact(CNContact* contact);
 unsigned long meowGetImageDataLengthFromContact(CNContact* contact);
-const void* meowGetThumbnailImageDataFromContact(CNContact* contact);
-unsigned long meowGetThumbnailImageDataLengthFromContact(CNContact* contact);
 
 NSArray<CNLabeledValue<NSString*>*>* meowGetEmailAddressesFromContact(CNContact* contact);
 NSArray<CNLabeledValue<CNPhoneNumber*>*>* meowGetPhoneNumbersFromContact(CNContact* contact);
 NSString* meowGetPhoneArrayItem(NSArray<CNLabeledValue<CNPhoneNumber*>*>* arr, unsigned long i);
 NSString* meowGetEmailArrayItem(NSArray<CNLabeledValue<NSString*>*>* arr, unsigned long i);
 unsigned long meowGetArrayLength(NSArray* arr);
+
+NSAutoreleasePool* meowMakePool();
+void meowReleasePool(NSAutoreleasePool* pool);

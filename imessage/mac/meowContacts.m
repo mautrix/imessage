@@ -73,20 +73,23 @@ NSString* meowGetGivenNameFromContact(CNContact* contact)  { return contact.give
 NSString* meowGetFamilyNameFromContact(CNContact* contact) { return contact.familyName; }
 NSString* meowGetNicknameFromContact(CNContact* contact)   { return contact.nickname; }
 
-const void* meowGetImageDataFromContact(CNContact* contact) { return contact.imageData.bytes; }
-unsigned long meowGetImageDataLengthFromContact(CNContact* contact) {
-	if (contact.imageData == NULL) {
+const void* meowGetImageDataFromContact(CNContact* contact) {
+	if (contact.imageData != NULL) {
+		return contact.imageData.bytes;
+	} else if (contact.thumbnailImageData != NULL) {
+		return contact.thumbnailImageData.bytes;
+	} else {
 		return 0;
 	}
-	return contact.imageData.length;
 }
-
-const void* meowGetThumbnailImageDataFromContact(CNContact* contact) { return contact.thumbnailImageData.bytes; }
-unsigned long meowGetThumbnailImageDataLengthFromContact(CNContact* contact) {
-	if (contact.thumbnailImageData == NULL) {
+unsigned long meowGetImageDataLengthFromContact(CNContact* contact) {
+	if (contact.imageData != NULL) {
+		return contact.imageData.length;
+	} else if (contact.thumbnailImageData != NULL) {
+		return contact.thumbnailImageData.length;
+	} else {
 		return 0;
 	}
-	return contact.thumbnailImageData.length;
 }
 
 NSArray<CNLabeledValue<NSString*>*>* meowGetEmailAddressesFromContact(CNContact* contact)    { return contact.emailAddresses; }
@@ -98,4 +101,11 @@ unsigned long meowGetArrayLength(NSArray* arr) {
 		return 0;
     }
     return arr.count;
+}
+
+NSAutoreleasePool* meowMakePool() {
+	return [[NSAutoreleasePool alloc] init];
+}
+void meowReleasePool(NSAutoreleasePool* pool) {
+	[pool drain];
 }
