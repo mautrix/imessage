@@ -348,7 +348,7 @@ func (mac *macOSDatabase) Start() error {
 	nonSentMessages := make(map[string]bool)
 	minReceiptTime := time.Now()
 	var lastRowID int
-	err = mac.chatDB.QueryRow("SELECT MAX(ROWID) FROM message").Scan(&lastRowID)
+	err = mac.chatDB.QueryRow("SELECT COALESCE(MAX(ROWID), 0) FROM message").Scan(&lastRowID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch last row ID: %w", err)
 	}
