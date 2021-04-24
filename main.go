@@ -75,7 +75,8 @@ func init() {
 }
 
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
-
+var configURL = flag.MakeFull("u", "url", "The URL to download the config file from.", "").String()
+var configOutputRedirect = flag.MakeFull("o", "output-redirect", "Whether or not to output the URL of the first redirect when downloading the config file.", "false").Bool()
 //var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
@@ -424,7 +425,7 @@ func (bridge *Bridge) Main() {
 func main() {
 	flag.SetHelpTitles(
 		"mautrix-imessage - A Matrix-iMessage puppeting bridge.",
-		"mautrix-imessage [-h] [-c <path>] [-r <path>] [-g]")
+		"mautrix-imessage [-h] [-c <path>] [-r <path>] [-u <url>] [-o] [-g]")
 	err := flag.Parse()
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -436,6 +437,14 @@ func main() {
 	} else if *version {
 		fmt.Println(VersionString)
 		return
+	}
+
+	if len(*configURL) > 0 {
+		err = config.Download(*configURL, *configPath, *configOutputRedirect)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to download config: %v\n", err)
+			os.Exit(2)
+		}
 	}
 
 	NewBridge().Main()
