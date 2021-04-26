@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -28,6 +29,7 @@ import (
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
@@ -222,6 +224,7 @@ func (bridge *Bridge) Init() {
 	bridge.IPC = ipc.NewProcessor(bridge.Log)
 	bridge.IPC.SetHandler("reset-encryption", bridge.ipcResetEncryption)
 	bridge.IPC.SetHandler("ping", bridge.ipcPing)
+	bridge.IPC.SetHandler("stop", bridge.ipcStop)
 
 	bridge.Log.Debugln("Initializing iMessage connector")
 	bridge.IM, err = imessage.NewAPI(bridge)
@@ -265,7 +268,13 @@ func (bridge *Bridge) startWebsocket() {
 	}
 	for {
 		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy, onConnect)
-		if err != nil {
+		if err == appservice.WebsocketManualStop {
+			return
+		} else if closeCommand := (&appservice.CloseCommand{}); errors.As(err, &closeCommand) && closeCommand.Status == appservice.MeowConnectionReplaced {
+			bridge.Log.Infoln("Appservice websocket closed by another instance of the bridge, shutting down...")
+			bridge.Stop()
+			return
+		} else if err != nil {
 			bridge.Log.Errorln("Error in appservice websocket:", err)
 		}
 		if bridge.stopping {
@@ -386,12 +395,24 @@ func (bridge *Bridge) UpdateBotProfile() {
 	}
 }
 
+func (bridge *Bridge) ipcStop(_ json.RawMessage) interface{} {
+	bridge.Stop()
+	return nil
+}
+
 func (bridge *Bridge) Stop() {
+	select {
+	case bridge.stop <- struct{}{}:
+	default:
+	}
+}
+
+func (bridge *Bridge) internalStop() {
 	bridge.stopping = true
 	if bridge.Crypto != nil {
 		bridge.Crypto.Stop()
 	}
-	bridge.AS.StopWebsocket()
+	bridge.AS.StopWebsocket(appservice.WebsocketManualStop)
 	bridge.EventProcessor.Stop()
 	bridge.IMHandler.Stop()
 }
@@ -417,7 +438,7 @@ func (bridge *Bridge) Main() {
 		bridge.Log.Infoln("Stop command received, stopping...")
 	}
 
-	bridge.Stop()
+	bridge.internalStop()
 	bridge.Log.Infoln("Bridge stopped.")
 	os.Exit(0)
 }
