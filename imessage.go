@@ -59,7 +59,7 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	if len(portal.MXID) == 0 {
 		err := portal.CreateMatrixRoom()
 		if err != nil {
-			imh.log.Warnln("Failed to create Matrix room to handle message: %v", err)
+			imh.log.Warnfln("Failed to create Matrix room to handle message: %v", err)
 			return
 		}
 	}

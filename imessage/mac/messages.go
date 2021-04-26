@@ -27,6 +27,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	_ "github.com/mattn/go-sqlite3"
+
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
@@ -74,7 +75,7 @@ ORDER BY message.date DESC LIMIT 1
 `
 
 const chatQuery = `
-SELECT chat_identifier, service_name, display_name FROM chat WHERE guid=$1
+SELECT chat_identifier, service_name, COALESCE(display_name, '') FROM chat WHERE guid=$1
 `
 
 const recentChatsQuery = `
