@@ -83,7 +83,7 @@ func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
 	if intent == nil {
 		return
 	}
-	message := imh.bridge.DB.Message.GetByGUID(portal.GUID, rr.ReadUpTo)
+	message := imh.bridge.DB.Message.GetLastByGUID(portal.GUID, rr.ReadUpTo)
 	if message == nil {
 		portal.log.Debugfln("Dropping read receipt for %s: message not found in db", rr.ReadUpTo)
 		return

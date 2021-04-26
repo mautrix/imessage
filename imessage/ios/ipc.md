@@ -158,7 +158,8 @@ Another error response:
     `SMS;-;+123456`. Not required if `is_from_me` is true.
   * `is_from_me` (bool) - True if the message was sent by the local user
   * `thread_originator_guid` (str, UUID, optional) - The thread originator message ID
-  * `attachment` (object, optional) - Attachment info (media messages, maybe stickers?)
+  * `thread_originator_part` (int) - The thread originator message part index (e.g. 0)
+  * `attachments` (list of objects, optional) - Attachment info (media messages, maybe stickers?)
     * `mime_type` (str, optional) - The mime type of the file, optional
     * `file_name` (str) - The user-facing file name
     * `path_on_disk` (str) - The file path on disk that the bridge can read

@@ -48,10 +48,11 @@ type Message struct {
 	IsAudioMessage bool
 
 	ReplyToGUID string   `json:"thread_originator_guid,omitempty"`
+	ReplyToPart int      `json:"thread_originator_part,omitempty"`
 	Tapback     *Tapback `json:"associated_message,omitempty"`
 
 	// Deprecated: use attachments array
-	Attachment  *Attachment   `json:"attachment,omitempty"`
+	Attachment *Attachment `json:"attachment,omitempty"`
 
 	Attachments []*Attachment `json:"attachments,omitempty"`
 

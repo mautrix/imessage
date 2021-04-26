@@ -514,7 +514,7 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, msg *imessage
 	if len(msg.ReplyToGUID) == 0 {
 		return
 	}
-	message := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.ReplyToGUID)
+	message := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.ReplyToGUID, msg.ReplyToPart)
 	if message != nil {
 		evt, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
 		if err != nil {
@@ -532,6 +532,8 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, msg *imessage
 		}
 		_ = evt.Content.ParseRaw(evt.Type)
 		content.SetReply(evt)
+	} else {
+		portal.log.Debugfln("Unknown reply target %s.%d", msg.ReplyToGUID, msg.ReplyToPart)
 	}
 	return
 }
@@ -667,7 +669,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		portal.log.Debugfln("Unknown reaction type %s in %s", reaction.RelatesTo.Key, reaction.RelatesTo.EventID)
 	} else if target := portal.bridge.DB.Message.GetByMXID(reaction.RelatesTo.EventID); target == nil {
 		portal.log.Debugfln("Unknown reaction target %s", reaction.RelatesTo.EventID)
-	} else if existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, ""); existing != nil && existing.Type == tapbackType {
+	} else if existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, target.Part, ""); existing != nil && existing.Type == tapbackType {
 		portal.log.Debugfln("Ignoring outgoing tapback to %s/%s: type is same", reaction.RelatesTo.EventID, target.GUID)
 	} else if resp, err := portal.bridge.IM.SendTapback(portal.GUID, target.GUID, tapbackType, false); err != nil {
 		portal.log.Errorfln("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
@@ -804,7 +806,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	if msg.Tapback != nil {
 		portal.HandleiMessageTapback(msg)
 		return ""
-	} else if portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID) != nil {
+	} else if portal.bridge.DB.Message.GetLastByGUID(portal.GUID, msg.GUID) != nil {
 		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
 		return ""
 	}
@@ -891,9 +893,9 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	portal.log.Debugln("Starting handling of iMessage tapback", msg.GUID, "to", msg.Tapback.TargetGUID)
-	target := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.Tapback.TargetGUID)
+	target := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.Tapback.TargetGUID, msg.Tapback.TargetPart)
 	if target == nil {
-		portal.log.Debugln("Unknown tapback target", msg.Tapback.TargetGUID)
+		portal.log.Debugfln("Unknown tapback target %s.%d", msg.Tapback.TargetGUID, msg.Tapback.TargetPart)
 		return
 	}
 	var intent *appservice.IntentAPI
@@ -909,7 +911,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	}
 	senderGUID := msg.Sender.String()
 
-	existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, senderGUID)
+	existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, target.Part, senderGUID)
 	if msg.Tapback.Remove {
 		if existing == nil {
 			return
