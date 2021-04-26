@@ -34,6 +34,7 @@ type macOSDatabase struct {
 	limitedMessagesQuery *sql.Stmt
 	newMessagesQuery     *sql.Stmt
 	newReceiptsQuery     *sql.Stmt
+	attachmentsQuery     *sql.Stmt
 	chatQuery            *sql.Stmt
 	groupActionQuery     *sql.Stmt
 	recentChatsQuery     *sql.Stmt

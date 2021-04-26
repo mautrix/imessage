@@ -37,7 +37,6 @@ SELECT
   COALESCE(handle.id, ''), COALESCE(handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
-  COALESCE(attachment.filename, ''), COALESCE(attachment.mime_type, ''), COALESCE(attachment.transfer_name, ''),
   message.group_title, message.group_action_type
 FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
@@ -45,6 +44,12 @@ JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 LEFT JOIN handle       ON message.handle_id = handle.ROWID
 LEFT JOIN message_attachment_join ON message_attachment_join.message_id = message.ROWID
 LEFT JOIN attachment              ON message_attachment_join.attachment_id = attachment.ROWID
+`
+
+const attachmentsQuery = `
+SELECT filename, mime_type, transfer_name FROM attachment
+JOIN message_attachment_join ON message_attachment_join.attachment_id = attachment.ROWID
+WHERE message_attachment_join.message_id = $1
 `
 
 var newMessagesQuery = baseMessagesQuery + `
@@ -118,6 +123,10 @@ func (mac *macOSDatabase) prepareMessages() error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare message query: %w", err)
 	}
+	mac.attachmentsQuery, err = mac.chatDB.Prepare(attachmentsQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare attachments query: %w", err)
+	}
 	mac.groupActionQuery, err = mac.chatDB.Prepare(groupActionQuery)
 	if err != nil {
 		mac.log.Warnln("Failed to prepare group action query:", err)
@@ -153,23 +162,38 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 	for res.Next() {
 		var message imessage.Message
 		var tapback imessage.Tapback
-		var attachment imessage.Attachment
 		var timestamp int64
 		var newGroupTitle sql.NullString
 		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &message.ChatGUID,
 			&message.Sender.LocalID, &message.Sender.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
-			&attachment.PathOnDisk, &attachment.MimeType, &attachment.FileName,
 			&newGroupTitle, &message.GroupActionType)
 		if err != nil {
 			err = fmt.Errorf("error scanning row: %w", err)
 			return
 		}
 		message.Time = time.Unix(imessage.AppleEpoch.Unix(), timestamp)
-		if len(attachment.PathOnDisk) > 0 {
-			message.Attachment = &attachment
+		message.Attachments = make([]*imessage.Attachment, 0)
+		var ares *sql.Rows
+		ares, err = mac.attachmentsQuery.Query(message.RowID)
+		if err != nil {
+			err = fmt.Errorf("error querying attachments for %d: %w", message.RowID, err)
+			return
 		}
+		for ares.Next() {
+			var attachment imessage.Attachment
+			err = ares.Scan(&attachment.PathOnDisk, &attachment.MimeType, &attachment.FileName)
+			if err != nil {
+				err = fmt.Errorf("error scanning attachment row for %d: %w", message.RowID, err)
+				return
+			}
+			message.Attachments = append(message.Attachments, &attachment)
+		}
+		if len(message.Attachments) > 0 {
+			message.Attachment = message.Attachments[0]
+		}
+
 		if newGroupTitle.Valid {
 			message.GroupActionType = imessage.GroupActionSetName
 			message.NewGroupName = newGroupTitle.String

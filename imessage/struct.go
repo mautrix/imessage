@@ -50,7 +50,10 @@ type Message struct {
 	ReplyToGUID string   `json:"thread_originator_guid,omitempty"`
 	Tapback     *Tapback `json:"associated_message,omitempty"`
 
-	Attachment *Attachment `json:"attachment,omitempty"`
+	// Deprecated: use attachments array
+	Attachment  *Attachment   `json:"attachment,omitempty"`
+
+	Attachments []*Attachment `json:"attachments,omitempty"`
 
 	GroupActionType GroupActionType `json:"group_action_type,omitempty"`
 	NewGroupName    string          `json:"new_group_title,omitempty"`

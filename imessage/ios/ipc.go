@@ -28,9 +28,10 @@ import (
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
+	log "maunium.net/go/maulogger/v2"
+
 	"go.mau.fi/mautrix-imessage/imessage"
 	"go.mau.fi/mautrix-imessage/ipc"
-	log "maunium.net/go/maulogger/v2"
 )
 
 const (
@@ -92,6 +93,11 @@ func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 	}
 	if len(message.NewGroupName) > 0 {
 		message.GroupActionType = imessage.GroupActionSetName
+	}
+	if message.Attachment != nil && message.Attachments == nil {
+		message.Attachments = []*imessage.Attachment{message.Attachment}
+	} else if message.Attachments != nil && len(message.Attachments) > 0 && message.Attachment == nil {
+		message.Attachment = message.Attachments[0]
 	}
 }
 
