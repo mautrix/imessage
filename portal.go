@@ -680,6 +680,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
 		tapback.MessageGUID = target.GUID
+		tapback.MessagePart = target.Part
 		tapback.Type = tapbackType
 		tapback.MXID = evt.ID
 		tapback.Insert()
@@ -969,6 +970,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
 		tapback.MessageGUID = target.GUID
+		tapback.MessagePart = target.Part
 		tapback.SenderGUID = senderGUID
 		tapback.Type = msg.Tapback.Type
 		tapback.MXID = resp.EventID

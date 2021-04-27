@@ -47,9 +47,10 @@ LEFT JOIN attachment              ON message_attachment_join.attachment_id = att
 `
 
 const attachmentsQuery = `
-SELECT filename, mime_type, transfer_name FROM attachment
+SELECT filename, COALESCE(mime_type, ''), transfer_name FROM attachment
 JOIN message_attachment_join ON message_attachment_join.attachment_id = attachment.ROWID
 WHERE message_attachment_join.message_id = $1
+ORDER BY ROWID
 `
 
 var newMessagesQuery = baseMessagesQuery + `
