@@ -17,10 +17,12 @@
 package mac
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -33,8 +35,8 @@ import (
 
 const baseMessagesQuery = `
 SELECT
-  message.ROWID, message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), chat.guid,
-  COALESCE(handle.id, ''), COALESCE(handle.service, ''),
+  message.ROWID, message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.attributedBody,
+  chat.guid, COALESCE(handle.id, ''), COALESCE(handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
   message.group_title, message.group_action_type
@@ -47,7 +49,7 @@ LEFT JOIN attachment              ON message_attachment_join.attachment_id = att
 `
 
 const attachmentsQuery = `
-SELECT filename, COALESCE(mime_type, ''), transfer_name FROM attachment
+SELECT guid, filename, COALESCE(mime_type, ''), transfer_name FROM attachment
 JOIN message_attachment_join ON message_attachment_join.attachment_id = attachment.ROWID
 WHERE message_attachment_join.message_id = $1
 ORDER BY ROWID
@@ -159,14 +161,44 @@ func (mac *macOSDatabase) prepareMessages() error {
 	return nil
 }
 
+type hackyAttachmentList struct {
+	List  []*imessage.Attachment
+	Index []int
+}
+
+func (h hackyAttachmentList) Len() int {
+	return len(h.List)
+}
+
+func (h hackyAttachmentList) Less(i, j int) bool {
+	return h.Index[i] < h.Index[j]
+}
+
+func (h hackyAttachmentList) Swap(i, j int) {
+	h.Index[i], h.Index[j] = h.Index[j], h.Index[i]
+	h.List[i], h.List[j] = h.List[j], h.List[i]
+}
+
+func hackyAttachmentSort(attributedBody []byte, attachments []*imessage.Attachment) {
+	list := hackyAttachmentList{
+		List:  attachments,
+		Index: make([]int, len(attachments)),
+	}
+	for i, attach := range attachments {
+		list.Index[i] = bytes.Index(attributedBody, []byte(attach.GUID))
+	}
+	sort.Sort(list)
+}
+
 func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Message, err error) {
 	for res.Next() {
 		var message imessage.Message
 		var tapback imessage.Tapback
+		var attributedBody []byte
 		var timestamp int64
 		var newGroupTitle sql.NullString
-		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &message.ChatGUID,
-			&message.Sender.LocalID, &message.Sender.Service,
+		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &attributedBody,
+			&message.ChatGUID, &message.Sender.LocalID, &message.Sender.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
 			&newGroupTitle, &message.GroupActionType)
@@ -184,12 +216,15 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 		}
 		for ares.Next() {
 			var attachment imessage.Attachment
-			err = ares.Scan(&attachment.PathOnDisk, &attachment.MimeType, &attachment.FileName)
+			err = ares.Scan(&attachment.GUID, &attachment.PathOnDisk, &attachment.MimeType, &attachment.FileName)
 			if err != nil {
 				err = fmt.Errorf("error scanning attachment row for %d: %w", message.RowID, err)
 				return
 			}
 			message.Attachments = append(message.Attachments, &attachment)
+		}
+		if len(message.Attachments) > 0 && attributedBody != nil {
+			hackyAttachmentSort(attributedBody, message.Attachments)
 		}
 		if len(message.Attachments) > 0 {
 			message.Attachment = message.Attachments[0]

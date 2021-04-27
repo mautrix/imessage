@@ -114,6 +114,7 @@ func (contact *Contact) Name() string {
 }
 
 type Attachment struct {
+	GUID       string `json:"guid,omitempty"`
 	PathOnDisk string `json:"path_on_disk"`
 	FileName   string `json:"file_name"`
 	MimeType   string `json:"mime_type,omitempty"`
