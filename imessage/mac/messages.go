@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,7 +39,7 @@ SELECT
   message.ROWID, message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.attributedBody,
   chat.guid, COALESCE(handle.id, ''), COALESCE(handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
-  COALESCE(message.thread_originator_guid, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
+  COALESCE(message.thread_originator_guid, ''), COALESCE(message.thread_originator_part, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
   message.group_title, message.group_action_type
 FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
@@ -197,10 +198,11 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 		var attributedBody []byte
 		var timestamp int64
 		var newGroupTitle sql.NullString
+		var threadOriginatorPart string
 		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &attributedBody,
 			&message.ChatGUID, &message.Sender.LocalID, &message.Sender.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
-			&message.ReplyToGUID, &tapback.TargetGUID, &tapback.Type,
+			&message.ReplyToGUID, &threadOriginatorPart, &tapback.TargetGUID, &tapback.Type,
 			&newGroupTitle, &message.GroupActionType)
 		if err != nil {
 			err = fmt.Errorf("error scanning row: %w", err)
@@ -233,6 +235,12 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 		if newGroupTitle.Valid {
 			message.GroupActionType = imessage.GroupActionSetName
 			message.NewGroupName = newGroupTitle.String
+		}
+		if len(threadOriginatorPart) > 0 {
+			// The thread_originator_part field seems to have three parts separated by colons.
+			// The first two parts look like the part index, the third one is something else.
+			// TODO this might not be reliable
+			message.ReplyToPart, _ = strconv.Atoi(strings.Split(threadOriginatorPart, ":")[0])
 		}
 		if message.IsFromMe {
 			message.Sender.LocalID = ""
