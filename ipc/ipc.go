@@ -134,6 +134,13 @@ func (ipc *Processor) Loop() {
 	}
 }
 
+func (ipc *Processor) Send(cmd Command, data interface{}) error {
+	ipc.lock.Lock()
+	err := ipc.stdout.Encode(OutgoingMessage{Command: cmd, Data: data})
+	ipc.lock.Unlock()
+	return err
+}
+
 func (ipc *Processor) RequestAsync(cmd Command, data interface{}) (<-chan *Message, error) {
 	respChan := make(chan *Message, 1)
 	reqID := int(atomic.AddInt32(&ipc.reqID, 1))

@@ -174,7 +174,6 @@ Another error response:
   * `chat_guid` (str) - The chat where the read receipt is
   * `read_up_to` (str, UUID) - The GUID of the last read message
 * Incoming typing notifications (request type `typing`)
-  * `sender_guid` (str) - The user who's typing.
   * `chat_guid` (str) - The chat where the user is typing.
   * `typing` (bool) - Whether the user is typing or not.
 * Chat info changes and new chats (request type `chat`)

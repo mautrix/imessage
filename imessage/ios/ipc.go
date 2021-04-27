@@ -35,8 +35,9 @@ import (
 )
 
 const (
-	IncomingMessage     ipc.Command = "message"
-	IncomingReadReceipt ipc.Command = "read_receipt"
+	IncomingMessage            ipc.Command = "message"
+	IncomingReadReceipt        ipc.Command = "read_receipt"
+	IncomingTypingNotification ipc.Command = "typing"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -53,6 +54,7 @@ type iOSConnector struct {
 	log         log.Logger
 	messageChan chan *imessage.Message
 	receiptChan chan *imessage.ReadReceipt
+	typingChan  chan *imessage.TypingNotification
 }
 
 func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -62,9 +64,11 @@ func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
 
 		messageChan: make(chan *imessage.Message, 256),
 		receiptChan: make(chan *imessage.ReadReceipt, 32),
+		typingChan:  make(chan *imessage.TypingNotification, 32),
 	}
 	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
 	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
+	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
 	return ios, nil
 }
 
@@ -72,13 +76,8 @@ func init() {
 	imessage.Implementations["ios"] = NewiOSConnector
 }
 
-func (ios *iOSConnector) Start() error {
-	return nil
-}
-
-func (ios *iOSConnector) Stop() {
-
-}
+func (ios *iOSConnector) Start() error { return nil }
+func (ios *iOSConnector) Stop()        {}
 
 func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 	if !message.IsFromMe {
@@ -133,6 +132,21 @@ func (ios *iOSConnector) handleIncomingReadReceipt(data json.RawMessage) interfa
 	return nil
 }
 
+func (ios *iOSConnector) handleIncomingTypingNotification(data json.RawMessage) interface{} {
+	var notif imessage.TypingNotification
+	err := json.Unmarshal(data, &notif)
+	if err != nil {
+		ios.log.Warnln("Failed to parse incoming typing notification: %v", err)
+		return nil
+	}
+	select {
+	case ios.typingChan <- &notif:
+	default:
+		ios.log.Warnln("Incoming typing notification buffer is full")
+	}
+	return nil
+}
+
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetMessagesAfterRequest{
@@ -169,6 +183,10 @@ func (ios *iOSConnector) MessageChan() <-chan *imessage.Message {
 
 func (ios *iOSConnector) ReadReceiptChan() <-chan *imessage.ReadReceipt {
 	return ios.receiptChan
+}
+
+func (ios *iOSConnector) TypingNotificationChan() <-chan *imessage.TypingNotification {
+	return ios.typingChan
 }
 
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
@@ -247,12 +265,24 @@ func (ios *iOSConnector) SendTapback(chatID, targetGUID string, tapback imessage
 }
 
 func (ios *iOSConnector) SendReadReceipt(chatID, readUpTo string) error {
-	return nil
+	return ios.IPC.Send(ReqSendReadReceipt, &SendReadReceiptRequest{
+		ChatGUID: chatID,
+		ReadUpTo: readUpTo,
+	})
+}
+
+func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool) error {
+	return ios.IPC.Send(ReqSetTyping, &SetTypingRequest{
+		ChatGUID: chatID,
+		Typing:   typing,
+	})
 }
 
 func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
-		MessageSendResponses: true,
-		SendTapbacks:         true,
+		MessageSendResponses:    true,
+		SendTapbacks:            true,
+		SendReadReceipts:        true,
+		SendTypingNotifications: true,
 	}
 }

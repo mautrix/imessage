@@ -40,12 +40,15 @@ func NewiMessageHandler(bridge *Bridge) *iMessageHandler {
 func (imh *iMessageHandler) Start() {
 	messages := imh.bridge.IM.MessageChan()
 	readReceipts := imh.bridge.IM.ReadReceiptChan()
+	typingNotifications := imh.bridge.IM.TypingNotificationChan()
 	for {
 		select {
 		case msg := <-messages:
 			imh.HandleMessage(msg)
 		case rr := <-readReceipts:
 			imh.HandleReadReceipt(rr)
+		case notif := <-typingNotifications:
+			imh.HandleTypingNotification(notif)
 		case <-imh.stop:
 			break
 		}
@@ -91,6 +94,21 @@ func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
 	err := intent.MarkRead(portal.MXID, message.MXID)
 	if err != nil {
 		portal.log.Warnln("Failed to send read receipt for %s from %s: %v", message.MXID, intent.UserID)
+	}
+}
+
+func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotification) {
+	portal := imh.bridge.GetPortalByGUID(notif.ChatGUID)
+	if len(portal.MXID) == 0 {
+		return
+	}
+	_, err := portal.MainIntent().UserTyping(portal.MXID, notif.Typing, 60 * 1000)
+	if err != nil {
+		action := "typing"
+		if !notif.Typing {
+			action = "not typing"
+		}
+		portal.log.Warnln("Failed to mark %s as %s in %s: %v", portal.MainIntent().UserID, action, portal.MXID, err)
 	}
 }
 

@@ -26,6 +26,7 @@ const (
 	ReqSendMedia         ipc.Command = "send_media"
 	ReqSendTapback       ipc.Command = "send_tapback"
 	ReqSendReadReceipt   ipc.Command = "send_read_receipt"
+	ReqSetTyping         ipc.Command = "set_typing"
 	ReqGetChats          ipc.Command = "get_chats"
 	ReqGetChat           ipc.Command = "get_chat"
 	ReqGetChatAvatar     ipc.Command = "get_chat_avatar"
@@ -48,6 +49,16 @@ type SendTapbackRequest struct {
 	ChatGUID   string               `json:"chat_guid"`
 	TargetGUID string               `json:"target_guid"`
 	Type       imessage.TapbackType `json:"type"`
+}
+
+type SendReadReceiptRequest struct {
+	ChatGUID string `json:"chat_guid"`
+	ReadUpTo string `json:"read_up_to"`
+}
+
+type SetTypingRequest struct {
+	ChatGUID string `json:"chat_guid"`
+	Typing   bool   `json:"typing"`
 }
 
 type GetChatRequest struct {

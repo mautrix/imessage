@@ -20,8 +20,9 @@ import (
 	"fmt"
 	"time"
 
-	"go.mau.fi/mautrix-imessage/ipc"
 	log "maunium.net/go/maulogger/v2"
+
+	"go.mau.fi/mautrix-imessage/ipc"
 )
 
 type API interface {
@@ -32,6 +33,7 @@ type API interface {
 	GetChatsWithMessagesAfter(minDate time.Time) ([]string, error)
 	MessageChan() <-chan *Message
 	ReadReceiptChan() <-chan *ReadReceipt
+	TypingNotificationChan() <-chan *TypingNotification
 	GetContactInfo(identifier string) (*Contact, error)
 	GetChatInfo(chatID string) (*ChatInfo, error)
 	GetGroupAvatar(charID string) (*Attachment, error)
@@ -40,6 +42,7 @@ type API interface {
 	SendFile(chatID, filename string, data []byte) (*SendResponse, error)
 	SendTapback(chatID, targetGUID string, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
+	SendTypingNotification(chatID string, typing bool) error
 
 	Capabilities() ConnectorCapabilities
 }

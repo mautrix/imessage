@@ -85,7 +85,9 @@ func init() {
 
 func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
-		MessageSendResponses: false,
-		SendTapbacks:         false,
+		MessageSendResponses:    false,
+		SendTapbacks:            false,
+		SendReadReceipts:        false,
+		SendTypingNotifications: false,
 	}
 }

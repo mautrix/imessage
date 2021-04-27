@@ -389,6 +389,10 @@ func (mac *macOSDatabase) ReadReceiptChan() <-chan *imessage.ReadReceipt {
 	return mac.ReadReceipts
 }
 
+func (mac *macOSDatabase) TypingNotificationChan() <-chan *imessage.TypingNotification {
+	return make(chan *imessage.TypingNotification, 0)
+}
+
 func (mac *macOSDatabase) Start() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {

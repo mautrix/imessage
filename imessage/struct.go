@@ -74,6 +74,11 @@ type ReadReceipt struct {
 	ReadUpTo   string `json:"read_up_to"`
 }
 
+type TypingNotification struct {
+	ChatGUID string `json:"chat_guid"`
+	Typing   bool   `json:"typing"`
+}
+
 type GroupActionType int
 
 const (
@@ -192,6 +197,8 @@ type SendResponse struct {
 }
 
 type ConnectorCapabilities struct {
-	MessageSendResponses bool
-	SendTapbacks         bool
+	MessageSendResponses    bool
+	SendTapbacks            bool
+	SendReadReceipts        bool
+	SendTypingNotifications bool
 }

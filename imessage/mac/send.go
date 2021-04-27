@@ -130,3 +130,7 @@ func (mac *macOSDatabase) SendTapback(chatID, targetGUID string, tapback imessag
 func (mac *macOSDatabase) SendReadReceipt(chatID, readUpTo string) error {
 	return nil
 }
+
+func (mac *macOSDatabase) SendTypingNotification(chatID string, typing bool) error {
+	return nil
+}
