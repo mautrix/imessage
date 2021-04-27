@@ -606,8 +606,9 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	if portal.messageDedup != nil {
 		portal.messageDedupLock.Lock()
 		portal.messageDedup[strings.TrimSpace(msg.Body)] = SentMessage{
-			EventID:   evt.ID,
-			Timestamp: time.Now(),
+			EventID: evt.ID,
+			// Set the timestamp to a bit before now to make sure the deduplication catches it properly
+			Timestamp: time.Now().Add(-10 * time.Second),
 		}
 		portal.messageDedupLock.Unlock()
 	}
@@ -731,16 +732,57 @@ func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *apps
 	}
 }
 
-func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *appservice.IntentAPI) *event.MessageEventContent {
-	if msg.Attachment == nil {
-		return nil
+func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Message) bool {
+	if portal.messageDedup == nil {
+		return false
 	}
-	data, err := msg.Attachment.Read()
+	dedupKey := msg.Text
+	if len(msg.Attachments) == 1 {
+		dedupKey = msg.Attachments[0].FileName
+	}
+	portal.messageDedupLock.Lock()
+	dedup, isDup := portal.messageDedup[strings.TrimSpace(dedupKey)]
+	if isDup && dedup.Timestamp.Before(msg.Time) {
+		delete(portal.messageDedup, dedupKey)
+		portal.messageDedupLock.Unlock()
+		portal.log.Debugfln("Received echo for Matrix message %s -> %s", dedup.EventID, msg.GUID)
+		dbMessage.MXID = dedup.EventID
+		dbMessage.Insert()
+		portal.sendDeliveryReceipt(dbMessage.MXID)
+		return true
+	} else {
+		portal.messageDedupLock.Unlock()
+		return false
+	}
+}
+
+func (portal *Portal) handleIMGroupAction(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+	var groupUpdateEventID *id.EventID
+	switch msg.GroupActionType {
+	case imessage.GroupActionSetAvatar:
+		if len(msg.Attachments) == 1 {
+			groupUpdateEventID = portal.UpdateAvatar(msg.Attachments[0], intent)
+		} else {
+			portal.log.Debugfln("Unexpected number of attachments (%d) in set avatar group action", len(msg.Attachments))
+		}
+	case imessage.GroupActionRemoveAvatar:
+		// TODO
+	case imessage.GroupActionSetName:
+		groupUpdateEventID = portal.UpdateName(msg.NewGroupName, intent)
+	}
+	if groupUpdateEventID != nil {
+		dbMessage.MXID = *groupUpdateEventID
+		dbMessage.Insert()
+	}
+}
+
+func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) *event.MessageEventContent {
+	data, err := attach.Read()
 	if err != nil {
 		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
 		return nil
 	}
-	data, uploadMime, uploadInfo := portal.encryptFile(data, msg.Attachment.GetMimeType())
+	data, uploadMime, uploadInfo := portal.encryptFile(data, attach.GetMimeType())
 	uploadResp, err := intent.UploadBytes(data, uploadMime)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
@@ -753,12 +795,12 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 	} else {
 		content.URL = uploadResp.ContentURI.CUString()
 	}
-	content.Body = msg.Attachment.FileName
+	content.Body = attach.FileName
 	content.Info = &event.FileInfo{
-		MimeType: msg.Attachment.GetMimeType(),
+		MimeType: attach.GetMimeType(),
 		Size:     len(data),
 	}
-	switch strings.Split(msg.Attachment.GetMimeType(), "/")[0] {
+	switch strings.Split(attach.GetMimeType(), "/")[0] {
 	case "image":
 		content.MsgType = event.MsgImage
 	case "video":
@@ -772,28 +814,65 @@ func (portal *Portal) HandleiMessageAttachment(msg *imessage.Message, intent *ap
 	return &content
 }
 
-func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Message) bool {
-	if portal.messageDedup == nil {
-		return false
+func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+	if msg.Attachments == nil {
+		return
 	}
-	portal.messageDedupLock.Lock()
-	dedupKey := msg.Text
-	if msg.Attachment != nil {
-		dedupKey = msg.Attachment.FileName
+	for index, attach := range msg.Attachments {
+		mediaContent := portal.handleIMAttachment(msg, attach, intent)
+		resp, err := portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
+		if err != nil {
+			portal.log.Errorfln("Failed to send attachment %s.%d: %v", msg.GUID, index, err)
+		} else {
+			portal.log.Debugfln("Handled iMessage attachment %s.%d -> %s", msg.GUID, index, resp.EventID)
+			dbMessage.MXID = resp.EventID
+			dbMessage.Part = index
+			dbMessage.Insert()
+			// Attachments set the part explicitly, but a potential caption after attachments won't,
+			// so pre-set the next part index here.
+			dbMessage.Part++
+		}
 	}
-	dedup, isDup := portal.messageDedup[strings.TrimSpace(dedupKey)]
-	if isDup && dedup.Timestamp.Before(msg.Time) {
-		delete(portal.messageDedup, dedupKey)
-		portal.messageDedupLock.Unlock()
-		portal.log.Debugfln("Received echo for Matrix message %s -> %s", dedup.EventID, msg.GUID)
-		dbMessage.MXID = dedup.EventID
-		portal.sendDeliveryReceipt(dbMessage.MXID)
+}
+
+func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
+	if len(msg.Text) > 0 {
+		content := &event.MessageEventContent{
+			MsgType: event.MsgText,
+			Body:    msg.Text,
+		}
+		portal.SetReply(content, msg)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
+		if err != nil {
+			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
+			return
+		}
+		portal.log.Debugfln("Handled iMessage text %s.%d -> %s", msg.GUID, dbMessage.Part, resp.EventID)
+		dbMessage.MXID = resp.EventID
 		dbMessage.Insert()
-		return true
-	} else {
-		portal.messageDedupLock.Unlock()
-		return false
 	}
+}
+
+func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *database.Message) *appservice.IntentAPI {
+	if msg.IsFromMe {
+		intent := portal.bridge.user.DoublePuppetIntent
+		if portal.isDuplicate(dbMessage, msg) {
+			return nil
+		} else if intent == nil {
+			portal.log.Debugfln("Dropping own message in %s as double puppeting is not initialized", msg.ChatGUID)
+			return nil
+		}
+		return intent
+	} else if len(msg.Sender.LocalID) > 0 {
+		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
+		if len(puppet.Displayname) == 0 {
+			portal.log.Debugfln("Displayname of %s is empty, syncing before handling %s", puppet.ID, msg.GUID)
+			puppet.Sync()
+		}
+		return puppet.Intent
+	}
+	return portal.MainIntent()
 }
 
 func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.EventID {
@@ -817,65 +896,19 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
 	dbMessage.Timestamp = msg.Time.UnixNano() / int64(time.Millisecond)
-	var intent *appservice.IntentAPI
-	if msg.IsFromMe {
-		intent = portal.bridge.user.DoublePuppetIntent
-		if intent == nil {
-			portal.log.Debugfln("Dropping own message in %s as double puppeting is not initialized", msg.ChatGUID)
-			return ""
-		}
-		if portal.isDuplicate(dbMessage, msg) {
-			return dbMessage.MXID
-		}
-	} else if len(msg.Sender.LocalID) > 0 {
-		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
-		if len(puppet.Displayname) == 0 {
-			portal.log.Debugfln("Displayname of %s is empty, syncing before handling %s", puppet.ID, msg.GUID)
-			puppet.Sync()
-		}
-		intent = puppet.Intent
-	} else {
-		intent = portal.MainIntent()
+
+	intent := portal.getIntentForMessage(msg, dbMessage)
+	if intent == nil {
+		return dbMessage.MXID
 	}
+
 	if msg.GroupActionType != imessage.GroupActionNone {
-		var groupUpdateEventID *id.EventID
-		switch msg.GroupActionType {
-		case imessage.GroupActionSetAvatar:
-			if msg.Attachment != nil {
-				groupUpdateEventID = portal.UpdateAvatar(msg.Attachment, intent)
-			}
-		case imessage.GroupActionRemoveAvatar:
-			// TODO
-		case imessage.GroupActionSetName:
-			groupUpdateEventID = portal.UpdateName(msg.NewGroupName, intent)
-		}
-		if groupUpdateEventID != nil {
-			dbMessage.MXID = *groupUpdateEventID
-		}
-	} else if mediaContent := portal.HandleiMessageAttachment(msg, intent); mediaContent != nil {
-		resp, err := portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
-		if err != nil {
-			portal.log.Errorfln("Failed to send attachment in message %s: %v", msg.GUID, err)
-			return ""
-		}
-		portal.log.Debugfln("Handled iMessage attachment in %s -> %s", msg.GUID, resp.EventID)
-		dbMessage.MXID = resp.EventID
+		portal.handleIMGroupAction(msg, dbMessage, intent)
+	} else {
+		portal.handleIMAttachments(msg, dbMessage, intent)
+		portal.handleIMText(msg, dbMessage, intent)
 	}
-	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
-	if len(msg.Text) > 0 {
-		content := &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    msg.Text,
-		}
-		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
-		if err != nil {
-			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
-			return ""
-		}
-		portal.log.Debugfln("Handled iMessage %s -> %s", msg.GUID, resp.EventID)
-		dbMessage.MXID = resp.EventID
-	}
+
 	if len(dbMessage.MXID) > 0 {
 		portal.sendDeliveryReceipt(dbMessage.MXID)
 		if !isBackfill && !msg.IsFromMe && msg.IsRead && portal.bridge.user.DoublePuppetIntent != nil {
@@ -884,7 +917,6 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 				portal.log.Warnln("Failed to mark %s as read after bridging: %v", dbMessage.MXID, err)
 			}
 		}
-		dbMessage.Insert()
 	} else {
 		portal.log.Debugfln("Unhandled message %s", msg.GUID)
 	}
