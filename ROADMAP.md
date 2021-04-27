@@ -7,7 +7,7 @@
 | Feature       | macOS | iOS | macOS (no SIP) |
 |---------------|-------|-----|----------------|
 | Plain text    | ✔️    | ✔️  | ✔️             |
-| Media/files   | ✔️    | ❌  | ✔️             |
+| Media/files   | ✔️    | ✔️  | ✔️             |
 | Replies       | 🛑    | ❌  | ❌             |
 | Reactions     | 🛑    | ❌  | ❌             |
 | Read receipts | 🛑    | ❌  | ❌             |
@@ -16,9 +16,9 @@
 | Feature             | macOS | iOS |
 |---------------------|-------|-----|
 | Plain text          | ✔️    | ✔️  |
-| Media/files         | ✔️    | ❌  |
-| Replies             | ✔️    | ❓️  |
-| Tapbacks            | ✔️    | ❓️  |
+| Media/files         | ✔️    | ✔️  |
+| Replies             | ✔️    | ❌  |
+| Tapbacks            | ✔️    | ❌  |
 | Own read receipts   | ✔️    | ❌  |
 | Other read receipts | ✔️    | ❌  |
 | User metadata       | ✔️    | ✔️  |
