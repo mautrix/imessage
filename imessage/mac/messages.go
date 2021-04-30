@@ -118,6 +118,11 @@ func (mac *macOSDatabase) prepareMessages() error {
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 	}
+	if !columnExists(mac.chatDB, "message", "thread_originator_part") {
+		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
+		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
+		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
+	}
 	if !columnExists(mac.chatDB, "message", "group_action_type") {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "message.group_action_type", "0")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "message.group_action_type", "0")
