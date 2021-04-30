@@ -45,8 +45,6 @@ FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 LEFT JOIN handle       ON message.handle_id = handle.ROWID
-LEFT JOIN message_attachment_join ON message_attachment_join.message_id = message.ROWID
-LEFT JOIN attachment              ON message_attachment_join.attachment_id = attachment.ROWID
 `
 
 const attachmentsQuery = `
