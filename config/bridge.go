@@ -99,7 +99,7 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 		if _, err := strconv.Atoi(username[1:]); err == nil {
 			username = username[1:]
 		}
-	} else if username != "(.+)" {
+	} else if username != "(.+)" && username != ".+" {
 		username = id.EncodeUserLocalpart(username)
 	}
 	var buf bytes.Buffer
