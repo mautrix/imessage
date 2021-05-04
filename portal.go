@@ -743,18 +743,20 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 	}
 	portal.messageDedupLock.Lock()
 	dedup, isDup := portal.messageDedup[strings.TrimSpace(dedupKey)]
-	if isDup && dedup.Timestamp.Before(msg.Time) {
+	if isDup {
 		delete(portal.messageDedup, dedupKey)
 		portal.messageDedupLock.Unlock()
 		portal.log.Debugfln("Received echo for Matrix message %s -> %s", dedup.EventID, msg.GUID)
+		if !dedup.Timestamp.Before(msg.Time) {
+			portal.log.Warnfln("Echo for Matrix message %s has lower timestamp than expected (message: %s, expected: %s)", msg.Time.Unix(), dedup.Timestamp.Unix())
+		}
 		dbMessage.MXID = dedup.EventID
 		dbMessage.Insert()
 		portal.sendDeliveryReceipt(dbMessage.MXID)
 		return true
-	} else {
-		portal.messageDedupLock.Unlock()
-		return false
 	}
+	portal.messageDedupLock.Unlock()
+	return false
 }
 
 func (portal *Portal) handleIMGroupAction(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
