@@ -81,6 +81,8 @@ func getRedirect(configURL string) (string, error) {
 		}
 		configURL = targetURL.String()
 		err = output(configURL, true)
+	} else if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("HEAD %s returned HTTP %d", sanitize(configURL), resp.StatusCode)
 	} else {
 		err = output(configURL, false)
 	}
@@ -109,6 +111,8 @@ func Download(configURL, saveTo string, outputRedirect bool) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to request GET %s: %w", sanitize(configURL), err)
+	} else if resp.StatusCode >= 400 {
+		return fmt.Errorf("GET %s returned HTTP %d", sanitize(configURL), resp.StatusCode)
 	}
 	defer resp.Body.Close()
 	file, err := os.OpenFile(saveTo, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
