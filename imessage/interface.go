@@ -17,12 +17,17 @@
 package imessage
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/mautrix-imessage/ipc"
+)
+
+var (
+	ErrNotLoggedIn = errors.New("you're not logged into iMessage")
 )
 
 type API interface {

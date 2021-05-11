@@ -423,11 +423,14 @@ func (mac *macOSDatabase) Start() error {
 	var handleLock sync.Mutex
 	nonSentMessages := make(map[string]bool)
 	minReceiptTime := time.Now()
-	var lastRowID int
-	err = mac.chatDB.QueryRow("SELECT COALESCE(MAX(ROWID), 0) FROM message").Scan(&lastRowID)
+	var lastRowIDSQL sql.NullInt32
+	err = mac.chatDB.QueryRow("SELECT MAX(ROWID) FROM message").Scan(&lastRowIDSQL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch last row ID: %w", err)
+	} else if !lastRowIDSQL.Valid {
+		return imessage.ErrNotLoggedIn
 	}
+	lastRowID := int(lastRowIDSQL.Int32)
 Loop:
 	for {
 		select {
