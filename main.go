@@ -262,10 +262,16 @@ func (bridge *Bridge) ipcPing(_ json.RawMessage) interface{} {
 	return PingResponse{true}
 }
 
+const defaultReconnectBackoff = 2 * time.Second
+const maxReconnectBackoff = 2 * time.Minute
+const reconnectBackoffReset = 5 * time.Minute
+
 func (bridge *Bridge) startWebsocket() {
 	onConnect := func() {
 		go bridge.MatrixHandler.SendBridgeStatus()
 	}
+	reconnectBackoff := defaultReconnectBackoff
+	lastDisconnect := time.Now().UnixNano()
 	for {
 		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy, onConnect)
 		if err == appservice.WebsocketManualStop {
@@ -280,8 +286,18 @@ func (bridge *Bridge) startWebsocket() {
 		if bridge.stopping {
 			return
 		}
-		bridge.Log.Infoln("Websocket disconnected, reconnecting in 5 seconds...")
-		time.Sleep(5 * time.Second)
+		now := time.Now().UnixNano()
+		if lastDisconnect + reconnectBackoffReset.Nanoseconds() < now {
+			reconnectBackoff = defaultReconnectBackoff
+		} else {
+			reconnectBackoff *= 2
+			if reconnectBackoff > maxReconnectBackoff {
+				reconnectBackoff = maxReconnectBackoff
+			}
+		}
+		lastDisconnect = now
+		bridge.Log.Infofln("Websocket disconnected, reconnecting in %d seconds...", reconnectBackoff.Seconds())
+		time.Sleep(reconnectBackoff)
 	}
 }
 
