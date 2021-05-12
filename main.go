@@ -27,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mattn/go-sqlite3"
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
 
@@ -40,7 +41,7 @@ import (
 	"go.mau.fi/mautrix-imessage/database/upgrades"
 	"go.mau.fi/mautrix-imessage/imessage"
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
-	_ "go.mau.fi/mautrix-imessage/imessage/mac"
+	"go.mau.fi/mautrix-imessage/imessage/mac"
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
@@ -83,7 +84,8 @@ var configOutputRedirect = flag.MakeFull("o", "output-redirect", "Whether or not
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
 var version = flag.MakeFull("v", "version", "View bridge version and quit.", "false").Bool()
-var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if database is too new").Default("false").Bool()
+var ignoreUnsupportedDatabase = flag.Make().LongKey("ignore-unsupported-database").Usage("Run even if database is too new.").Default("false").Bool()
+var checkPermissions = flag.MakeFull("p", "check-permissions", "Check for full disk access permissions and quit.", "false").Bool()
 var wantHelp, _ = flag.MakeHelpFlag()
 
 func (bridge *Bridge) GenerateRegistration() {
@@ -462,7 +464,7 @@ func (bridge *Bridge) Main() {
 func main() {
 	flag.SetHelpTitles(
 		"mautrix-imessage - A Matrix-iMessage puppeting bridge.",
-		"mautrix-imessage [-h] [-c <path>] [-r <path>] [-u <url>] [-o] [-g]")
+		"mautrix-imessage [-h] [-c <path>] [-r <path>] [-u <url>] [-o] [-g] [-p]")
 	err := flag.Parse()
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)
@@ -474,6 +476,23 @@ func main() {
 	} else if *version {
 		fmt.Println(VersionString)
 		return
+	} else if *checkPermissions {
+		err = mac.CheckPermissions()
+		if err != nil {
+			fmt.Println(err)
+		}
+		if errors.Is(err, imessage.ErrNotLoggedIn) {
+			os.Exit(41)
+		} else if sqliteError := (sqlite3.Error{}); errors.As(err, &sqliteError) {
+			if errors.Is(sqliteError.SystemErrno, os.ErrNotExist) {
+				os.Exit(42)
+			} else if errors.Is(sqliteError.SystemErrno, os.ErrPermission) {
+				os.Exit(43)
+			}
+		} else if err != nil {
+			os.Exit(49)
+		}
+		os.Exit(0)
 	}
 
 	if len(*configURL) > 0 {

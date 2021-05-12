@@ -100,14 +100,34 @@ JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 WHERE date_read>$1 AND is_read=1
 `
 
-func (mac *macOSDatabase) prepareMessages() error {
+func openChatDB() (*sql.DB, string, error) {
 	path, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return nil, "", fmt.Errorf("failed to get home directory: %w", err)
 	}
+	path = filepath.Join(path, "Library", "Messages", "chat.db")
+	db, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", path))
+	return db, path, err
+}
 
-	mac.chatDBPath = filepath.Join(path, "Library", "Messages", "chat.db")
-	mac.chatDB, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", mac.chatDBPath))
+func CheckPermissions() error {
+	db, _, err := openChatDB()
+	if err != nil {
+		return err
+	}
+	var lastRowIDSQL sql.NullInt32
+	err = db.QueryRow("SELECT MAX(ROWID) FROM message").Scan(&lastRowIDSQL)
+	if err != nil {
+		return err
+	} else if !lastRowIDSQL.Valid {
+		return imessage.ErrNotLoggedIn
+	}
+	return nil
+}
+
+func (mac *macOSDatabase) prepareMessages() error {
+	var err error
+	mac.chatDB, mac.chatDBPath, err = openChatDB()
 	if err != nil {
 		return err
 	}
