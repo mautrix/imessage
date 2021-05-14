@@ -4,26 +4,28 @@
 🛑 = feature is not possible
 
 ## Matrix → iMessage
-| Feature       | macOS | iOS | macOS (no SIP) |
-|---------------|-------|-----|----------------|
-| Plain text    | ✔️    | ✔️  | ✔️             |
-| Media/files   | ✔️    | ✔️  | ✔️             |
-| Replies       | 🛑    | ❌  | ❌             |
-| Reactions     | 🛑    | ❌  | ❌             |
-| Read receipts | 🛑    | ❌  | ❌             |
+| Feature              | macOS | iOS | macOS (no SIP) |
+|----------------------|-------|-----|----------------|
+| Plain text           | ✔️    | ✔️  | ✔️             |
+| Media/files          | ✔️    | ✔️  | ✔️             |
+| Replies              | 🛑    | ❌  | ❌             |
+| Reactions            | 🛑    | ❌  | ❌             |
+| Read receipts        | 🛑    | ❌  | ❌             |
+| Typing notifications | 🛑    | ❌  | ❌             |
 
 ## iMessage → Matrix
-| Feature             | macOS | iOS |
-|---------------------|-------|-----|
-| Plain text          | ✔️    | ✔️  |
-| Media/files         | ✔️    | ✔️  |
-| Replies             | ✔️    | ❌  |
-| Tapbacks            | ✔️    | ❌  |
-| Own read receipts   | ✔️    | ❌  |
-| Other read receipts | ✔️    | ❌  |
-| User metadata       | ✔️    | ✔️  |
-| Group metadata      | ✔️    | ✔️  |
-| Backfilling history | ✔️    | ✔️  |
+| Feature              | macOS | iOS |
+|----------------------|-------|-----|
+| Plain text           | ✔️    | ✔️  |
+| Media/files          | ✔️    | ✔️  |
+| Replies              | ✔️    | ❌  |
+| Tapbacks             | ✔️    | ❌  |
+| Own read receipts    | ✔️    | ❌  |
+| Other read receipts  | ✔️    | ❌  |
+| Typing notifications | 🛑    | ✔️  |
+| User metadata        | ✔️    | ✔️  |
+| Group metadata       | ✔️    | ✔️  |
+| Backfilling history  | ✔️    | ✔️  |
 
 ## Misc
 * [x] Automatic portal creation
