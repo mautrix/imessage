@@ -354,6 +354,7 @@ func (bridge *Bridge) StartupSync() {
 	for _, portal := range bridge.GetAllPortals() {
 		removed := portal.CleanupIfEmpty(true)
 		if !removed && len(portal.MXID) > 0 {
+			portal.log.Infoln("Syncing portal (startup sync, existing portal)")
 			portal.Sync(true)
 			alreadySynced[portal.GUID] = true
 		}
@@ -367,6 +368,7 @@ func (bridge *Bridge) StartupSync() {
 	for _, chatID := range chats {
 		if _, isSynced := alreadySynced[chatID]; !isSynced {
 			portal := bridge.GetPortalByGUID(chatID)
+			portal.log.Infoln("Syncing portal (startup sync, new portal)")
 			portal.Sync(true)
 		}
 	}
@@ -379,6 +381,7 @@ func (bridge *Bridge) PeriodicSync() {
 		bridge.Log.Infoln("Executing periodic chat/contact info sync")
 		for _, portal := range bridge.GetAllPortals() {
 			if len(portal.MXID) > 0 {
+				portal.log.Infoln("Syncing portal (periodic sync, existing portal)")
 				portal.Sync(false)
 			}
 		}

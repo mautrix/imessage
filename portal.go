@@ -165,9 +165,8 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 }
 
 func (portal *Portal) Sync(backfill bool) {
-	portal.log.Infoln("Syncing portal")
-
 	if len(portal.MXID) == 0 {
+		portal.log.Infoln("Creating Matrix room due to sync")
 		err := portal.CreateMatrixRoom()
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
@@ -204,9 +203,11 @@ func (portal *Portal) Sync(backfill bool) {
 	}
 
 	if backfill {
+		portal.log.Debugln("Locking backfill (sync)")
 		portal.lockBackfill()
 		portal.log.Debugln("Starting sync backfill")
 		portal.backfill()
+		portal.log.Debugln("Unlocking backfill (sync)")
 		portal.unlockBackfill()
 	}
 }
@@ -227,6 +228,7 @@ func (portal *Portal) handleMessageLoop() {
 
 func (portal *Portal) lockBackfill() {
 	portal.backfillLock.Lock()
+	portal.backfillWait.Wait()
 	portal.backfillWait.Add(1)
 	select {
 	case portal.backfillStart <- struct{}{}:
@@ -383,8 +385,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 		return err
 	}
 
-	portal.log.Infoln("Creating Matrix room")
-
+	portal.log.Debugln("Getting chat info to create Matrix room")
 	chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
 	if err != nil {
 		// If there's no chat info, the chat probably doesn't exist and we shouldn't auto-create a Matrix room for it.
@@ -464,6 +465,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 	if err != nil {
 		return err
 	}
+	portal.log.Debugln("Locking backfill (create)")
 	portal.lockBackfill()
 	portal.MXID = resp.RoomID
 	portal.Update()
@@ -493,8 +495,9 @@ func (portal *Portal) CreateMatrixRoom() error {
 	}
 	go func() {
 		portal.log.Debugln("Starting initial backfill")
-		defer portal.unlockBackfill()
 		portal.backfill()
+		portal.log.Debugln("Unlocking backfill (create)")
+		portal.unlockBackfill()
 	}()
 	return nil
 }
