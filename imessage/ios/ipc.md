@@ -1,6 +1,6 @@
 # iMessage bridge protocol
 
-## Setup
+## Setup (iOS/Brooklyn)
 The bridge needs a config file that has the homeserver details, access tokens
 and other such things. Brooklyn needs to get that config file from somewhere
 and point the bridge at it when running. The setup UX should just be scanning
@@ -8,16 +8,19 @@ a QR code.
 
 1. User scans QR code with Brooklyn on iPhone. The QR code contains a URL,
    which may end in a newline. Strip away the newline if necessary.
-2. Make a HEAD (or GET) request to the URL in the QR code.
-   * If the response is a redirect, store the target URL.
-   * If not, store the URL in the QR code.
-2. Download the config from the stored URL.
-3. Start the mautrix-imessage subprocess, pointing it to the downloaded config
-   file using the `-c` flag.
+2. Start the mautrix-imessage subprocess with `--url <url from QR> --output-redirect`.
+   The second flag tells the bridge to follow potential redirects in the URL
+   and output the direct URL using the `config_url` IPC command.
+3. Save the URL from the output and just pass `--url <saved url>` on future runs.
 
-Whenever the app is updated, the config should be refetched from the stored URL.
+When the bridge is started, it will download the config from the given URL and
+save it to the file specified with the `-c` flag (defaults to `config.yaml`).
+
 There should also be some "logout" button that forgets the URL and deletes the
 config file.
+
+## Setup (macOS/imessage-rest)
+...
 
 ## IPC
 The protocol is based on sending JSON objects separated by newlines (`\n`).
