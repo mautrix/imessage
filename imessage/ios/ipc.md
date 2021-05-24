@@ -180,3 +180,7 @@ Another error response:
   * Same info as `get_chat` responses: `title` and `members`, plus a `chat_guid` field to identify the chat.
 * Contact info changes (request type `contact`)
   * Same info as `get_contact` responses, plus a `user_guid` field to identify the contact.
+* Outgoing message status (request type `send_message_status`)
+  * `guid` (str, UUID) - The GUID of the message that the status update is about.
+  * `status` (str, enum) - The current status of the message.
+    * TODO: allowed values
