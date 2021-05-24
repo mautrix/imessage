@@ -64,7 +64,7 @@ Success response:
   "id": 123,
   "data": {
     "title": "iMessage testing",
-	"members": ["+1234567890", "+3581234567", "user@example.com"]
+    "members": ["+1234567890", "+3581234567", "user@example.com"]
   }
 }
 ```
@@ -77,7 +77,7 @@ Error response:
   "id": 123,
   "data": {
     "code": "not_found",
-	"message": "That chat does not exist"
+    "message": "That chat does not exist"
   }
 }
 ```
