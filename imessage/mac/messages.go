@@ -465,11 +465,11 @@ Loop:
 				handleLock.Lock()
 				defer handleLock.Unlock()
 				time.Sleep(50 * time.Millisecond)
+				dropEvents = false
 				newMessages, err := mac.getMessagesSinceRowID(lastRowID)
 				if err != nil {
 					mac.log.Warnln("Error reading messages after fsevent:", err)
 				}
-				dropEvents = false
 				for _, message := range newMessages {
 					if message.RowID > lastRowID {
 						lastRowID = message.RowID
