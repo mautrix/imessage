@@ -83,15 +83,23 @@ type Processor struct {
 	reqID      int32
 }
 
-func NewProcessor(logger log.Logger) *Processor {
+func newProcessor(lock *sync.Mutex, output io.Writer, input io.Reader, logger log.Logger) *Processor {
 	return &Processor{
-		lock:     &logger.(*log.BasicLogger).StdoutLock,
-		log:      logger.Sub("IPC"),
-		stdout:   json.NewEncoder(os.Stdout),
-		stdin:    json.NewDecoder(os.Stdin),
+		lock:     lock,
+		log:      logger,
+		stdout:   json.NewEncoder(output),
+		stdin:    json.NewDecoder(input),
 		handlers: make(map[Command]HandlerFunc),
 		waiters:  make(map[int]chan<- *Message),
 	}
+}
+
+func NewCustomProcessor(output io.Writer, input io.Reader, logger log.Logger) *Processor {
+	return newProcessor(&sync.Mutex{}, output, input, logger.Sub("IPC"))
+}
+
+func NewStdioProcessor(logger log.Logger) *Processor {
+	return newProcessor(&logger.(*log.BasicLogger).StdoutLock, os.Stdout, os.Stdin, logger.Sub("IPC"))
 }
 
 func (ipc *Processor) Loop() {

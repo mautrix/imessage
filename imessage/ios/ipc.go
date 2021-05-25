@@ -49,6 +49,11 @@ func timeToFloat(time time.Time) float64 {
 	return float64(time.Unix()) + float64(time.Nanosecond())/1e9
 }
 
+type APIWithIPC interface {
+	imessage.API
+	SetIPC(*ipc.Processor)
+}
+
 type iOSConnector struct {
 	IPC         *ipc.Processor
 	log         log.Logger
@@ -57,18 +62,18 @@ type iOSConnector struct {
 	typingChan  chan *imessage.TypingNotification
 }
 
-func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
-	ios := &iOSConnector{
-		IPC: bridge.GetIPC(),
-		log: bridge.GetLog().Sub("iMessage").Sub("iOS"),
-
+func NewPlainiOSConnector(logger log.Logger) APIWithIPC {
+	return &iOSConnector{
+		log:         logger,
 		messageChan: make(chan *imessage.Message, 256),
 		receiptChan: make(chan *imessage.ReadReceipt, 32),
 		typingChan:  make(chan *imessage.TypingNotification, 32),
 	}
-	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
-	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
-	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
+}
+
+func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
+	ios := NewPlainiOSConnector(bridge.GetLog().Sub("iMessage").Sub("iOS"))
+	ios.SetIPC(bridge.GetIPC())
 	return ios, nil
 }
 
@@ -76,8 +81,18 @@ func init() {
 	imessage.Implementations["ios"] = NewiOSConnector
 }
 
-func (ios *iOSConnector) Start() error { return nil }
-func (ios *iOSConnector) Stop()        {}
+func (ios *iOSConnector) SetIPC(proc *ipc.Processor) {
+	ios.IPC = proc
+}
+
+func (ios *iOSConnector) Start() error {
+	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
+	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
+	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
+	return nil
+}
+
+func (ios *iOSConnector) Stop() {}
 
 func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 	if !message.IsFromMe {

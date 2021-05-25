@@ -42,6 +42,7 @@ import (
 	"go.mau.fi/mautrix-imessage/imessage"
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
 	"go.mau.fi/mautrix-imessage/imessage/mac"
+	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
@@ -223,7 +224,7 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Debugln("Initializing Matrix event handler")
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
 
-	bridge.IPC = ipc.NewProcessor(bridge.Log)
+	bridge.IPC = ipc.NewStdioProcessor(bridge.Log)
 	bridge.IPC.SetHandler("reset-encryption", bridge.ipcResetEncryption)
 	bridge.IPC.SetHandler("ping", bridge.ipcPing)
 	bridge.IPC.SetHandler("stop", bridge.ipcStop)
@@ -289,7 +290,7 @@ func (bridge *Bridge) startWebsocket() {
 			return
 		}
 		now := time.Now().UnixNano()
-		if lastDisconnect + reconnectBackoffReset.Nanoseconds() < now {
+		if lastDisconnect+reconnectBackoffReset.Nanoseconds() < now {
 			reconnectBackoff = defaultReconnectBackoff
 		} else {
 			reconnectBackoff *= 2

@@ -63,6 +63,8 @@ var Implementations = make(map[string]func(Bridge) (API, error))
 
 type PlatformConfig struct {
 	Platform string `yaml:"platform"`
+
+	IMRestPath string `yaml:"imessage_rest_path"`
 }
 
 func NewAPI(bridge Bridge) (API, error) {
