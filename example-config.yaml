@@ -27,8 +27,15 @@ appservice:
     as_token: "This value is generated when generating the registration"
     hs_token: "This value is generated when generating the registration"
 
+# iMessage connection config
 imessage:
+    # Available platforms:
+    # * mac: Standard Mac connector, requires full disk access and will ask for AppleScript and contacts permission
+    # * ios: Jailbreak iOS connector when using with Brooklyn
+    # * mac-nosip: Mac without SIP connector, runs imessage-rest as a subprocess
     platform: mac
+    # imessage-rest executable for mac-nosip connector
+    #imessage_rest_path: ...
 
 # Bridge config
 bridge:
