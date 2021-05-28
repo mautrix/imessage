@@ -336,7 +336,7 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 	go bridge.MatrixHandler.HandleWebsocketCommands()
-	bridge.Log.Debugln("Stating iMessage handler")
+	bridge.Log.Debugln("Starting iMessage handler")
 	go bridge.IMHandler.Start()
 	bridge.Log.Debugln("Starting IPC loop")
 	go bridge.IPC.Loop()

@@ -50,6 +50,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 }
 
 func (mac *MacNoSIPConnector) Start() error {
+	mac.log.Debugln("Preparing to execute", mac.path)
 	mac.proc = exec.Command(mac.path)
 
 	stdout, err := mac.proc.StdoutPipe()
@@ -67,6 +68,7 @@ func (mac *MacNoSIPConnector) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to start imessage-rest: %w", err)
 	}
+	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
 	return mac.APIWithIPC.Start()
 }
 
