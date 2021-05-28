@@ -70,6 +70,7 @@ func (mac *MacNoSIPConnector) Start() error {
 	}
 
 	ipcProc := ipc.NewCustomProcessor(stdin, stdout, mac.log)
+	go ipcProc.Loop()
 	mac.SetIPC(ipcProc)
 
 	err = mac.proc.Start()
