@@ -109,7 +109,7 @@ func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{
 	var message LogLine
 	err := json.Unmarshal(data, &message)
 	if err != nil {
-		mac.log.Warnln("Failed to parse incoming log line: %v (data: %s)", err, data)
+		mac.log.Warnfln("Failed to parse incoming log line: %v (data: %s)", err, data)
 		return nil
 	}
 	logger := mac.procLog
