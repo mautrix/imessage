@@ -19,10 +19,12 @@
 package mac_nosip
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,19 +35,24 @@ import (
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
+const IncomingLog ipc.Command = "log"
+
 type MacNoSIPConnector struct {
 	ios.APIWithIPC
-	path string
-	proc *exec.Cmd
-	log  log.Logger
+	path    string
+	proc    *exec.Cmd
+	log     log.Logger
+	procLog log.Logger
 }
 
 func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	logger := bridge.GetLog().Sub("iMessage").Sub("Mac-noSIP")
+	processLogger := bridge.GetLog().Sub("iMessage").Sub("Barcelona")
 	return &MacNoSIPConnector{
 		APIWithIPC: ios.NewPlainiOSConnector(logger),
 		path:       bridge.GetConnectorConfig().IMRestPath,
 		log:        logger,
+		procLog:    processLogger,
 	}, nil
 }
 
@@ -62,14 +69,54 @@ func (mac *MacNoSIPConnector) Start() error {
 		return fmt.Errorf("failed to get subprocess stdin pipe: %w", err)
 	}
 
-	mac.SetIPC(ipc.NewCustomProcessor(stdin, stdout, mac.log))
+	ipcProc := ipc.NewCustomProcessor(stdin, stdout, mac.log)
+	mac.SetIPC(ipcProc)
 
 	err = mac.proc.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start imessage-rest: %w", err)
 	}
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
+	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
 	return mac.APIWithIPC.Start()
+}
+
+type LogLine struct {
+	Message string `json:"message"`
+	Level   string `json:"level"`
+	Module  string `json:"module"`
+}
+
+func getLevelFromName(name string) log.Level {
+	switch strings.ToUpper(name) {
+	case "DEBUG":
+		return log.LevelDebug
+	case "INFO":
+		return log.LevelInfo
+	case "WARN":
+		return log.LevelWarn
+	case "ERROR":
+		return log.LevelError
+	case "FATAL":
+		return log.LevelFatal
+	default:
+		return log.Level{Name: name, Color: -1, Severity: 1}
+	}
+}
+
+func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{} {
+	var message LogLine
+	err := json.Unmarshal(data, &message)
+	if err != nil {
+		mac.log.Warnln("Failed to parse incoming log line: %v (data: %s)", err, data)
+		return nil
+	}
+	logger := mac.procLog
+	if len(message.Module) > 0 {
+		logger = logger.Sub(message.Module)
+	}
+	logger.Log(getLevelFromName(message.Level), message.Message)
+	return nil
 }
 
 func (mac *MacNoSIPConnector) Stop() {
