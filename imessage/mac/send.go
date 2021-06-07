@@ -34,6 +34,7 @@ import (
 const sendMessage = `
 on run {targetChatID, messageText}
 	tell application "Messages"
+		activate
 		set theBuddy to a reference to chat id targetChatID
 		send messageText to theBuddy
 	end tell
@@ -43,6 +44,7 @@ end run
 const sendFile = `
 on run {targetChatID, filePath}
 	tell application "Messages"
+		activate
 		set theBuddy to a reference to chat id targetChatID
 		set theFile to (filePath as POSIX file)
 		send theFile to theBuddy
