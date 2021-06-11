@@ -163,7 +163,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 
 	if !hasPuppets && (len(mx.bridge.user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
 		mx.bridge.user.SetManagementRoom(evt.RoomID)
-		_, _ = intent.SendNotice(mx.bridge.user.ManagementRoom, "This room has been registered as your bridge management/status room. Send `help` to get a list of commands.")
+		_, _ = intent.SendNotice(mx.bridge.user.ManagementRoom, "This room has been registered as your bridge management/status room. Don't send `help` to get a list of commands, because this bridge doesn't support commands yet.")
 		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
 	}
 }
