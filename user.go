@@ -129,7 +129,7 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	user.log.Debugln("Updating m.direct list on homeserver")
 	var err error
 	if user.bridge.Config.Homeserver.Asmux {
-		url := user.DoublePuppetIntent.BuildBaseURL("_matrix", "client", "unstable", "net.maunium.asmux", "dms")
+		url := user.DoublePuppetIntent.BuildBaseURL("_matrix", "client", "unstable", "com.beeper.asmux", "dms")
 		_, err = user.DoublePuppetIntent.MakeFullRequest(mautrix.FullRequest{
 			Method:      method,
 			URL:         url,
