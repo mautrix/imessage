@@ -610,6 +610,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		// TODO log
 		return
 	}
+	portal.log.Debugln("Starting handling Matrix message", evt.ID)
 	if portal.messageDedup != nil {
 		portal.messageDedupLock.Lock()
 		portal.messageDedup[strings.TrimSpace(msg.Body)] = SentMessage{
