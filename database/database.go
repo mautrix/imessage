@@ -19,7 +19,6 @@ package database
 import (
 	"database/sql"
 
-	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
 	log "maunium.net/go/maulogger/v2"
