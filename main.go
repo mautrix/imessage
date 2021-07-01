@@ -27,7 +27,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mattn/go-sqlite3"
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
 
@@ -41,8 +40,6 @@ import (
 	"go.mau.fi/mautrix-imessage/database/upgrades"
 	"go.mau.fi/mautrix-imessage/imessage"
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
-	"go.mau.fi/mautrix-imessage/imessage/mac"
-	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
@@ -481,22 +478,8 @@ func main() {
 		fmt.Println(VersionString)
 		return
 	} else if *checkPermissions {
-		err = mac.CheckPermissions()
-		if err != nil {
-			fmt.Println(err)
-		}
-		if errors.Is(err, imessage.ErrNotLoggedIn) {
-			os.Exit(41)
-		} else if sqliteError := (sqlite3.Error{}); errors.As(err, &sqliteError) {
-			if errors.Is(sqliteError.SystemErrno, os.ErrNotExist) {
-				os.Exit(42)
-			} else if errors.Is(sqliteError.SystemErrno, os.ErrPermission) {
-				os.Exit(43)
-			}
-		} else if err != nil {
-			os.Exit(49)
-		}
-		os.Exit(0)
+		checkMacPermissions()
+		return
 	}
 
 	if len(*configURL) > 0 {
