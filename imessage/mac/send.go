@@ -34,8 +34,7 @@ import (
 const sendMessage = `
 on run {targetChatID, messageText}
 	tell application "Messages"
-		set theBuddy to a reference to chat id targetChatID
-		send messageText to theBuddy
+		send messageText to chat id targetChatID
 	end tell
 end run
 `
@@ -43,9 +42,7 @@ end run
 const sendFile = `
 on run {targetChatID, filePath}
 	tell application "Messages"
-		set theBuddy to a reference to chat id targetChatID
-		set theFile to (filePath as POSIX file)
-		send theFile to theBuddy
+		send filePath as POSIX file to chat id targetChatID
 	end tell
 end run
 `
