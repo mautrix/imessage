@@ -79,6 +79,7 @@ func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
 
 func init() {
 	imessage.Implementations["ios"] = NewiOSConnector
+	imessage.Implementations["android"] = NewiOSConnector
 }
 
 func (ios *iOSConnector) SetIPC(proc *ipc.Processor) {

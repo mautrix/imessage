@@ -348,8 +348,14 @@ func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
 		},
 	}
 	if portal.Identifier.Service == "SMS" {
-		bridgeInfo.Protocol.ID = "imessage-sms"
-		bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
+		if portal.bridge.Config.IMessage.Platform == "android" {
+			bridgeInfo.Protocol.ID = "android-sms"
+			bridgeInfo.Protocol.DisplayName = "SMS"
+			bridgeInfo.Protocol.ExternalURL = ""
+		} else {
+			bridgeInfo.Protocol.ID = "imessage-sms"
+			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
+		}
 	}
 	bridgeInfoStateKey := fmt.Sprintf("fi.mau.imessage://%s/%s",
 		strings.ToLower(portal.Identifier.Service), portal.GUID)
