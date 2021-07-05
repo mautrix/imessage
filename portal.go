@@ -566,6 +566,7 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 		eventType = event.EventEncrypted
 		wrappedContent.Parsed = encrypted
 	}
+	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	if timestamp == 0 {
 		return intent.SendMessageEvent(portal.MXID, eventType, &wrappedContent)
 	} else {
