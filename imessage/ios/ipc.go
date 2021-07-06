@@ -165,7 +165,7 @@ func (ios *iOSConnector) handleIncomingTypingNotification(data json.RawMessage) 
 
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
-	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetMessagesAfterRequest{
+	err := ios.IPC.Request(context.Background(), ReqGetMessagesAfter, &GetMessagesAfterRequest{
 		ChatGUID:  chatID,
 		Timestamp: timeToFloat(minDate),
 	}, &resp)
