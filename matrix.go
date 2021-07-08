@@ -49,6 +49,7 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	bridge.EventProcessor.On(event.EventReaction, handler.HandleReaction)
 	bridge.EventProcessor.On(event.EventEncrypted, handler.HandleEncrypted)
 	bridge.EventProcessor.On(event.EventSticker, handler.HandleMessage)
+	bridge.EventProcessor.On(event.EventRedaction, handler.HandleRedaction)
 	bridge.EventProcessor.On(event.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(event.StateEncryption, handler.HandleEncryption)
 	return handler
@@ -311,5 +312,16 @@ func (mx *MatrixHandler) HandleReaction(evt *event.Event) {
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil {
 		portal.HandleMatrixReaction(evt)
+	}
+}
+
+func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {
+	if mx.shouldIgnoreEvent(evt) {
+		return
+	}
+
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	if portal != nil {
+		portal.HandleMatrixRedaction(evt)
 	}
 }

@@ -49,7 +49,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	logger := bridge.GetLog().Sub("iMessage").Sub("Mac-noSIP")
 	processLogger := bridge.GetLog().Sub("iMessage").Sub("Barcelona")
 	return &MacNoSIPConnector{
-		APIWithIPC: ios.NewPlainiOSConnector(logger),
+		APIWithIPC: ios.NewPlainiOSConnector(logger, false),
 		path:       bridge.GetConnectorConfig().IMRestPath,
 		log:        logger,
 		procLog:    processLogger,

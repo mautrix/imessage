@@ -1,6 +1,6 @@
 # iMessage bridge protocol
 
-## Setup (iOS/Brooklyn)
+## Setup (iOS/Brooklyn, Android SMS)
 The bridge needs a config file that has the homeserver details, access tokens
 and other such things. Brooklyn needs to get that config file from somewhere
 and point the bridge at it when running. The setup UX should just be scanning
@@ -111,8 +111,10 @@ Another error response:
 * Send (or remove) a tapback (request type `send_tapback`)
   * `chat_guid` (str) - Chat identifier
   * `target_guid` (str) - The target message ID
+  * `target_part` (int) - The target message part index
   * `type` (int) - The type of tapback to send
   * Response should contain the sent tapback `guid` and `timestamp`
+  * Removing tapbacks is done by sending a 300x type instead of 200x (same as iMessage internally)
 * Send a read receipt (request type `send_read_receipt`)
   * `chat_guid` (str) - Chat identifier
   * `read_up_to` (str, UUID) - The GUID of the last read message

@@ -45,7 +45,7 @@ type API interface {
 
 	SendMessage(chatID, text string) (*SendResponse, error)
 	SendFile(chatID, filename string, data []byte) (*SendResponse, error)
-	SendTapback(chatID, targetGUID string, tapback TapbackType, remove bool) (*SendResponse, error)
+	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
 

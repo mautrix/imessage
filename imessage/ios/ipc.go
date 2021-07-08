@@ -60,19 +60,21 @@ type iOSConnector struct {
 	messageChan chan *imessage.Message
 	receiptChan chan *imessage.ReadReceipt
 	typingChan  chan *imessage.TypingNotification
+	isAndroid   bool
 }
 
-func NewPlainiOSConnector(logger log.Logger) APIWithIPC {
+func NewPlainiOSConnector(logger log.Logger, isAndroid bool) APIWithIPC {
 	return &iOSConnector{
 		log:         logger,
 		messageChan: make(chan *imessage.Message, 256),
 		receiptChan: make(chan *imessage.ReadReceipt, 32),
 		typingChan:  make(chan *imessage.TypingNotification, 32),
+		isAndroid:   isAndroid,
 	}
 }
 
 func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
-	ios := NewPlainiOSConnector(bridge.GetLog().Sub("iMessage").Sub("iOS"))
+	ios := NewPlainiOSConnector(bridge.GetLog().Sub("iMessage").Sub("iOS"), bridge.GetConnectorConfig().Platform == "android")
 	ios.SetIPC(bridge.GetIPC())
 	return ios, nil
 }
@@ -264,7 +266,7 @@ func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessa
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendTapback(chatID, targetGUID string, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
 	if remove {
 		tapback += imessage.TapbackRemoveOffset
 	}
@@ -272,6 +274,7 @@ func (ios *iOSConnector) SendTapback(chatID, targetGUID string, tapback imessage
 	err := ios.IPC.Request(context.Background(), ReqSendTapback, &SendTapbackRequest{
 		ChatGUID:   chatID,
 		TargetGUID: targetGUID,
+		TargetPart: targetPart,
 		Type:       tapback,
 	}, &resp)
 	if err != nil {
@@ -297,8 +300,8 @@ func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool) erro
 func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:    true,
-		SendTapbacks:            true,
-		SendReadReceipts:        true,
-		SendTypingNotifications: true,
+		SendTapbacks:            !ios.isAndroid,
+		SendReadReceipts:        !ios.isAndroid,
+		SendTypingNotifications: !ios.isAndroid,
 	}
 }

@@ -48,6 +48,7 @@ type SendMediaRequest struct {
 type SendTapbackRequest struct {
 	ChatGUID   string               `json:"chat_guid"`
 	TargetGUID string               `json:"target_guid"`
+	TargetPart int                  `json:"target_part"`
 	Type       imessage.TapbackType `json:"type"`
 }
 

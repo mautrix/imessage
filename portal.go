@@ -690,7 +690,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		portal.log.Debugfln("Unknown reaction target %s", reaction.RelatesTo.EventID)
 	} else if existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, target.Part, ""); existing != nil && existing.Type == tapbackType {
 		portal.log.Debugfln("Ignoring outgoing tapback to %s/%s: type is same", reaction.RelatesTo.EventID, target.GUID)
-	} else if resp, err := portal.bridge.IM.SendTapback(portal.GUID, target.GUID, tapbackType, false); err != nil {
+	} else if resp, err := portal.bridge.IM.SendTapback(portal.GUID, target.GUID, target.Part, tapbackType, false); err != nil {
 		portal.log.Errorfln("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
 	} else if existing == nil {
 		// TODO should tapback GUID and timestamp be stored?
@@ -711,6 +711,20 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		existing.Type = tapbackType
 		existing.MXID = evt.ID
 		existing.Update()
+	}
+}
+
+func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
+	redactedTapback := portal.bridge.DB.Tapback.GetByMXID(evt.Redacts)
+	if redactedTapback != nil {
+		portal.log.Debugln("Starting handling of Matrix redaction", evt.ID)
+		redactedTapback.Delete()
+		_, err := portal.bridge.IM.SendTapback(portal.GUID, redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, true)
+		if err != nil {
+			portal.log.Errorfln("Failed to send removal of tapback %d to %s/%d: %v", redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart, err)
+		} else {
+			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
+		}
 	}
 }
 
