@@ -694,7 +694,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		portal.log.Errorfln("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
 	} else if existing == nil {
 		// TODO should tapback GUID and timestamp be stored?
-		portal.log.Debugln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
+		portal.log.Debugfln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
 		tapback.MessageGUID = target.GUID
@@ -703,7 +703,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		tapback.MXID = evt.ID
 		tapback.Insert()
 	} else {
-		portal.log.Debugln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
+		portal.log.Debugfln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
 		_, err = portal.MainIntent().RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to redact old tapback %s to %s: %v", existing.MXID, target.MXID, err)
