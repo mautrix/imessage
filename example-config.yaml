@@ -84,6 +84,8 @@ bridge:
         # This will cause the bridge bot to be in private chats for the encryption to work properly.
         # It is recommended to also set private_chat_portal_meta to true when using this.
         default: false
+        # Whether or not to use MSC2409/MSC3202 instead of /sync long polling for receiving encryption-related data.
+        appservice: false
         # Options for automatic key sharing.
         key_sharing:
             # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.

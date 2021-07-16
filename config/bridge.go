@@ -44,6 +44,8 @@ type BridgeConfig struct {
 		Allow   bool `yaml:"allow"`
 		Default bool `yaml:"default"`
 
+		Appservice bool `yaml:"appservice"`
+
 		KeySharing struct {
 			Allow               bool `yaml:"allow"`
 			RequireCrossSigning bool `yaml:"require_cross_signing"`

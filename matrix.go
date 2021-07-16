@@ -17,7 +17,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -62,15 +61,14 @@ type BridgeStatus struct {
 }
 
 func (mx *MatrixHandler) SendBridgeStatus() {
-	statusData, _ := json.Marshal(BridgeStatus{
-		OK:        true,
-		Timestamp: time.Now().Unix(),
-		TTL:       600,
-	})
 	mx.log.Debugln("Sending bridge status to server")
-	err := mx.bridge.AS.SendWebsocket(appservice.WebsocketCommand{
+	err := mx.bridge.AS.SendWebsocket(&appservice.WebsocketRequest{
 		Command: "bridge_status",
-		Data:    statusData,
+		Data:    &BridgeStatus{
+			OK:        true,
+			Timestamp: time.Now().Unix(),
+			TTL:       600,
+		},
 	})
 	if err != nil {
 		mx.log.Warnln("Error sending pong status:", err)
@@ -81,16 +79,11 @@ func (mx *MatrixHandler) HandleWebsocketCommands() {
 	for cmd := range mx.as.WebsocketCommands {
 		switch cmd.Command {
 		case "ping":
-			responseData, _ := json.Marshal(BridgeStatus{
+			err := mx.bridge.AS.SendWebsocket(cmd.MakeResponse(&BridgeStatus{
 				OK:        true,
 				Timestamp: time.Now().Unix(),
 				TTL:       600,
-			})
-			err := mx.bridge.AS.SendWebsocket(appservice.WebsocketCommand{
-				ReqID:   cmd.ReqID,
-				Command: "response",
-				Data:    responseData,
-			})
+			}))
 			if err != nil {
 				mx.log.Warnfln("Error responding to command %s %d: %v", cmd.Command, cmd.ReqID, err)
 			} else {

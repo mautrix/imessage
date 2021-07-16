@@ -174,7 +174,17 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	return client, nil
 }
 
+type StartSyncRequest struct {
+	AccessToken string      `json:"access_token"`
+	DeviceID    id.DeviceID `json:"device_id"`
+}
+
 func (helper *CryptoHelper) Start() {
+	if helper.bridge.Config.Bridge.Encryption.Appservice {
+		helper.bridge.AS.Registration.EphemeralEvents = true
+		helper.mach.AddAppserviceListener(helper.bridge.EventProcessor, helper.bridge.AS)
+		return
+	}
 	helper.syncDone.Add(1)
 	defer helper.syncDone.Done()
 	helper.log.Debugln("Starting syncer for receiving to-device messages")
@@ -231,10 +241,16 @@ func (helper *CryptoHelper) Reset() {
 	helper.log.Infoln("End-to-bridge encryption successfully reset")
 }
 
+func (helper *CryptoHelper) Client() *mautrix.Client {
+	return helper.client
+}
+
 func (helper *CryptoHelper) Stop() {
 	helper.log.Debugln("CryptoHelper.Stop() called, stopping bridge bot sync")
 	helper.client.StopSync()
-	helper.cancelSync()
+	if helper.cancelSync != nil {
+		helper.cancelSync()
+	}
 	helper.syncDone.Wait()
 }
 

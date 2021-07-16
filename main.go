@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -142,6 +143,7 @@ type Crypto interface {
 	Init() error
 	Start()
 	Stop()
+	Client() *mautrix.Client
 }
 
 func NewBridge() *Bridge {
@@ -269,6 +271,22 @@ const reconnectBackoffReset = 5 * time.Minute
 func (bridge *Bridge) startWebsocket() {
 	onConnect := func() {
 		go bridge.MatrixHandler.SendBridgeStatus()
+		if bridge.Config.Bridge.Encryption.Appservice && bridge.Crypto != nil {
+			resp := map[string]interface{}{}
+			bridge.Log.Debugln("Sending /sync start request through websocket")
+			err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
+				Command: "start_sync",
+				Data: &StartSyncRequest{
+					AccessToken: bridge.Crypto.Client().AccessToken,
+					DeviceID:    bridge.Crypto.Client().DeviceID,
+				},
+			}, &resp)
+			if err != nil {
+				bridge.Log.Errorln("Failed to request sync proxy to start syncing:", err)
+			} else {
+				bridge.Log.Debugln("Started receiving encryption data with sync proxy:", resp)
+			}
+		}
 	}
 	reconnectBackoff := defaultReconnectBackoff
 	lastDisconnect := time.Now().UnixNano()
@@ -296,8 +314,16 @@ func (bridge *Bridge) startWebsocket() {
 			}
 		}
 		lastDisconnect = now
-		bridge.Log.Infofln("Websocket disconnected, reconnecting in %d seconds...", reconnectBackoff.Seconds())
+		bridge.Log.Infofln("Websocket disconnected, reconnecting in %d seconds...", int(reconnectBackoff.Seconds()))
 		time.Sleep(reconnectBackoff)
+	}
+}
+
+func (bridge *Bridge) connectToiMessage() {
+	err := bridge.IM.Start()
+	if err != nil {
+		bridge.Log.Fatalln("Error in iMessage connection:", err)
+		os.Exit(40)
 	}
 }
 
@@ -311,7 +337,7 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Checking connection to homeserver")
 	bridge.ensureConnection()
 	if bridge.Crypto != nil {
-		err := bridge.Crypto.Init()
+		err = bridge.Crypto.Init()
 		if err != nil {
 			bridge.Log.Fatalln("Error initializing end-to-bridge encryption:", err)
 			os.Exit(19)
@@ -321,13 +347,7 @@ func (bridge *Bridge) Start() {
 	bridge.user = bridge.loadDBUser()
 	bridge.user.initDoublePuppet()
 	bridge.Log.Debugln("Connecting to iMessage")
-	go func() {
-		err := bridge.IM.Start()
-		if err != nil {
-			bridge.Log.Fatalln("Error in iMessage connection:", err)
-			os.Exit(40)
-		}
-	}()
+	go bridge.connectToiMessage()
 	bridge.Log.Debugln("Starting application service websocket")
 	go bridge.startWebsocket()
 	bridge.Log.Debugln("Starting event processor")
@@ -431,8 +451,11 @@ func (bridge *Bridge) internalStop() {
 	if bridge.Crypto != nil {
 		bridge.Crypto.Stop()
 	}
+	bridge.Log.Debugln("Stopping transaction websocket")
 	bridge.AS.StopWebsocket(appservice.WebsocketManualStop)
+	bridge.Log.Debugln("Stopping event processor")
 	bridge.EventProcessor.Stop()
+	bridge.Log.Debugln("Stopping iMessage connector")
 	bridge.IMHandler.Stop()
 }
 
