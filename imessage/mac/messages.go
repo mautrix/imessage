@@ -71,7 +71,7 @@ LIMIT $2
 `
 
 const groupActionQuery = `
-SELECT attachment.filename, attachment.mime_type, attachment.transfer_name
+SELECT attachment.filename, COALESCE(attachment.mime_type, ''), attachment.transfer_name
 FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
