@@ -998,6 +998,9 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 		groupUpdateEventID = portal.UpdateName(msg.NewGroupName, intent)
 	case imessage.ItemTypeAvatar:
 		groupUpdateEventID = portal.handleIMAvatarChange(msg, intent)
+	default:
+		portal.log.Debugfln("Dropping message %s with unknown item type %d", msg.GUID, msg.ItemType)
+		return ""
 	}
 
 	if groupUpdateEventID != nil {
