@@ -197,6 +197,13 @@ func (portal *Portal) Sync(backfill bool) {
 		} else {
 			portal.log.Warnln("Didn't get any chat info")
 		}
+
+		avatar, err := portal.bridge.IM.GetGroupAvatar(portal.GUID)
+		if err != nil {
+			portal.log.Warnln("Failed to get avatar:", err)
+		} else if avatar != nil {
+			portal.UpdateAvatar(avatar, portal.MainIntent())
+		}
 	} else {
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		puppet.Sync()
