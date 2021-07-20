@@ -474,16 +474,19 @@ func (portal *Portal) CreateMatrixRoom() error {
 	portal.log.Debugln("Locking backfill (create)")
 	portal.lockBackfill()
 	portal.MXID = resp.RoomID
+	portal.log.Debugln("Storing created room ID", portal.MXID, "in database")
 	portal.Update()
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
 
+	portal.log.Debugln("Updating state store with initial memberships")
 	for _, user := range invite {
 		portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipInvite)
 	}
 
 	if portal.Encrypted {
+		portal.log.Debugln("Ensuring bridge bot is joined to portal")
 		err = portal.bridge.Bot.EnsureJoined(portal.MXID)
 		if err != nil {
 			portal.log.Errorln("Failed to join created portal with bridge bot for e2be:", err)
@@ -491,12 +494,14 @@ func (portal *Portal) CreateMatrixRoom() error {
 	}
 
 	if !portal.IsPrivateChat() {
+		portal.log.Debugln("New portal is group chat, syncing participants")
 		portal.SyncParticipants(chatInfo)
 	} else {
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	}
 	if portal.bridge.user.DoublePuppetIntent != nil {
+		portal.log.Debugln("Ensuring double puppet for", portal.bridge.user.MXID, "is joined to portal")
 		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
 	}
 	go func() {
@@ -505,6 +510,7 @@ func (portal *Portal) CreateMatrixRoom() error {
 		portal.log.Debugln("Unlocking backfill (create)")
 		portal.unlockBackfill()
 	}()
+	portal.log.Debugln("Finished creating Matrix room")
 	return nil
 }
 
@@ -759,6 +765,7 @@ func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *apps
 		}
 		portal.Update()
 		portal.UpdateBridgeInfo()
+		portal.log.Debugfln("Successfully updated room avatar (%s / %s)", portal.AvatarURL, resp.EventID)
 		return &resp.EventID
 	} else {
 		return nil
