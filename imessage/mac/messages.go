@@ -37,14 +37,15 @@ import (
 const baseMessagesQuery = `
 SELECT
   message.ROWID, message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.attributedBody,
-  chat.guid, COALESCE(handle.id, ''), COALESCE(handle.service, ''),
+  chat.guid, COALESCE(sender_handle.id, ''), COALESCE(sender_handle.service, ''), COALESCE(target_handle.id, ''), COALESCE(target_handle.service, ''),
   message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.thread_originator_part, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
-  message.group_title, message.group_action_type
+  message.group_title, message.item_type, message.group_action_type
 FROM message
-JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
-JOIN chat              ON chat_message_join.chat_id = chat.ROWID
-LEFT JOIN handle       ON message.handle_id = handle.ROWID
+JOIN chat_message_join         ON chat_message_join.message_id = message.ROWID
+JOIN chat                      ON chat_message_join.chat_id = chat.ROWID
+LEFT JOIN handle sender_handle ON message.handle_id = sender_handle.ROWID
+LEFT JOIN handle target_handle ON message.other_handle = target_handle.ROWID
 `
 
 const attachmentsQuery = `
@@ -77,7 +78,7 @@ JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 LEFT JOIN message_attachment_join ON message_attachment_join.message_id = message.ROWID
 LEFT JOIN attachment              ON message_attachment_join.attachment_id = attachment.ROWID
-WHERE message.group_action_type=$1 AND chat.guid=$2
+WHERE message.item_type=$1 AND message.group_action_type=$2 AND chat.guid=$3
 ORDER BY message.date DESC LIMIT 1
 `
 
@@ -223,10 +224,10 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 		var newGroupTitle sql.NullString
 		var threadOriginatorPart string
 		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &attributedBody,
-			&message.ChatGUID, &message.Sender.LocalID, &message.Sender.Service,
+			&message.ChatGUID, &message.Sender.LocalID, &message.Sender.Service, &message.Target.LocalID, &message.Target.Service,
 			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &threadOriginatorPart, &tapback.TargetGUID, &tapback.Type,
-			&newGroupTitle, &message.GroupActionType)
+			&newGroupTitle, &message.ItemType, &message.GroupActionType)
 		if err != nil {
 			err = fmt.Errorf("error scanning row: %w", err)
 			return
@@ -256,7 +257,6 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 		}
 
 		if newGroupTitle.Valid {
-			message.GroupActionType = imessage.GroupActionSetName
 			message.NewGroupName = newGroupTitle.String
 		}
 		if len(threadOriginatorPart) > 0 {
@@ -399,7 +399,7 @@ func (mac *macOSDatabase) GetGroupAvatar(chatID string) (*imessage.Attachment, e
 	if mac.groupActionQuery == nil {
 		return nil, nil
 	}
-	row := mac.groupActionQuery.QueryRow(imessage.GroupActionSetAvatar, chatID)
+	row := mac.groupActionQuery.QueryRow(imessage.ItemTypeAvatar, imessage.GroupActionSetAvatar, chatID)
 	var avatar imessage.Attachment
 	err := row.Scan(&avatar.PathOnDisk, &avatar.MimeType, &avatar.FileName)
 	if err == sql.ErrNoRows {

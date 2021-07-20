@@ -39,6 +39,8 @@ type Message struct {
 	ChatGUID       string     `json:"chat_guid"`
 	JSONSenderGUID string     `json:"sender_guid"`
 	Sender         Identifier `json:"-"`
+	JSONTargetGUID string     `json:"target_guid"`
+	Target         Identifier `json:"-"`
 
 	IsFromMe       bool `json:"is_from_me"`
 	IsRead         bool `json:"is_read"`
@@ -56,6 +58,7 @@ type Message struct {
 
 	Attachments []*Attachment `json:"attachments,omitempty"`
 
+	ItemType        ItemType        `json:"item_type,omitempty"`
 	GroupActionType GroupActionType `json:"group_action_type,omitempty"`
 	NewGroupName    string          `json:"new_group_title,omitempty"`
 }
@@ -82,13 +85,20 @@ type TypingNotification struct {
 type GroupActionType int
 
 const (
-	GroupActionNone GroupActionType = iota
-	GroupActionSetAvatar
-	GroupActionRemoveAvatar
+	GroupActionAddUser    GroupActionType = 0
+	GroupActionRemoveUser GroupActionType = 1
 
-	// Internal types
+	GroupActionSetAvatar    GroupActionType = 1
+	GroupActionRemoveAvatar GroupActionType = 2
+)
 
-	GroupActionSetName GroupActionType = iota + 0xff
+type ItemType int
+
+const (
+	ItemTypeMessage ItemType = iota
+	ItemTypeMember
+	ItemTypeName
+	ItemTypeAvatar
 )
 
 type Contact struct {

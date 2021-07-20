@@ -110,6 +110,8 @@ func cncontactToContact(ns *C.CNContact) *imessage.Contact {
 func (mac *macOSDatabase) GetContactInfo(identifier string) (*imessage.Contact, error) {
 	if !mac.contactStore.HasAccess || len(identifier) == 0 {
 		return nil, nil
+	} else if len(identifier) == 0 {
+		return nil, fmt.Errorf("can't get contact info of empty identifier")
 	}
 
 	// Locking the OS thread seems to prevent random SIGSEGV's from the NSAutoreleasePool being drained.

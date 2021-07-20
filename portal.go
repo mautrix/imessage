@@ -804,24 +804,60 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 	return false
 }
 
-func (portal *Portal) handleIMGroupAction(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
-	var groupUpdateEventID *id.EventID
-	switch msg.GroupActionType {
-	case imessage.GroupActionSetAvatar:
+func (portal *Portal) handleIMAvatarChange(msg *imessage.Message, intent *appservice.IntentAPI) *id.EventID {
+	if msg.GroupActionType == imessage.GroupActionSetAvatar {
 		if len(msg.Attachments) == 1 {
-			groupUpdateEventID = portal.UpdateAvatar(msg.Attachments[0], intent)
+			return portal.UpdateAvatar(msg.Attachments[0], intent)
 		} else {
 			portal.log.Debugfln("Unexpected number of attachments (%d) in set avatar group action", len(msg.Attachments))
 		}
-	case imessage.GroupActionRemoveAvatar:
+	} else if msg.GroupActionType == imessage.GroupActionRemoveAvatar {
 		// TODO
-	case imessage.GroupActionSetName:
-		groupUpdateEventID = portal.UpdateName(msg.NewGroupName, intent)
+	} else {
+		portal.log.Warnfln("Unexpected group action type %d in avatar change item", msg.GroupActionType)
 	}
-	if groupUpdateEventID != nil {
-		dbMessage.MXID = *groupUpdateEventID
-		dbMessage.Insert()
+	return nil
+}
+
+func (portal *Portal) setMembership(inviter *appservice.IntentAPI, puppet *Puppet, membership event.Membership, ts int64) *id.EventID {
+	err := inviter.EnsureInvited(portal.MXID, puppet.MXID)
+	if err != nil {
+		if errors.Is(err, mautrix.MForbidden) {
+			err = portal.MainIntent().EnsureInvited(portal.MXID, puppet.MXID)
+		}
+		if err != nil {
+			portal.log.Warnfln("Failed to ensure %s is invited to %s: %v", puppet.MXID, portal.MXID, err)
+		}
 	}
+	resp, err := puppet.Intent.SendMassagedStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &event.MemberEventContent{
+		Membership:       membership,
+		AvatarURL:        puppet.AvatarURL.CUString(),
+		Displayname:      puppet.Displayname,
+	}, ts)
+	if err != nil {
+		puppet.log.Warnfln("Failed to join %s: %v", portal.MXID, err)
+		return nil
+	} else {
+		portal.bridge.AS.StateStore.SetMembership(portal.MXID, puppet.MXID, "join")
+		return &resp.EventID
+	}
+}
+
+func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) *id.EventID {
+	if len(msg.Target.LocalID) == 0 {
+		return nil
+	}
+	puppet := portal.bridge.GetPuppetByLocalID(msg.Target.LocalID)
+	puppet.Sync()
+	if msg.GroupActionType == imessage.GroupActionAddUser {
+		return portal.setMembership(intent, puppet, event.MembershipJoin, dbMessage.Timestamp)
+	} else if msg.GroupActionType == imessage.GroupActionRemoveUser {
+		// TODO make sure this won't break anything and enable it
+		//return portal.setMembership(intent, puppet, event.MembershipLeave, dbMessage.Timestamp)
+	} else {
+		portal.log.Warnfln("Unexpected group action type %d in member change item", msg.GroupActionType)
+	}
+	return nil
 }
 
 func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) *event.MessageEventContent {
@@ -950,11 +986,23 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 		return dbMessage.MXID
 	}
 
-	if msg.GroupActionType != imessage.GroupActionNone {
-		portal.handleIMGroupAction(msg, dbMessage, intent)
-	} else {
+	var groupUpdateEventID *id.EventID
+
+	switch msg.ItemType {
+	case imessage.ItemTypeMessage:
 		portal.handleIMAttachments(msg, dbMessage, intent)
 		portal.handleIMText(msg, dbMessage, intent)
+	case imessage.ItemTypeMember:
+		groupUpdateEventID = portal.handleIMMemberChange(msg, dbMessage, intent)
+	case imessage.ItemTypeName:
+		groupUpdateEventID = portal.UpdateName(msg.NewGroupName, intent)
+	case imessage.ItemTypeAvatar:
+		groupUpdateEventID = portal.handleIMAvatarChange(msg, intent)
+	}
+
+	if groupUpdateEventID != nil {
+		dbMessage.MXID = *groupUpdateEventID
+		dbMessage.Insert()
 	}
 
 	if len(dbMessage.MXID) > 0 {

@@ -101,6 +101,9 @@ func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 	if !message.IsFromMe {
 		message.Sender = imessage.ParseIdentifier(message.JSONSenderGUID)
 	}
+	if len(message.JSONTargetGUID) > 0 {
+		message.Target = imessage.ParseIdentifier(message.JSONTargetGUID)
+	}
 	message.Time = floatToTime(message.JSONUnixTime)
 	if message.Tapback != nil {
 		_, err := message.Tapback.Parse()
@@ -108,10 +111,15 @@ func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 			ios.log.Warnfln("Failed to parse tapback in %s: %v", message.GUID, err)
 		}
 	}
-	if len(message.NewGroupName) > 0 {
-		message.GroupActionType = imessage.GroupActionSetName
+	if len(message.NewGroupName) > 0 && message.ItemType != imessage.ItemTypeName {
+		ios.log.Warnfln("Autocorrecting item_type of message %s where new_group_name is set to %d (name change)", message.GUID, imessage.ItemTypeName)
+		message.ItemType = imessage.ItemTypeName
+	} else if message.ItemType == imessage.ItemTypeMessage && message.GroupActionType > 0 {
+		ios.log.Warnfln("Autocorrecting item_type of message %s where group_action_type is set to %d (avatar change)", message.GUID, imessage.ItemTypeAvatar)
+		message.ItemType = imessage.ItemTypeAvatar
 	}
 	if message.Attachment != nil && message.Attachments == nil {
+		ios.log.Warnfln("Autocorrecting single attachment -> attachments array in message %s", message.GUID)
 		message.Attachments = []*imessage.Attachment{message.Attachment}
 	} else if message.Attachments != nil && len(message.Attachments) > 0 && message.Attachment == nil {
 		message.Attachment = message.Attachments[0]

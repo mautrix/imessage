@@ -171,7 +171,11 @@ Another error response:
   * `associated_message` (object, optional) - Associated message info (tapback/sticker)
     * `target_guid` (str) - The message that this event is targeting, e.g. `p:0/<uuid>`
     * `type` (int) - The type of association (1000 = sticker, 200x = tapback, 300x = tapback remove)
- * `group_action_type` (int, optional) - Group action type, 1 = set avatar, 2 = remove avatar
+  * `item_type` (int, optional) - Message type, 0 = normal message, 1 = member change, 2 = name change, 3 = avatar change
+  * `group_action_type` (int, optional) - Group action type, which is a subtype of `item_type`
+    * For member changes, 0 = add member, 1 = remove member
+    * For avatar changes, 1 = set avatar, 2 = remove avatar
+  * `target_guid` (str, optional) - For member change messages, the user identifier of the user being changed.
   * `new_group_title` (str, optional) - New name for group when the message was a group name change
 * Incoming read receipts (request type `read_receipt`)
   * `sender_guid` (str) - the user who sent the read receipt. Not required if `is_from_me` is true.
