@@ -114,8 +114,8 @@ func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) (*imess
 		// TODO maybe log when the file gets removed
 		// Random sleep to make sure the message has time to get sent
 		time.Sleep(60 * time.Second)
-		os.Remove(filePath)
-		os.Remove(dir)
+		_ = os.Remove(filePath)
+		_ = os.Remove(dir)
 	}()
 	return nil, err
 }

@@ -189,7 +189,6 @@ func (portal *Portal) Sync(backfill bool) {
 				update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 			}
 			portal.SyncParticipants(chatInfo)
-			// TODO avatar?
 			if update {
 				portal.Update()
 				portal.UpdateBridgeInfo()
