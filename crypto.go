@@ -181,6 +181,7 @@ type StartSyncRequest struct {
 
 func (helper *CryptoHelper) Start() {
 	if helper.bridge.Config.Bridge.Encryption.Appservice {
+		helper.log.Debugln("End-to-bridge encryption is in appservice mode")
 		helper.bridge.AS.Registration.EphemeralEvents = true
 		helper.mach.AddAppserviceListener(helper.bridge.EventProcessor, helper.bridge.AS)
 		return
