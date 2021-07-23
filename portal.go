@@ -830,9 +830,9 @@ func (portal *Portal) setMembership(inviter *appservice.IntentAPI, puppet *Puppe
 		}
 	}
 	resp, err := puppet.Intent.SendMassagedStateEvent(portal.MXID, event.StateMember, puppet.MXID.String(), &event.MemberEventContent{
-		Membership:       membership,
-		AvatarURL:        puppet.AvatarURL.CUString(),
-		Displayname:      puppet.Displayname,
+		Membership:  membership,
+		AvatarURL:   puppet.AvatarURL.CUString(),
+		Displayname: puppet.Displayname,
 	}, ts)
 	if err != nil {
 		puppet.log.Warnfln("Failed to join %s: %v", portal.MXID, err)
@@ -860,17 +860,17 @@ func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *dat
 	return nil
 }
 
-func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) *event.MessageEventContent {
+func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, error) {
 	data, err := attach.Read()
 	if err != nil {
 		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
-		return nil
+		return nil, fmt.Errorf("failed to read attachment: %w", err)
 	}
 	data, uploadMime, uploadInfo := portal.encryptFile(data, attach.GetMimeType())
 	uploadResp, err := intent.UploadBytes(data, uploadMime)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
-		return nil
+		return nil, fmt.Errorf("failed to re-upload attachment")
 	}
 	var content event.MessageEventContent
 	if uploadInfo != nil {
@@ -895,7 +895,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		content.MsgType = event.MsgFile
 	}
 	portal.SetReply(&content, msg)
-	return &content
+	return &content, nil
 }
 
 func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
@@ -903,8 +903,16 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 		return
 	}
 	for index, attach := range msg.Attachments {
-		mediaContent := portal.handleIMAttachment(msg, attach, intent)
-		resp, err := portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
+		mediaContent, err := portal.handleIMAttachment(msg, attach, intent)
+		var resp *mautrix.RespSendEvent
+		if err != nil {
+			resp, err = portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+				MsgType: event.MsgNotice,
+				Body:    err.Error(),
+			}, dbMessage.Timestamp)
+		} else {
+			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
+		}
 		if err != nil {
 			portal.log.Errorfln("Failed to send attachment %s.%d: %v", msg.GUID, index, err)
 		} else {
