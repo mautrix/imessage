@@ -30,9 +30,10 @@ appservice:
 # iMessage connection config
 imessage:
     # Available platforms:
-    # * mac: Standard Mac connector, requires full disk access and will ask for AppleScript and contacts permission
-    # * ios: Jailbreak iOS connector when using with Brooklyn
-    # * mac-nosip: Mac without SIP connector, runs imessage-rest as a subprocess
+    # * mac: Standard Mac connector, requires full disk access and will ask for AppleScript and contacts permission.
+    # * ios: Jailbreak iOS connector when using with Brooklyn.
+    # * android: Equivalent to ios, but for use with the Android SMS wrapper app.
+    # * mac-nosip: Mac without SIP connector, runs imessage-rest as a subprocess.
     platform: mac
     # imessage-rest executable for mac-nosip connector
     #imessage_rest_path: ...
@@ -50,8 +51,7 @@ bridge:
     displayname_template: "{{.}} (iMessage)"
 
     # Whether or not the bridge should send a read receipt from the bridge bot when a message has been
-    # sent to iMessage. If fetch_message_on_timeout is enabled, a successful post-timeout fetch will
-    # trigger a read receipt too.
+    # sent to iMessage.
     delivery_receipts: false
 
     # Whether or not to update the m.direct account data event when double puppeting is enabled.
@@ -72,17 +72,13 @@ bridge:
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"
 
-    # End-to-bridge encryption support options. This requires login_shared_secret to be configured
-    # in order to get a device for the bridge bot.
-    #
-    # Additionally, https://github.com/matrix-org/synapse/pull/5758 is required if using a normal
-    # application service.
+    # End-to-bridge encryption support options.
+    # See https://docs.mau.fi/bridges/general/end-to-bridge-encryption.html
     encryption:
         # Allow encryption, work in group chat rooms with e2ee enabled
         allow: false
         # Default to encryption, force-enable encryption in all portals the bridge creates
         # This will cause the bridge bot to be in private chats for the encryption to work properly.
-        # It is recommended to also set private_chat_portal_meta to true when using this.
         default: false
         # Whether or not to use MSC2409/MSC3202 instead of /sync long polling for receiving encryption-related data.
         appservice: false
