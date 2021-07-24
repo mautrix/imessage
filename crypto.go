@@ -174,11 +174,6 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	return client, nil
 }
 
-type StartSyncRequest struct {
-	AccessToken string      `json:"access_token"`
-	DeviceID    id.DeviceID `json:"device_id"`
-}
-
 func (helper *CryptoHelper) Start() {
 	if helper.bridge.Config.Bridge.Encryption.Appservice {
 		helper.log.Debugln("End-to-bridge encryption is in appservice mode")

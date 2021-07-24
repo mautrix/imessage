@@ -268,17 +268,25 @@ const defaultReconnectBackoff = 2 * time.Second
 const maxReconnectBackoff = 2 * time.Minute
 const reconnectBackoffReset = 5 * time.Minute
 
+type StartSyncRequest struct {
+	AccessToken string      `json:"access_token"`
+	DeviceID    id.DeviceID `json:"device_id"`
+	UserID      id.UserID   `json:"user_id"`
+}
+
 func (bridge *Bridge) startWebsocket() {
 	onConnect := func() {
 		go bridge.MatrixHandler.SendBridgeStatus()
 		if bridge.Config.Bridge.Encryption.Appservice && bridge.Crypto != nil {
 			resp := map[string]interface{}{}
 			bridge.Log.Debugln("Sending /sync start request through websocket")
+			cryptoClient := bridge.Crypto.Client()
 			err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
 				Command: "start_sync",
 				Data: &StartSyncRequest{
-					AccessToken: bridge.Crypto.Client().AccessToken,
-					DeviceID:    bridge.Crypto.Client().DeviceID,
+					AccessToken: cryptoClient.AccessToken,
+					DeviceID:    cryptoClient.DeviceID,
+					UserID:      cryptoClient.UserID,
 				},
 			}, &resp)
 			if err != nil {
