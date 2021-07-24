@@ -67,6 +67,15 @@ type PlatformConfig struct {
 	IMRestPath string `yaml:"imessage_rest_path"`
 }
 
+func (pc *PlatformConfig) BridgeName() string {
+	switch pc.Platform {
+	case "android":
+		return "Android SMS Bridge"
+	default:
+		return "iMessage Bridge"
+	}
+}
+
 func NewAPI(bridge Bridge) (API, error) {
 	cfg := bridge.GetConnectorConfig()
 	impl, ok := Implementations[cfg.Platform]

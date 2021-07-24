@@ -164,7 +164,7 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 		Type:                     mautrix.AuthTypeHalfyAppservice,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(helper.bridge.AS.BotMXID())},
 		DeviceID:                 deviceID,
-		InitialDeviceDisplayName: "iMessage Bridge",
+		InitialDeviceDisplayName: helper.bridge.Config.IMessage.BridgeName(),
 		StoreCredentials:         true,
 	})
 	if err != nil {
