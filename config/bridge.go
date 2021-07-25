@@ -37,6 +37,7 @@ type BridgeConfig struct {
 	LoginSharedSecret    string  `yaml:"login_shared_secret"`
 	ChatSyncMaxAge       float64 `yaml:"chat_sync_max_age"`
 	InitialBackfillLimit int     `yaml:"initial_backfill_limit"`
+	PeriodicSync         bool    `yaml:"periodic_sync"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
@@ -63,6 +64,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.LoginSharedSecret = ""
 	bc.ChatSyncMaxAge = 0.5
 	bc.InitialBackfillLimit = 100
+	bc.PeriodicSync = true
 }
 
 type umBridgeConfig BridgeConfig

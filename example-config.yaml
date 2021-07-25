@@ -68,6 +68,8 @@ bridge:
     chat_sync_max_age: 0.5
     # Maximum number of messages to backfill for new portal rooms.
     initial_backfill_limit: 100
+    # Whether or not the bridge should periodically resync chat and contact info.
+    periodic_sync: true
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"

@@ -402,6 +402,11 @@ func (bridge *Bridge) StartupSync() {
 }
 
 func (bridge *Bridge) PeriodicSync() {
+	if !bridge.Config.Bridge.PeriodicSync {
+		bridge.Log.Debugln("Periodic sync is disabled")
+		return
+	}
+	bridge.Log.Debugln("Periodic sync is enabled")
 	for {
 		time.Sleep(time.Hour)
 		bridge.Log.Infoln("Executing periodic chat/contact info sync")
