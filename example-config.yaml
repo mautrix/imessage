@@ -10,6 +10,8 @@ homeserver:
 # Changing these values requires regeneration of the registration.
 appservice:
     # SQLite database path
+    # On android path should start with /data/data/package_id to prevent permission errors
+    # ie. /data/data/com.beeper.sms/mautrix-imessage.db
     database: mautrix-imessage.db
 
     # The unique ID of this appservice.
@@ -100,6 +102,8 @@ bridge:
 # Logging config.
 logging:
     # The directory for log files. Will be created if not found.
+    # On android path should start with /data/data/package_id to prevent permission errors
+    # ie. /data/data/com.beeper.sms/logs
     directory: ./logs
     # Available variables: .Date for the file date and .Index for different log files on the same day.
     file_name_format: "{{.Date}}-{{.Index}}.log"
