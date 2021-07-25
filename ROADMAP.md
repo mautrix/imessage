@@ -27,6 +27,20 @@
 | Group metadata       | ✔️    | ✔️  |
 | Backfilling history  | ✔️    | ✔️  |
 
+## Android SMS
+#### Supported
+* Plain text (SMS)
+* Media (MMS)
+* Group chats
+* Backfilling history from the Android SMS database.
+* Storing messages in the Android SMS database
+  (so you can still switch to a different SMS app).
+
+#### Not supported
+* RCS (there's no API for it, it's exclusive to Google's Messages app).
+* Any features that SMS/MMS don't support
+  (replies, reactions, read receipts, typing notifications).
+
 ## Misc
 * [x] Automatic portal creation
   * [x] At startup

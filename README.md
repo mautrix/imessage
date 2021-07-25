@@ -9,7 +9,8 @@ All setup and usage instructions are located on
 
 * Bridge setup:
   [macOS](https://docs.mau.fi/bridges/go/imessage/mac/setup.html),
-  [iOS](https://docs.mau.fi/bridges/go/imessage/ios/setup.html)
+  [iOS](https://docs.mau.fi/bridges/go/imessage/ios/setup.html),
+  [Android SMS](https://docs.mau.fi/bridges/go/imessage/android/setup.html)
 
 ### Features & Roadmap
 [ROADMAP.md](https://github.com/tulir/mautrix-imessage/blob/master/ROADMAP.md)
