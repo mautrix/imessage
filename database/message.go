@@ -59,7 +59,7 @@ func (mq *MessageQuery) GetByGUID(chat string, guid string, part int) *Message {
 }
 
 func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
-	return mq.get("SELECT chat_guid, guid, part, part, mxid, sender_guid, timestamp "+
+	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
 		"FROM message WHERE mxid=$1", mxid)
 }
 
