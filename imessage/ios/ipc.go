@@ -38,6 +38,7 @@ const (
 	IncomingMessage            ipc.Command = "message"
 	IncomingReadReceipt        ipc.Command = "read_receipt"
 	IncomingTypingNotification ipc.Command = "typing"
+	IncomingChat               ipc.Command = "chat"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -60,6 +61,7 @@ type iOSConnector struct {
 	messageChan chan *imessage.Message
 	receiptChan chan *imessage.ReadReceipt
 	typingChan  chan *imessage.TypingNotification
+	chatChan    chan *imessage.Chat
 	isAndroid   bool
 }
 
@@ -69,6 +71,7 @@ func NewPlainiOSConnector(logger log.Logger, isAndroid bool) APIWithIPC {
 		messageChan: make(chan *imessage.Message, 256),
 		receiptChan: make(chan *imessage.ReadReceipt, 32),
 		typingChan:  make(chan *imessage.TypingNotification, 32),
+		chatChan:    make(chan *imessage.Chat, 32),
 		isAndroid:   isAndroid,
 	}
 }
@@ -92,6 +95,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
 	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
 	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
+	ios.IPC.SetHandler(IncomingChat, ios.handleIncomingChat)
 	return nil
 }
 
@@ -173,6 +177,21 @@ func (ios *iOSConnector) handleIncomingTypingNotification(data json.RawMessage) 
 	return nil
 }
 
+func (ios *iOSConnector) handleIncomingChat(data json.RawMessage) interface{} {
+	var chat imessage.Chat
+	err := json.Unmarshal(data, &chat)
+	if err != nil {
+		ios.log.Warnln("Failed to parse incoming chat: %v", err)
+		return nil
+	}
+	select {
+	case ios.chatChan <- &chat:
+	default:
+		ios.log.Warnln("Incoming chat buffer is full")
+	}
+	return nil
+}
+
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetMessagesAfter, &GetMessagesAfterRequest{
@@ -213,6 +232,10 @@ func (ios *iOSConnector) ReadReceiptChan() <-chan *imessage.ReadReceipt {
 
 func (ios *iOSConnector) TypingNotificationChan() <-chan *imessage.TypingNotification {
 	return ios.typingChan
+}
+
+func (ios *iOSConnector) ChatChan() <-chan *imessage.Chat {
+	return ios.chatChan
 }
 
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
