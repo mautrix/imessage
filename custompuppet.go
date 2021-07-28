@@ -160,6 +160,20 @@ func (user *User) tryRelogin(cause error, action string) bool {
 	return true
 }
 
+func (user *User) handleReceiptEvent(portal *Portal, event *event.Event) {
+	for eventID, receipts := range *event.Content.AsReceipt() {
+		if _, ok := receipts.Read[user.MXID]; !ok {
+			// Ignore receipt events where this user isn't present.
+		} else if message := user.bridge.DB.Message.GetByMXID(eventID); message != nil {
+			user.log.Debugfln("Marking %s/%s in %s/%s as read", message.GUID, message.MXID, portal.GUID, portal.MXID)
+			err := user.bridge.IM.SendReadReceipt(portal.GUID, message.GUID)
+			if err != nil {
+				user.log.Warnln("Error marking read:", err)
+			}
+		}
+	}
+}
+
 func (user *User) handleTypingEvent(portal *Portal, evt *event.Event) {
 	isTyping := false
 	for _, userID := range evt.Content.AsTyping().UserIDs {
@@ -191,6 +205,8 @@ func (user *User) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 				return err
 			}
 			switch evt.Type {
+			case event.EphemeralEventReceipt:
+				go user.handleReceiptEvent(portal, evt)
 			case event.EphemeralEventTyping:
 				go user.handleTypingEvent(portal, evt)
 			}
