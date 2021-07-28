@@ -35,10 +35,10 @@ const (
 )
 
 type Tapback struct {
-	TargetGUID string
-	TargetPart int
+	TargetGUID string `json:"target_guid"`
+	TargetPart int    `json:"target_part"`
 	Remove     bool
-	Type       TapbackType
+	Type       TapbackType `json:"type"`
 }
 
 var (
