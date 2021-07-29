@@ -39,7 +39,7 @@ type API interface {
 	MessageChan() <-chan *Message
 	ReadReceiptChan() <-chan *ReadReceipt
 	TypingNotificationChan() <-chan *TypingNotification
-	ChatChan() <-chan *Chat
+	ChatChan() <-chan *ChatInfo
 	GetContactInfo(identifier string) (*Contact, error)
 	GetChatInfo(chatID string) (*ChatInfo, error)
 	GetGroupAvatar(chatID string) (*Attachment, error)

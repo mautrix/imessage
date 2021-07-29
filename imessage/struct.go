@@ -82,12 +82,6 @@ type TypingNotification struct {
 	Typing   bool   `json:"typing"`
 }
 
-type Chat struct {
-	ChatGUID string  `json:"chat_guid"`
-	Title    string  `json:"title"`
-	Members  []string `json:"members"`
-}
-
 type GroupActionType int
 
 const (
@@ -174,9 +168,10 @@ func (attachment *Attachment) Read() ([]byte, error) {
 }
 
 type ChatInfo struct {
-	Identifier  `json:"-"`
-	DisplayName string   `json:"title"`
-	Members     []string `json:"members"`
+	JSONChatGUID string `json:"chat_guid"`
+	Identifier   `json:"-"`
+	DisplayName  string   `json:"title"`
+	Members      []string `json:"members"`
 }
 
 type Identifier struct {

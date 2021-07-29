@@ -61,7 +61,7 @@ type iOSConnector struct {
 	messageChan chan *imessage.Message
 	receiptChan chan *imessage.ReadReceipt
 	typingChan  chan *imessage.TypingNotification
-	chatChan    chan *imessage.Chat
+	chatChan    chan *imessage.ChatInfo
 	isAndroid   bool
 }
 
@@ -71,7 +71,7 @@ func NewPlainiOSConnector(logger log.Logger, isAndroid bool) APIWithIPC {
 		messageChan: make(chan *imessage.Message, 256),
 		receiptChan: make(chan *imessage.ReadReceipt, 32),
 		typingChan:  make(chan *imessage.TypingNotification, 32),
-		chatChan:    make(chan *imessage.Chat, 32),
+		chatChan:    make(chan *imessage.ChatInfo, 32),
 		isAndroid:   isAndroid,
 	}
 }
@@ -178,12 +178,13 @@ func (ios *iOSConnector) handleIncomingTypingNotification(data json.RawMessage) 
 }
 
 func (ios *iOSConnector) handleIncomingChat(data json.RawMessage) interface{} {
-	var chat imessage.Chat
+	var chat imessage.ChatInfo
 	err := json.Unmarshal(data, &chat)
 	if err != nil {
 		ios.log.Warnln("Failed to parse incoming chat: %v", err)
 		return nil
 	}
+	chat.Identifier = imessage.ParseIdentifier(chat.JSONChatGUID)
 	select {
 	case ios.chatChan <- &chat:
 	default:
@@ -234,7 +235,7 @@ func (ios *iOSConnector) TypingNotificationChan() <-chan *imessage.TypingNotific
 	return ios.typingChan
 }
 
-func (ios *iOSConnector) ChatChan() <-chan *imessage.Chat {
+func (ios *iOSConnector) ChatChan() <-chan *imessage.ChatInfo {
 	return ios.chatChan
 }
 

@@ -167,7 +167,7 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 func (portal *Portal) Sync(backfill bool) {
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room due to sync")
-		err := portal.CreateMatrixRoom()
+		err := portal.CreateMatrixRoom(nil)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
 		}
@@ -385,7 +385,7 @@ func (portal *Portal) UpdateBridgeInfo() {
 	}
 }
 
-func (portal *Portal) CreateMatrixRoom() error {
+func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) > 0 {
@@ -393,16 +393,19 @@ func (portal *Portal) CreateMatrixRoom() error {
 	}
 
 	intent := portal.MainIntent()
-	if err := intent.EnsureRegistered(); err != nil {
+	err := intent.EnsureRegistered()
+	if err != nil {
 		return err
 	}
 
-	portal.log.Debugln("Getting chat info to create Matrix room")
-	chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
-	if err != nil {
-		// If there's no chat info, the chat probably doesn't exist and we shouldn't auto-create a Matrix room for it.
-		// TODO if we want a `pm` command or something, this check won't work
-		return fmt.Errorf("failed to get chat info: %w", err)
+	if chatInfo == nil {
+		portal.log.Debugln("Getting chat info to create Matrix room")
+		chatInfo, err = portal.bridge.IM.GetChatInfo(portal.GUID)
+		if err != nil {
+			// If there's no chat info, the chat probably doesn't exist and we shouldn't auto-create a Matrix room for it.
+			// TODO if we want a `pm` command or something, this check won't work
+			return fmt.Errorf("failed to get chat info: %w", err)
+		}
 	}
 	if chatInfo != nil {
 		portal.Name = chatInfo.DisplayName
