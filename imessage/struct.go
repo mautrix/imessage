@@ -82,6 +82,12 @@ type TypingNotification struct {
 	Typing   bool   `json:"typing"`
 }
 
+type Chat struct {
+	ChatGUID string  `json:"chat_guid"`
+	Title    string  `json:"title"`
+	Members  []string `json:"members"`
+}
+
 type GroupActionType int
 
 const (

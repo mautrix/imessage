@@ -41,6 +41,7 @@ func (imh *iMessageHandler) Start() {
 	messages := imh.bridge.IM.MessageChan()
 	readReceipts := imh.bridge.IM.ReadReceiptChan()
 	typingNotifications := imh.bridge.IM.TypingNotificationChan()
+	chat := imh.bridge.IM.ChatChan()
 	for {
 		select {
 		case msg := <-messages:
@@ -49,6 +50,8 @@ func (imh *iMessageHandler) Start() {
 			imh.HandleReadReceipt(rr)
 		case notif := <-typingNotifications:
 			imh.HandleTypingNotification(notif)
+		case c := <-chat:
+			imh.HandleChat(c)
 		case <-imh.stop:
 			break
 		}
@@ -110,6 +113,18 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 			action = "not typing"
 		}
 		portal.log.Warnln("Failed to mark %s as %s in %s: %v", portal.MainIntent().UserID, action, portal.MXID, err)
+	}
+}
+
+func (imh *iMessageHandler) HandleChat(chat *imessage.Chat) {
+	portal := imh.bridge.GetPortalByGUID(chat.ChatGUID)
+	if len(portal.MXID) == 0 {
+		portal.log.Infoln("Creating Matrix room to handle message")
+		err := portal.CreateMatrixRoom()
+		if err != nil {
+			imh.log.Warnfln("Failed to create Matrix room to handle message: %v", err)
+			return
+		}
 	}
 }
 
