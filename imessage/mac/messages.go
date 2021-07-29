@@ -424,6 +424,10 @@ func (mac *macOSDatabase) TypingNotificationChan() <-chan *imessage.TypingNotifi
 	return make(chan *imessage.TypingNotification, 0)
 }
 
+func (mac *macOSDatabase) ChatChan() <-chan *imessage.ChatInfo {
+	return make(chan *imessage.ChatInfo, 0)
+}
+
 func (mac *macOSDatabase) Start() error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
