@@ -24,6 +24,7 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"os/user"
 	"path/filepath"
 	"time"
 
@@ -56,28 +57,30 @@ type APIWithIPC interface {
 }
 
 type iOSConnector struct {
-	IPC         *ipc.Processor
-	log         log.Logger
-	messageChan chan *imessage.Message
-	receiptChan chan *imessage.ReadReceipt
-	typingChan  chan *imessage.TypingNotification
-	chatChan    chan *imessage.ChatInfo
-	isAndroid   bool
+	IPC                *ipc.Processor
+	log                log.Logger
+	messageChan        chan *imessage.Message
+	receiptChan        chan *imessage.ReadReceipt
+	typingChan         chan *imessage.TypingNotification
+	chatChan           chan *imessage.ChatInfo
+	isAndroid          bool
+	needsSandboxTmpDir bool
 }
 
-func NewPlainiOSConnector(logger log.Logger, isAndroid bool) APIWithIPC {
+func NewPlainiOSConnector(logger log.Logger, isAndroid bool, needsSandboxTmpDir bool) APIWithIPC {
 	return &iOSConnector{
-		log:         logger,
-		messageChan: make(chan *imessage.Message, 256),
-		receiptChan: make(chan *imessage.ReadReceipt, 32),
-		typingChan:  make(chan *imessage.TypingNotification, 32),
-		chatChan:    make(chan *imessage.ChatInfo, 32),
-		isAndroid:   isAndroid,
+		log:                logger,
+		messageChan:        make(chan *imessage.Message, 256),
+		receiptChan:        make(chan *imessage.ReadReceipt, 32),
+		typingChan:         make(chan *imessage.TypingNotification, 32),
+		chatChan:           make(chan *imessage.ChatInfo, 32),
+		isAndroid:          isAndroid,
+		needsSandboxTmpDir: needsSandboxTmpDir,
 	}
 }
 
 func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
-	ios := NewPlainiOSConnector(bridge.GetLog().Sub("iMessage").Sub("iOS"), bridge.GetConnectorConfig().Platform == "android")
+	ios := NewPlainiOSConnector(bridge.GetLog().Sub("iMessage").Sub("iOS"), bridge.GetConnectorConfig().Platform == "android", bridge.GetConnectorConfig().Platform == "mac-nosip")
 	ios.SetIPC(bridge.GetIPC())
 	return ios, nil
 }
@@ -274,7 +277,14 @@ func (ios *iOSConnector) SendMessage(chatID, text string) (*imessage.SendRespons
 }
 
 func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
-	dir, err := ioutil.TempDir("", "mautrix-imessage-upload")
+	rootDir := ""
+
+	if ios.Capabilities().SandboxedTempDirectory {
+		usr, _ := user.Current()
+		rootDir = usr.HomeDir + "/Library/Messages"
+	}
+
+	dir, err := ioutil.TempDir(rootDir, "mautrix-imessage-upload")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
@@ -335,5 +345,6 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTapbacks:            !ios.isAndroid,
 		SendReadReceipts:        !ios.isAndroid,
 		SendTypingNotifications: !ios.isAndroid,
+		SandboxedTempDirectory:  ios.needsSandboxTmpDir,
 	}
 }
