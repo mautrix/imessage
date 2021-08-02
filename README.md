@@ -3,7 +3,7 @@ A Matrix-iMessage puppeting bridge. The bridge runs on a Mac or jailbroken
 iPhone. A [websocket proxy](https://github.com/tulir/mautrix-wsproxy) is
 required to receive appservice events from the homeserver.
 
-### Wiki
+### Documentation
 All setup and usage instructions are located on
 [docs.mau.fi](https://docs.mau.fi/bridges/go/imessage/index.html):
 
