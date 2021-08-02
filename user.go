@@ -41,6 +41,8 @@ type User struct {
 	DoublePuppetIntent *appservice.IntentAPI
 
 	mgmtCreateLock sync.Mutex
+
+	customTypingIn map[id.RoomID]bool
 }
 
 func (bridge *Bridge) loadDBUser() *User {
