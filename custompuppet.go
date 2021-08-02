@@ -126,13 +126,15 @@ func (user *User) startCustomMXID() error {
 	user.DoublePuppetIntent = intent
 	user.customTypingIn = make(map[id.RoomID]bool)
 	user.startSyncing()
-
 	return nil
 }
 
 func (user *User) startSyncing() {
-	if !user.bridge.Config.Bridge.PeriodicSync {
+	if !user.bridge.Config.Bridge.SyncWithCustomPuppets {
 		return
+	}
+	if !user.bridge.IM.Capabilities().SendTypingNotifications && !user.bridge.IM.Capabilities().SendReadReceipts {
+		user.log.Warnln("Syncing with double puppet is enabled in config, but configured platform doesn't support sending typing notifications nor read receipts")
 	}
 	go func() {
 		err := user.DoublePuppetIntent.Sync()
@@ -143,7 +145,7 @@ func (user *User) startSyncing() {
 }
 
 func (user *User) stopSyncing() {
-	if !user.bridge.Config.Bridge.PeriodicSync {
+	if !user.bridge.Config.Bridge.SyncWithCustomPuppets {
 		return
 	}
 	user.DoublePuppetIntent.StopSync()
@@ -189,7 +191,10 @@ func (user *User) handleTypingEvent(portal *Portal, evt *event.Event) {
 		} else {
 			user.log.Debugfln("Marking typing in %s/%s", portal.GUID, portal.MXID)
 		}
-		user.bridge.IM.SendTypingNotification(portal.GUID, isTyping)
+		err := user.bridge.IM.SendTypingNotification(portal.GUID, isTyping)
+		if err != nil {
+			user.log.Warnfln("Failed to bridge typing status change in %s/%s: %v", portal.GUID, portal.MXID, err)
+		}
 	}
 }
 
