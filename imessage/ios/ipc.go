@@ -109,6 +109,7 @@ func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 		message.Target = imessage.ParseIdentifier(message.JSONTargetGUID)
 	}
 	message.Time = floatToTime(message.JSONUnixTime)
+	message.ReadAt = floatToTime(message.JSONUnixReadAt)
 	if message.Tapback != nil {
 		_, err := message.Tapback.Parse()
 		if err != nil {
@@ -153,6 +154,7 @@ func (ios *iOSConnector) handleIncomingReadReceipt(data json.RawMessage) interfa
 		ios.log.Warnln("Failed to parse incoming read receipt: %v", err)
 		return nil
 	}
+	receipt.ReadAt = floatToTime(receipt.JSONUnixReadAt)
 
 	select {
 	case ios.receiptChan <- &receipt:

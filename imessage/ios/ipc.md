@@ -179,9 +179,10 @@ Another error response:
   * `new_group_title` (str, optional) - New name for group when the message was a group name change
 * Incoming read receipts (request type `read_receipt`)
   * `sender_guid` (str) - the user who sent the read receipt. Not required if `is_from_me` is true.
-  * `is_from_me` (bool) - True if the read receipt is from the local user (e.g. from another device)
-  * `chat_guid` (str) - The chat where the read receipt is
-  * `read_up_to` (str, UUID) - The GUID of the last read message
+  * `is_from_me` (bool) - True if the read receipt is from the local user (e.g. from another device).
+  * `chat_guid` (str) - The chat where the read receipt is.
+  * `read_up_to` (str, UUID) - The GUID of the last read message.
+  * `read_at` (double) - Unix timestamp when the read receipt happened.
 * Incoming typing notifications (request type `typing`)
   * `chat_guid` (str) - The chat where the user is typing.
   * `typing` (bool) - Whether the user is typing or not.
