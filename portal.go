@@ -362,6 +362,10 @@ func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
 			bridgeInfo.Protocol.ID = "imessage-sms"
 			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
 		}
+	} else if portal.bridge.Config.IMessage.Platform == "ios" {
+		bridgeInfo.Protocol.ID = "imessage-ios"
+	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
+		bridgeInfo.Protocol.ID = "imessage-nosip"
 	}
 	bridgeInfoStateKey := fmt.Sprintf("fi.mau.imessage://%s/%s",
 		strings.ToLower(portal.Identifier.Service), portal.GUID)
