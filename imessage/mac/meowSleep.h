@@ -13,37 +13,6 @@
 //
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-//+build darwin,!ios
-
-package main
-
-import (
-	"errors"
-	"fmt"
-	"os"
-
-	"github.com/mattn/go-sqlite3"
-
-	"go.mau.fi/mautrix-imessage/imessage"
-	"go.mau.fi/mautrix-imessage/imessage/mac"
-	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
-)
-
-func checkMacPermissions() {
-	err := mac.CheckPermissions()
-	if err != nil {
-		fmt.Println(err)
-	}
-	if errors.Is(err, imessage.ErrNotLoggedIn) {
-		os.Exit(41)
-	} else if sqliteError := (sqlite3.Error{}); errors.As(err, &sqliteError) {
-		if errors.Is(sqliteError.SystemErrno, os.ErrNotExist) {
-			os.Exit(42)
-		} else if errors.Is(sqliteError.SystemErrno, os.ErrPermission) {
-			os.Exit(43)
-		}
-	} else if err != nil {
-		os.Exit(49)
-	}
-}
+extern void meowWakeupCallback();
+int meowListenWakeup();
+void meowStopListeningWakeup();

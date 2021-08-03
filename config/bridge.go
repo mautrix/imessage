@@ -33,11 +33,12 @@ type BridgeConfig struct {
 
 	DeliveryReceipts bool `yaml:"delivery_receipts"`
 
-	SyncDirectChatList   bool    `yaml:"sync_direct_chat_list"`
-	LoginSharedSecret    string  `yaml:"login_shared_secret"`
-	ChatSyncMaxAge       float64 `yaml:"chat_sync_max_age"`
-	InitialBackfillLimit int     `yaml:"initial_backfill_limit"`
-	PeriodicSync         bool    `yaml:"periodic_sync"`
+	SyncWithCustomPuppets bool    `yaml:"sync_with_custom_puppets"`
+	SyncDirectChatList    bool    `yaml:"sync_direct_chat_list"`
+	LoginSharedSecret     string  `yaml:"login_shared_secret"`
+	ChatSyncMaxAge        float64 `yaml:"chat_sync_max_age"`
+	InitialBackfillLimit  int     `yaml:"initial_backfill_limit"`
+	PeriodicSync          bool    `yaml:"periodic_sync"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 
@@ -61,6 +62,7 @@ type BridgeConfig struct {
 
 func (bc *BridgeConfig) setDefaults() {
 	bc.DeliveryReceipts = false
+	bc.SyncWithCustomPuppets = false
 	bc.LoginSharedSecret = ""
 	bc.ChatSyncMaxAge = 0.5
 	bc.InitialBackfillLimit = 100

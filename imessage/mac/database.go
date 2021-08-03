@@ -19,6 +19,7 @@ package mac
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 
 	log "maunium.net/go/maulogger/v2"
 
@@ -26,7 +27,8 @@ import (
 )
 
 type macOSDatabase struct {
-	log log.Logger
+	log    log.Logger
+	bridge imessage.Bridge
 
 	chatDBPath           string
 	chatDB               *sql.DB
@@ -40,7 +42,9 @@ type macOSDatabase struct {
 	recentChatsQuery     *sql.Stmt
 	Messages             chan *imessage.Message
 	ReadReceipts         chan *imessage.ReadReceipt
+	stopWakeupDetecting  chan struct{}
 	stopWatching         chan struct{}
+	stopWait             sync.WaitGroup
 
 	ppDB             *sql.DB
 	groupMemberQuery *sql.Stmt
@@ -50,7 +54,8 @@ type macOSDatabase struct {
 
 func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
 	mac := &macOSDatabase{
-		log: bridge.GetLog().Sub("iMessage").Sub("Mac"),
+		log:    bridge.GetLog().Sub("iMessage").Sub("Mac"),
+		bridge: bridge,
 	}
 
 	err := mac.prepareMessages()

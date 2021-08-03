@@ -71,7 +71,7 @@ build armv7:
   - export CXX=$CC
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
-  - go build -ldflags "$GO_LDFLAGS" -o mautrix-imessage
+  - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage
   - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
   - ldid -S mautrix-imessage
   - cp $HOME/lib/libolm.dylib libolm.3.dylib

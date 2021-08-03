@@ -35,9 +35,9 @@ const (
 )
 
 type Tapback struct {
-	TargetGUID string `json:"target_guid"`
-	TargetPart int    `json:"target_part"`
-	Remove     bool
+	TargetGUID string      `json:"target_guid"`
+	TargetPart int         `json:"-"`
+	Remove     bool        `json:"-"`
 	Type       TapbackType `json:"type"`
 }
 

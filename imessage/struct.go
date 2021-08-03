@@ -42,8 +42,10 @@ type Message struct {
 	JSONTargetGUID string     `json:"target_guid"`
 	Target         Identifier `json:"-"`
 
-	IsFromMe       bool `json:"is_from_me"`
-	IsRead         bool `json:"is_read"`
+	IsFromMe       bool      `json:"is_from_me"`
+	IsRead         bool      `json:"is_read"`
+	ReadAt         time.Time `json:"-"`
+	JSONUnixReadAt float64   `json:"read_at"`
 	IsDelivered    bool
 	IsSent         bool
 	IsEmote        bool
@@ -75,6 +77,9 @@ type ReadReceipt struct {
 	IsFromMe   bool   `json:"is_from_me"`
 	ChatGUID   string `json:"chat_guid"`
 	ReadUpTo   string `json:"read_up_to"`
+
+	ReadAt         time.Time `json:"-"`
+	JSONUnixReadAt float64   `json:"read_at"`
 }
 
 type TypingNotification struct {
@@ -168,9 +173,10 @@ func (attachment *Attachment) Read() ([]byte, error) {
 }
 
 type ChatInfo struct {
-	Identifier  `json:"-"`
-	DisplayName string   `json:"title"`
-	Members     []string `json:"members"`
+	JSONChatGUID string `json:"chat_guid"`
+	Identifier   `json:"-"`
+	DisplayName  string   `json:"title"`
+	Members      []string `json:"members"`
 }
 
 type Identifier struct {

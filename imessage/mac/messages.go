@@ -38,7 +38,7 @@ const baseMessagesQuery = `
 SELECT
   message.ROWID, message.guid, message.date, COALESCE(message.subject, ''), COALESCE(message.text, ''), message.attributedBody,
   chat.guid, COALESCE(sender_handle.id, ''), COALESCE(sender_handle.service, ''), COALESCE(target_handle.id, ''), COALESCE(target_handle.service, ''),
-  message.is_from_me, message.is_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
+  message.is_from_me, message.date_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.thread_originator_part, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
   message.group_title, message.item_type, message.group_action_type
 FROM message
@@ -221,11 +221,12 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 		var tapback imessage.Tapback
 		var attributedBody []byte
 		var timestamp int64
+		var readAt int64
 		var newGroupTitle sql.NullString
 		var threadOriginatorPart string
 		err = res.Scan(&message.RowID, &message.GUID, &timestamp, &message.Subject, &message.Text, &attributedBody,
 			&message.ChatGUID, &message.Sender.LocalID, &message.Sender.Service, &message.Target.LocalID, &message.Target.Service,
-			&message.IsFromMe, &message.IsRead, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
+			&message.IsFromMe, &readAt, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &threadOriginatorPart, &tapback.TargetGUID, &tapback.Type,
 			&newGroupTitle, &message.ItemType, &message.GroupActionType)
 		if err != nil {
@@ -233,6 +234,10 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 			return
 		}
 		message.Time = time.Unix(imessage.AppleEpoch.Unix(), timestamp)
+		if readAt != 0 {
+			message.ReadAt = time.Unix(imessage.AppleEpoch.Unix(), readAt)
+			message.IsRead = true
+		}
 		message.Attachments = make([]*imessage.Attachment, 0)
 		var ares *sql.Rows
 		ares, err = mac.attachmentsQuery.Query(message.RowID)
@@ -331,18 +336,20 @@ func (mac *macOSDatabase) getReadReceiptsSince(minDate time.Time) ([]*imessage.R
 	for res.Next() {
 		var chatGUID, messageGUID string
 		var messageIsFromMe bool
-		var newMinDate int64
-		err = res.Scan(&chatGUID, &messageGUID, &messageIsFromMe, &newMinDate)
+		var readAtAppleEpoch int64
+		err = res.Scan(&chatGUID, &messageGUID, &messageIsFromMe, &readAtAppleEpoch)
 		if err != nil {
 			return receipts, minDate, fmt.Errorf("error scanning row: %w", err)
 		}
-		if newMinDate > origMinDate {
-			minDate = time.Unix(imessage.AppleEpoch.Unix(), newMinDate)
+		readAt := time.Unix(imessage.AppleEpoch.Unix(), readAtAppleEpoch)
+		if readAtAppleEpoch > origMinDate {
+			minDate = readAt
 		}
 
 		receipt := &imessage.ReadReceipt{
 			ChatGUID: chatGUID,
 			ReadUpTo: messageGUID,
+			ReadAt:   readAt,
 		}
 		if messageIsFromMe {
 			// For messages from me, the receipt is not from me, and vice versa.
@@ -410,6 +417,8 @@ func (mac *macOSDatabase) GetGroupAvatar(chatID string) (*imessage.Attachment, e
 
 func (mac *macOSDatabase) Stop() {
 	mac.stopWatching <- struct{}{}
+	mac.stopWakeupDetecting <- struct{}{}
+	mac.stopWait.Wait()
 }
 
 func (mac *macOSDatabase) MessageChan() <-chan *imessage.Message {
@@ -424,7 +433,14 @@ func (mac *macOSDatabase) TypingNotificationChan() <-chan *imessage.TypingNotifi
 	return make(chan *imessage.TypingNotification, 0)
 }
 
+func (mac *macOSDatabase) ChatChan() <-chan *imessage.ChatInfo {
+	return make(chan *imessage.ChatInfo, 0)
+}
+
 func (mac *macOSDatabase) Start() error {
+	mac.stopWait.Add(2)
+	go mac.ListenWakeup()
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create fsnotify watcher: %w", err)
@@ -499,5 +515,6 @@ Loop:
 			break Loop
 		}
 	}
+	mac.stopWait.Done()
 	return nil
 }

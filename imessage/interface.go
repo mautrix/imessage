@@ -39,6 +39,7 @@ type API interface {
 	MessageChan() <-chan *Message
 	ReadReceiptChan() <-chan *ReadReceipt
 	TypingNotificationChan() <-chan *TypingNotification
+	ChatChan() <-chan *ChatInfo
 	GetContactInfo(identifier string) (*Contact, error)
 	GetChatInfo(chatID string) (*ChatInfo, error)
 	GetGroupAvatar(chatID string) (*Attachment, error)
@@ -56,6 +57,7 @@ type Bridge interface {
 	GetIPC() *ipc.Processor
 	GetLog() log.Logger
 	GetConnectorConfig() *PlatformConfig
+	PingServer() (start, serverTs, end time.Time)
 }
 
 var AppleEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
