@@ -53,7 +53,7 @@ func (imh *iMessageHandler) Start() {
 		case c := <-chat:
 			imh.HandleChat(c)
 		case <-imh.stop:
-			break
+			return
 		}
 	}
 }

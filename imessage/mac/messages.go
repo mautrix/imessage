@@ -417,6 +417,8 @@ func (mac *macOSDatabase) GetGroupAvatar(chatID string) (*imessage.Attachment, e
 
 func (mac *macOSDatabase) Stop() {
 	mac.stopWatching <- struct{}{}
+	mac.stopWakeupDetecting <- struct{}{}
+	mac.stopWait.Wait()
 }
 
 func (mac *macOSDatabase) MessageChan() <-chan *imessage.Message {
@@ -436,6 +438,9 @@ func (mac *macOSDatabase) ChatChan() <-chan *imessage.ChatInfo {
 }
 
 func (mac *macOSDatabase) Start() error {
+	mac.stopWait.Add(2)
+	go mac.ListenWakeup()
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create fsnotify watcher: %w", err)
@@ -510,5 +515,6 @@ Loop:
 			break Loop
 		}
 	}
+	mac.stopWait.Done()
 	return nil
 }

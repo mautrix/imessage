@@ -262,6 +262,7 @@ type PingData struct {
 func (bridge *Bridge) PingServer() (start, serverTs, end time.Time) {
 	start = time.Now()
 	var resp PingData
+	bridge.Log.Debugln("Pinging appservice websocket")
 	err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
 		Command: "ping",
 		Data: &PingData{Timestamp: start.UnixNano() / int64(time.Millisecond)},
@@ -490,6 +491,7 @@ func (bridge *Bridge) internalStop() {
 	bridge.Log.Debugln("Stopping event processor")
 	bridge.EventProcessor.Stop()
 	bridge.Log.Debugln("Stopping iMessage connector")
+	bridge.IM.Stop()
 	bridge.IMHandler.Stop()
 }
 
