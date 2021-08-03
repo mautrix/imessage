@@ -83,3 +83,9 @@ type GetMessagesAfterRequest struct {
 	ChatGUID  string  `json:"chat_guid"`
 	Timestamp float64 `json:"timestamp"`
 }
+
+type PingServerResponse struct {
+	Start  float64 `json:"start_ts"`
+	Server float64 `json:"server_ts"`
+	End    float64 `json:"end_ts"`
+}

@@ -255,6 +255,27 @@ func (bridge *Bridge) GetConnectorConfig() *imessage.PlatformConfig {
 	return bridge.Config.IMessage
 }
 
+type PingData struct {
+	Timestamp int64 `json:"timestamp"`
+}
+
+func (bridge *Bridge) PingServer() (start, serverTs, end time.Time) {
+	start = time.Now()
+	var resp PingData
+	err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
+		Command: "ping",
+		Data: &PingData{Timestamp: start.UnixNano() / int64(time.Millisecond)},
+	}, &resp)
+	end = time.Now()
+	if err != nil {
+		bridge.Log.Warnfln("Websocket ping returned error in %s: %v", end.Sub(start), err)
+	} else {
+		serverTs = time.Unix(0, resp.Timestamp * int64(time.Millisecond))
+		bridge.Log.Debugln("Websocket ping returned success: request took %s, response took %s", serverTs.Sub(start), end.Sub(serverTs))
+	}
+	return
+}
+
 func (bridge *Bridge) ipcResetEncryption(_ json.RawMessage) interface{} {
 	bridge.Crypto.Reset()
 	return PingResponse{true}

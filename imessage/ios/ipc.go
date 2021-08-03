@@ -39,6 +39,7 @@ const (
 	IncomingReadReceipt        ipc.Command = "read_receipt"
 	IncomingTypingNotification ipc.Command = "typing"
 	IncomingChat               ipc.Command = "chat"
+	IncomingServerPing         ipc.Command = "server_ping"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -47,6 +48,9 @@ func floatToTime(unix float64) time.Time {
 }
 
 func timeToFloat(time time.Time) float64 {
+	if time.IsZero() {
+		return 0
+	}
 	return float64(time.Unix()) + float64(time.Nanosecond())/1e9
 }
 
@@ -57,6 +61,7 @@ type APIWithIPC interface {
 
 type iOSConnector struct {
 	IPC         *ipc.Processor
+	bridge      imessage.Bridge
 	log         log.Logger
 	messageChan chan *imessage.Message
 	receiptChan chan *imessage.ReadReceipt
@@ -65,19 +70,20 @@ type iOSConnector struct {
 	isAndroid   bool
 }
 
-func NewPlainiOSConnector(logger log.Logger, isAndroid bool) APIWithIPC {
+func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
 	return &iOSConnector{
 		log:         logger,
+		bridge:      bridge,
 		messageChan: make(chan *imessage.Message, 256),
 		receiptChan: make(chan *imessage.ReadReceipt, 32),
 		typingChan:  make(chan *imessage.TypingNotification, 32),
 		chatChan:    make(chan *imessage.ChatInfo, 32),
-		isAndroid:   isAndroid,
+		isAndroid:   bridge.GetConnectorConfig().Platform == "android",
 	}
 }
 
 func NewiOSConnector(bridge imessage.Bridge) (imessage.API, error) {
-	ios := NewPlainiOSConnector(bridge.GetLog().Sub("iMessage").Sub("iOS"), bridge.GetConnectorConfig().Platform == "android")
+	ios := NewPlainiOSConnector(bridge.GetLog().Sub("iMessage").Sub("iOS"), bridge)
 	ios.SetIPC(bridge.GetIPC())
 	return ios, nil
 }
@@ -96,6 +102,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
 	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
 	ios.IPC.SetHandler(IncomingChat, ios.handleIncomingChat)
+	ios.IPC.SetHandler(IncomingServerPing, ios.handleIncomingServerPing)
 	return nil
 }
 
@@ -193,6 +200,15 @@ func (ios *iOSConnector) handleIncomingChat(data json.RawMessage) interface{} {
 		ios.log.Warnln("Incoming chat buffer is full")
 	}
 	return nil
+}
+
+func (ios *iOSConnector) handleIncomingServerPing(_ json.RawMessage) interface{} {
+	start, server, end := ios.bridge.PingServer()
+	return &PingServerResponse{
+		Start:  timeToFloat(start),
+		Server: timeToFloat(server),
+		End:    timeToFloat(end),
+	}
 }
 
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {

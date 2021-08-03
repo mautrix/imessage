@@ -57,6 +57,7 @@ type Bridge interface {
 	GetIPC() *ipc.Processor
 	GetLog() log.Logger
 	GetConnectorConfig() *PlatformConfig
+	PingServer() (start, serverTs, end time.Time)
 }
 
 var AppleEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)

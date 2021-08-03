@@ -194,3 +194,7 @@ Another error response:
   * `guid` (str, UUID) - The GUID of the message that the status update is about.
   * `status` (str, enum) - The current status of the message.
     * TODO: allowed values
+* Pinging the Matrix websocket (request type `ping_server`)
+  * Used to ensure that the websocket connection is alive. Should be called if there's some reason to believe
+    the connection may have silently failed, e.g. when the device wakes up from sleep.
+  * Doesn't take any parameters. Responds with three timestamps: `start`, `server` and `end`.
