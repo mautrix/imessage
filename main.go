@@ -272,7 +272,7 @@ func (bridge *Bridge) PingServer() (start, serverTs, end time.Time) {
 		bridge.Log.Warnfln("Websocket ping returned error in %s: %v", end.Sub(start), err)
 	} else {
 		serverTs = time.Unix(0, resp.Timestamp * int64(time.Millisecond))
-		bridge.Log.Debugln("Websocket ping returned success: request took %s, response took %s", serverTs.Sub(start), end.Sub(serverTs))
+		bridge.Log.Debugfln("Websocket ping returned success: request took %s, response took %s", serverTs.Sub(start), end.Sub(serverTs))
 	}
 	return
 }
