@@ -36,13 +36,17 @@ const (
 )
 
 type SendMessageRequest struct {
-	ChatGUID string `json:"chat_guid"`
-	Text     string `json:"text"`
+	ChatGUID    string `json:"chat_guid"`
+	Text        string `json:"text"`
+	ReplyTo     string `json:"reply_to"`
+	ReplyToPart int    `json:"reply_to_part"`
 }
 
 type SendMediaRequest struct {
 	ChatGUID string `json:"chat_guid"`
 	imessage.Attachment
+	ReplyTo     string `json:"reply_to"`
+	ReplyToPart int    `json:"reply_to_part"`
 }
 
 type SendTapbackRequest struct {

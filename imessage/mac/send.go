@@ -95,11 +95,11 @@ func (mac *macOSDatabase) runOsascriptWithRetry(script string, args ...string) e
 	return err
 }
 
-func (mac *macOSDatabase) SendMessage(chatID, text string) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
 	return nil, mac.runOsascriptWithRetry(sendMessage, chatID, text)
 }
 
-func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
 	dir, err := ioutil.TempDir("", "mautrix-imessage-upload")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)

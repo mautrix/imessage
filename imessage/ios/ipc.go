@@ -282,16 +282,18 @@ func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, er
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendMessage(chatID, text string) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
 	err := ios.IPC.Request(context.Background(), ReqSendMessage, &SendMessageRequest{
-		ChatGUID: chatID,
-		Text:     text,
+		ChatGUID:    chatID,
+		Text:        text,
+		ReplyTo:     replyTo,
+		ReplyToPart: replyToPart,
 	}, &resp)
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendFile(chatID, filename string, data []byte, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
 	dir, err := ioutil.TempDir("", "mautrix-imessage-upload")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
@@ -312,6 +314,8 @@ func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessa
 			PathOnDisk: filePath,
 			MimeType:   mimetype.Detect(data).String(),
 		},
+		ReplyTo:     replyTo,
+		ReplyToPart: replyToPart,
 	}, &resp)
 	return &resp, err
 }
