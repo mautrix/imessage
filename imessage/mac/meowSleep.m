@@ -50,7 +50,7 @@ void meowObjCSleepCallback(void *refCon, io_service_t service, natural_t message
     }
 }
 
-bool meowListenWakeup() {
+int meowListenWakeup() {
     IONotificationPortRef notifyPortRef;
     io_object_t notifierObject;
     void* refCon;
@@ -59,7 +59,7 @@ bool meowListenWakeup() {
 
     rootPort = IORegisterForSystemPower(refCon, &notifyPortRef, meowObjCSleepCallback, &notifierObject);
     if (rootPort == 0) {
-        return false;
+        return 1;
     }
 
     CFRunLoopAddSource(runLoop, IONotificationPortGetRunLoopSource(notifyPortRef), kCFRunLoopCommonModes);
@@ -70,7 +70,7 @@ bool meowListenWakeup() {
     IODeregisterForSystemPower(&notifierObject);
     IOServiceClose(rootPort);
     IONotificationPortDestroy(notifyPortRef);
-    return true;
+    return 0;
 }
 
 void meowStopListeningWakeup() {

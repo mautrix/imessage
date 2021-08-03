@@ -48,7 +48,7 @@ func meowRunWakeupListener(wg *sync.WaitGroup) {
 	sleepLog.Debugln("Starting wakeup listener")
 	ok := C.meowListenWakeup()
 	wg.Done()
-	if !ok {
+	if ok != 0 {
 		sleepLog.Errorln("Failed to start wakeup listener")
 	} else {
 		sleepLog.Debugln("Wakeup listener stopped")
