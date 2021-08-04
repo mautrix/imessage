@@ -913,6 +913,7 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 		mediaContent, err := portal.handleIMAttachment(msg, attach, intent)
 		var resp *mautrix.RespSendEvent
 		if err != nil {
+			// Errors are already logged in handleIMAttachment so no need to log here, just send to Matrix room.
 			resp, err = portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
 				MsgType: event.MsgNotice,
 				Body:    err.Error(),
@@ -1032,7 +1033,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 			}
 		}
 	} else {
-		portal.log.Debugfln("Unhandled message %s", msg.GUID)
+		portal.log.Debugfln("Unhandled message %s (%d attachments, %d characters of text)", msg.GUID, len(msg.Attachments), len(msg.Text))
 	}
 	return dbMessage.MXID
 }
