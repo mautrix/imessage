@@ -81,25 +81,28 @@ type Processor struct {
 	waiters    map[int]chan<- *Message
 	waiterLock sync.Mutex
 	reqID      int32
+
+	printPayloadContent bool
 }
 
-func newProcessor(lock *sync.Mutex, output io.Writer, input io.Reader, logger log.Logger) *Processor {
+func newProcessor(lock *sync.Mutex, output io.Writer, input io.Reader, logger log.Logger, printPayloadContent bool) *Processor {
 	return &Processor{
-		lock:     lock,
-		log:      logger,
-		stdout:   json.NewEncoder(output),
-		stdin:    json.NewDecoder(input),
-		handlers: make(map[Command]HandlerFunc),
-		waiters:  make(map[int]chan<- *Message),
+		lock:                lock,
+		log:                 logger,
+		stdout:              json.NewEncoder(output),
+		stdin:               json.NewDecoder(input),
+		handlers:            make(map[Command]HandlerFunc),
+		waiters:             make(map[int]chan<- *Message),
+		printPayloadContent: printPayloadContent,
 	}
 }
 
-func NewCustomProcessor(output io.Writer, input io.Reader, logger log.Logger) *Processor {
-	return newProcessor(&sync.Mutex{}, output, input, logger.Sub("IPC"))
+func NewCustomProcessor(output io.Writer, input io.Reader, logger log.Logger, printPayloadContent bool) *Processor {
+	return newProcessor(&sync.Mutex{}, output, input, logger.Sub("IPC"), printPayloadContent)
 }
 
-func NewStdioProcessor(logger log.Logger) *Processor {
-	return newProcessor(&logger.(*log.BasicLogger).StdoutLock, os.Stdout, os.Stdin, logger.Sub("IPC"))
+func NewStdioProcessor(logger log.Logger, printPayloadContent bool) *Processor {
+	return newProcessor(&logger.(*log.BasicLogger).StdoutLock, os.Stdout, os.Stdin, logger.Sub("IPC"), printPayloadContent)
 }
 
 func (ipc *Processor) Loop() {
@@ -114,15 +117,19 @@ func (ipc *Processor) Loop() {
 			break
 		}
 
-		maxLength := 200
-		snip := "…"
-		if len(msg.Data) < maxLength {
-			snip = ""
-			maxLength = len(msg.Data)
-		}
-
 		if msg.Command != "log" {
-			ipc.log.Debugfln("Received IPC command: %s/%d - %s%s", msg.Command, msg.ID, msg.Data[:maxLength], snip)
+			if ipc.printPayloadContent {
+				maxLength := 200
+				snip := "…"
+				if len(msg.Data) < maxLength {
+					snip = ""
+					maxLength = len(msg.Data)
+				}
+
+				ipc.log.Debugfln("Received IPC command: %s/%d - %s%s", msg.Command, msg.ID, msg.Data[:maxLength], snip)
+			} else {
+				ipc.log.Debugfln("Received IPC command: %s/%d", msg.Command, msg.ID)
+			}
 		}
 
 		if msg.Command == "response" || msg.Command == "error" {
