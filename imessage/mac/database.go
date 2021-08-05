@@ -64,11 +64,7 @@ func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
 	}
 	err = mac.prepareGroups()
 	if err != nil {
-		mac.log.Debugfln("Failed to open group database: %v. Falling back to message database for querying group members.", err)
-		err = mac.prepareLegacyGroups()
-		if err != nil {
-			return nil, fmt.Errorf("failed to open legacy group database: %w", err)
-		}
+		return nil, fmt.Errorf("failed to open group database: %w", err)
 	}
 
 	mac.contactStore = NewContactStore()
