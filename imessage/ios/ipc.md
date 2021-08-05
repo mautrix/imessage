@@ -198,3 +198,11 @@ Another error response:
   * Used to ensure that the websocket connection is alive. Should be called if there's some reason to believe
     the connection may have silently failed, e.g. when the device wakes up from sleep.
   * Doesn't take any parameters. Responds with three timestamps: `start`, `server` and `end`.
+* Sending status updates (request type `bridge_status`)
+  * Inform the server about iMessage connection issues.
+  * `state_event` (str, enum) - The state of the bridge.
+    * Allowed values: `STARTING`, `UNCONFIGURED`, `CONNECTING`, `BACKFILLING`, `CONNECTED`, `TRANSIENT_DISCONNECT`, `BAD_CREDENTIALS`, `UNKNOWN_ERROR`, `LOGGED_OUT`
+  * `error` (str) - An error code that the user's client application can use if it needs to do something special to handle the error.
+  * `message` (str) - Human-readable error message.
+  * `remote_id` (str, optional) - The iMessage user ID of the bridge user.
+  * `remote_name` (str, optional) - The iMessage displayname of the bridge user.

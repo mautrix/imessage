@@ -296,9 +296,35 @@ type StartSyncRequest struct {
 	UserID      id.UserID   `json:"user_id"`
 }
 
+const BridgeStatusConnected = "CONNECTED"
+
+func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
+	bridge.Log.Debugln("Sending bridge status to server")
+	if state.Timestamp == 0 {
+		state.Timestamp = time.Now().Unix()
+	}
+	if state.TTL == 0 {
+		state.TTL = 600
+	}
+	if len(state.Source) == 0 {
+		state.Source = "bridge"
+	}
+	if len(state.UserID) == 0 {
+		state.UserID = bridge.user.MXID
+	}
+	err := bridge.AS.SendWebsocket(&appservice.WebsocketRequest{
+		Command: "bridge_status",
+		Data:    &state,
+	})
+	if err != nil {
+		bridge.Log.Warnln("Error sending pong status:", err)
+	}
+}
+
 func (bridge *Bridge) startWebsocket() {
 	onConnect := func() {
-		go bridge.MatrixHandler.SendBridgeStatus()
+		// TODO disable this for non-mac connectors once they send bridge status updates themselves
+		go bridge.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
 		if bridge.Config.Bridge.Encryption.Appservice && bridge.Crypto != nil {
 			resp := map[string]interface{}{}
 			bridge.Log.Debugln("Sending /sync start request through websocket")

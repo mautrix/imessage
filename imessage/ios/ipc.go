@@ -40,6 +40,7 @@ const (
 	IncomingTypingNotification ipc.Command = "typing"
 	IncomingChat               ipc.Command = "chat"
 	IncomingServerPing         ipc.Command = "server_ping"
+	IncomingBridgeStatus       ipc.Command = "bridge_status"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -103,6 +104,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
 	ios.IPC.SetHandler(IncomingChat, ios.handleIncomingChat)
 	ios.IPC.SetHandler(IncomingServerPing, ios.handleIncomingServerPing)
+	ios.IPC.SetHandler(IncomingBridgeStatus, ios.handleIncomingStatus)
 	return nil
 }
 
@@ -190,7 +192,7 @@ func (ios *iOSConnector) handleIncomingChat(data json.RawMessage) interface{} {
 	var chat imessage.ChatInfo
 	err := json.Unmarshal(data, &chat)
 	if err != nil {
-		ios.log.Warnln("Failed to parse incoming chat: %v", err)
+		ios.log.Warnln("Failed to parse incoming chat:", err)
 		return nil
 	}
 	chat.Identifier = imessage.ParseIdentifier(chat.JSONChatGUID)
@@ -209,6 +211,17 @@ func (ios *iOSConnector) handleIncomingServerPing(_ json.RawMessage) interface{}
 		Server: timeToFloat(server),
 		End:    timeToFloat(end),
 	}
+}
+
+func (ios *iOSConnector) handleIncomingStatus(data json.RawMessage) interface{} {
+	var state imessage.BridgeStatus
+	err := json.Unmarshal(data, &state)
+	if err != nil {
+		ios.log.Warnln("Failed to parse incoming status update:", err)
+		return nil
+	}
+	ios.bridge.SendBridgeStatus(state)
+	return nil
 }
 
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {

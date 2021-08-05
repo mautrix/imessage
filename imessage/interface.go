@@ -22,6 +22,7 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/ipc"
 )
@@ -53,11 +54,24 @@ type API interface {
 	Capabilities() ConnectorCapabilities
 }
 
+type BridgeStatus struct {
+	StateEvent string    `json:"state_event"`
+	Timestamp  int64     `json:"timestamp"`
+	TTL        int       `json:"ttl"`
+	Source     string    `json:"source"`
+	Error      string    `json:"error,omitempty"`
+	Message    string    `json:"message,omitempty"`
+	UserID     id.UserID `json:"user_id,omitempty"`
+	RemoteID   string    `json:"remote_id,omitempty"`
+	RemoteName string    `json:"remote_name,omitempty"`
+}
+
 type Bridge interface {
 	GetIPC() *ipc.Processor
 	GetLog() log.Logger
 	GetConnectorConfig() *PlatformConfig
 	PingServer() (start, serverTs, end time.Time)
+	SendBridgeStatus(state BridgeStatus)
 }
 
 var AppleEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
