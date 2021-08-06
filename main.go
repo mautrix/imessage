@@ -47,7 +47,7 @@ import (
 var (
 	// These are static
 	Name = "mautrix-imessage"
-	URL  = "https://github.com/tulir/mautrix-imessage"
+	URL  = "https://github.com/mautrix/imessage"
 	// This is changed when making a release
 	Version = "0.1.0"
 	// These are filled at build time with the -X linker flag
