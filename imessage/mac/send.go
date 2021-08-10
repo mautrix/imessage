@@ -47,50 +47,61 @@ on run {targetChatID, filePath}
 end run
 `
 
-func runOsascript(script string, args ...string) error {
+func runOsascript(script string, args ...string) (string, error) {
 	args = append([]string{"-"}, args...)
 	cmd := exec.Command("osascript", args...)
+
 	var errorBuf bytes.Buffer
 	cmd.Stderr = &errorBuf
 
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("failed to open stdin pipe: %w", err)
-	}
-	err = cmd.Start()
-	if err != nil {
-		return fmt.Errorf("failed to run osascript: %w", err)
-	}
 	// Make sure Wait is always called even if something fails.
 	defer func() {
 		go func() {
 			_ = cmd.Wait()
 		}()
 	}()
-	_, err = io.WriteString(stdin, script)
-	if err != nil {
-		return fmt.Errorf("failed to send script to osascript: %w", err)
+
+	var stdin io.WriteCloser
+	var err error
+	if stdin, err = cmd.StdinPipe(); err != nil {
+		err = fmt.Errorf("failed to open stdin pipe: %w", err)
+	} else if err = cmd.Start(); err != nil {
+		err = fmt.Errorf("failed to run osascript: %w", err)
+	} else if _, err = io.WriteString(stdin, script); err != nil {
+		err = fmt.Errorf("failed to send script to osascript: %w", err)
+	} else if err = stdin.Close(); err != nil {
+		err = fmt.Errorf("failed to close stdin pipe: %w", err)
+	} else if err = cmd.Wait(); err != nil {
+		err = fmt.Errorf("failed to wait for osascript: %w (stderr: %s)", err, errorBuf.String())
 	}
-	err = stdin.Close()
+	return errorBuf.String(), err
+}
+
+func runOsascriptWithoutOutput(script string, args ...string) error {
+	stderr, err := runOsascript(script, args...)
 	if err != nil {
-		return fmt.Errorf("failed to close stdin pipe: %w", err)
-	}
-	err = cmd.Wait()
-	if err != nil {
-		return fmt.Errorf("failed to wait for osascript: %w (stderr: %s)", err, errorBuf.String())
-	} else if errorBuf.Len() > 0 {
-		return fmt.Errorf("osascript returned error: %s", errorBuf.String())
+		return err
+	} else if len(stderr) > 0 {
+		return fmt.Errorf("osascript returned error: %s", stderr)
 	}
 	return nil
 }
 
-func (mac *macOSDatabase) runOsascriptWithRetry(script string, args ...string) error {
-	err := runOsascript(script, args...)
+func is1728Error(err error) bool {
 	exitErr := &exec.ExitError{}
-	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && strings.Contains(err.Error(), "-1728") {
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == 1 && strings.Contains(err.Error(), "-1728")
+}
+
+func (mac *macOSDatabase) runOsascriptWithRetry(script string, args ...string) error {
+	err := runOsascriptWithoutOutput(script, args...)
+	if is1728Error(err) {
 		mac.log.Warnln("Retrying failed send in 1 second: %v", err)
 		time.Sleep(1 * time.Second)
-		err = runOsascript(script, args...)
+		err = runOsascriptWithoutOutput(script, args...)
+		if is1728Error(err) {
+			mac.log.Warnln("Send failed again after retry: %v, collecting debug info for %s", err, args[0])
+			go mac.collect1728DebugInfo(args[0])
+		}
 	}
 	return err
 }
