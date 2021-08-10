@@ -1,6 +1,6 @@
 # iMessage bridge protocol
 
-## Setup (iOS/Brooklyn, Android SMS)
+## Setup (when mautrix-imessage is the subprocess)
 The bridge needs a config file that has the homeserver details, access tokens
 and other such things. Brooklyn needs to get that config file from somewhere
 and point the bridge at it when running. The setup UX should just be scanning
@@ -18,9 +18,6 @@ save it to the file specified with the `-c` flag (defaults to `config.yaml`).
 
 There should also be some "logout" button that forgets the URL and deletes the
 config file.
-
-## Setup (macOS/imessage-rest)
-...
 
 ## IPC
 The protocol is based on sending JSON objects separated by newlines (`\n`).
