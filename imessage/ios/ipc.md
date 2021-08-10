@@ -1,6 +1,6 @@
 # iMessage bridge protocol
 
-## Setup (iOS/Brooklyn, Android SMS)
+## Setup (when mautrix-imessage is the subprocess)
 The bridge needs a config file that has the homeserver details, access tokens
 and other such things. Brooklyn needs to get that config file from somewhere
 and point the bridge at it when running. The setup UX should just be scanning
@@ -18,9 +18,6 @@ save it to the file specified with the `-c` flag (defaults to `config.yaml`).
 
 There should also be some "logout" button that forgets the URL and deletes the
 config file.
-
-## Setup (macOS/imessage-rest)
-...
 
 ## IPC
 The protocol is based on sending JSON objects separated by newlines (`\n`).
@@ -198,3 +195,11 @@ Another error response:
   * Used to ensure that the websocket connection is alive. Should be called if there's some reason to believe
     the connection may have silently failed, e.g. when the device wakes up from sleep.
   * Doesn't take any parameters. Responds with three timestamps: `start`, `server` and `end`.
+* Sending status updates (request type `bridge_status`)
+  * Inform the server about iMessage connection issues.
+  * `state_event` (str, enum) - The state of the bridge.
+    * Allowed values: `STARTING`, `UNCONFIGURED`, `CONNECTING`, `BACKFILLING`, `CONNECTED`, `TRANSIENT_DISCONNECT`, `BAD_CREDENTIALS`, `UNKNOWN_ERROR`, `LOGGED_OUT`
+  * `error` (str) - An error code that the user's client application can use if it needs to do something special to handle the error.
+  * `message` (str) - Human-readable error message.
+  * `remote_id` (str, optional) - The iMessage user ID of the bridge user.
+  * `remote_name` (str, optional) - The iMessage displayname of the bridge user.

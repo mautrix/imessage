@@ -28,6 +28,8 @@ import (
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 type MatrixHandler struct {
@@ -54,35 +56,15 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	return handler
 }
 
-type BridgeStatus struct {
-	OK        bool  `json:"ok"`
-	Timestamp int64 `json:"timestamp"`
-	TTL       int   `json:"ttl"`
-}
-
-func (mx *MatrixHandler) SendBridgeStatus() {
-	mx.log.Debugln("Sending bridge status to server")
-	err := mx.bridge.AS.SendWebsocket(&appservice.WebsocketRequest{
-		Command: "bridge_status",
-		Data:    &BridgeStatus{
-			OK:        true,
-			Timestamp: time.Now().Unix(),
-			TTL:       600,
-		},
-	})
-	if err != nil {
-		mx.log.Warnln("Error sending pong status:", err)
-	}
-}
-
 func (mx *MatrixHandler) HandleWebsocketCommands() {
 	for cmd := range mx.as.WebsocketCommands {
 		switch cmd.Command {
 		case "ping":
-			err := mx.bridge.AS.SendWebsocket(cmd.MakeResponse(&BridgeStatus{
-				OK:        true,
-				Timestamp: time.Now().Unix(),
-				TTL:       600,
+			err := mx.bridge.AS.SendWebsocket(cmd.MakeResponse(&imessage.BridgeStatus{
+				StateEvent: BridgeStatusConnected,
+				Timestamp:  time.Now().Unix(),
+				TTL:        600,
+				Source:     "bridge",
 			}))
 			if err != nil {
 				mx.log.Warnfln("Error responding to command %s %d: %v", cmd.Command, cmd.ReqID, err)

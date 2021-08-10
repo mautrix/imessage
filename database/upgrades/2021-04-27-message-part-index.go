@@ -8,7 +8,7 @@ import (
 const createMessageTable2 = `CREATE TABLE message (
 	chat_guid     TEXT REFERENCES portal(guid) ON DELETE CASCADE,
 	guid          TEXT,
-    part          INTEGER,
+	part          INTEGER,
 	mxid          TEXT NOT NULL UNIQUE,
 	sender_guid   TEXT NOT NULL,
 	timestamp     BIGINT NOT NULL,

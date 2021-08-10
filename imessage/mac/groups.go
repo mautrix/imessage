@@ -17,55 +17,19 @@
 package mac
 
 import (
-	"database/sql"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
 const groupMemberQuery = `
-SELECT value FROM cn_handles
-JOIN cn_handles_sources ON cn_handles.id = cn_handles_sources.cn_handle_id
-JOIN sources ON cn_handles_sources.source_id = sources.id
-WHERE cn_handles_sources.source_id = (SELECT id FROM sources WHERE group_id = $1 ORDER BY seconds_from_1970 DESC LIMIT 1)
-`
-
-const legacyGroupMemberQuery = `
-SELECT DISTINCT(handle.id) FROM message
-JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
-JOIN chat              ON chat_message_join.chat_id = chat.ROWID
-JOIN handle            ON message.handle_id = handle.ROWID
+SELECT handle.id FROM chat
+JOIN chat_handle_join ON chat_handle_join.chat_id = chat.ROWID
+JOIN handle ON chat_handle_join.handle_id = handle.ROWID
 WHERE chat.guid=$1
 `
 
-var phoneNumberCleaner = strings.NewReplacer("(", "", ")", "", " ", "", "-", "")
-
 func (mac *macOSDatabase) prepareGroups() error {
-	path, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	ppPath := filepath.Join(path, "Library", "PersonalizationPortrait", "PPSQLDatabase.db")
-	mac.ppDB, err = sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=ro", ppPath))
-	if err != nil {
-		mac.ppDB = nil
-		return err
-	}
-	mac.groupMemberQuery, err = mac.ppDB.Prepare(groupMemberQuery)
-	if err != nil {
-		_ = mac.ppDB.Close()
-		mac.ppDB = nil
-		mac.groupMemberQuery = nil
-		return fmt.Errorf("failed to prepare group member query: %w", err)
-	}
-	return nil
-}
-
-func (mac *macOSDatabase) prepareLegacyGroups() error {
 	var err error
-	mac.groupMemberQuery, err = mac.chatDB.Prepare(legacyGroupMemberQuery)
+	mac.groupMemberQuery, err = mac.chatDB.Prepare(groupMemberQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare legacy group query: %w", err)
 	}
@@ -85,9 +49,6 @@ func (mac *macOSDatabase) GetGroupMembers(chatID string) ([]string, error) {
 			return users, fmt.Errorf("error scanning row: %w", err)
 		} else if len(user) == 0 {
 			continue
-		}
-		if user[0] == '+' {
-			user = phoneNumberCleaner.Replace(user)
 		}
 		users = append(users, user)
 	}
