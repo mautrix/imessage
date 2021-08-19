@@ -89,7 +89,8 @@ func getAccounts() ([]Account, error) {
 	return accounts, nil
 }
 
-func (mac *macOSDatabase) collect1728DebugInfo(chatID string) {
+func (mac *macOSDatabase) collect1728DebugInfo(identifier imessage.Identifier) {
+	chatID := identifier.String()
 	mac.log.Debugfln("------------------------------ %s -1728 debug info ------------------------------", chatID)
 	accounts, err := getAccounts()
 	mac.log.Debugln("Accounts error:", err)
@@ -108,7 +109,6 @@ func (mac *macOSDatabase) collect1728DebugInfo(chatID string) {
 		} else {
 			mac.log.Debugfln("Result when getting chat %s with %s: %s", chatID, acc.ID, accChatOutput)
 		}
-		identifier := imessage.ParseIdentifier(chatID)
 		if !identifier.IsGroup {
 			var accPartOutput string
 			accPartOutput, err = runOsascript(getBuddyWithAccount, identifier.LocalID, acc.ID)
