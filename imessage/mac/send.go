@@ -95,11 +95,11 @@ func is1728Error(err error) bool {
 func (mac *macOSDatabase) runOsascriptWithRetry(script string, args ...string) error {
 	err := runOsascriptWithoutOutput(script, args...)
 	if is1728Error(err) {
-		mac.log.Warnln("Retrying failed send in 1 second: %v", err)
+		mac.log.Warnln("Retrying failed send in 1 second:", err)
 		time.Sleep(1 * time.Second)
 		err = runOsascriptWithoutOutput(script, args...)
 		if is1728Error(err) {
-			mac.log.Warnln("Send failed again after retry: %v, collecting debug info for %s", err, args[0])
+			mac.log.Warnfln("Send failed again after retry: %v, collecting debug info for %s", err, args[0])
 			go mac.collect1728DebugInfo(args[0])
 		}
 	}
