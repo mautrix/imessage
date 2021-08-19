@@ -110,7 +110,7 @@ func runOsascript(script string, args ...string) (string, error) {
 	} else if err = stdin.Close(); err != nil {
 		err = fmt.Errorf("failed to close stdin pipe: %w", err)
 	} else if err = cmd.Wait(); err != nil {
-		err = fmt.Errorf("failed to wait for osascript: %w (stderr: %s)", err, errorBuf.String())
+		err = fmt.Errorf("failed to wait for osascript: %w (stderr: %s)", err, strings.TrimSpace(errorBuf.String()))
 	}
 	return errorBuf.String(), err
 }
