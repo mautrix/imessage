@@ -26,8 +26,8 @@ import (
 
 const getAllAccountsJSON = `
 tell application "Messages"
-	repeat with num from 1 to (count of accounts)
-		set accProps to properties of (item num of accounts)
+	repeat with num from 1 to (count of every service)
+		set accProps to properties of (item num of every service)
 		log "{\"id\": \"" & id of accProps & "\", \"description\": \"" & description of accProps & "\", \"enabled\": " & enabled of accProps & ", \"connection_status\": \"" & connection status of accProps & "\", \"service_type\": \"" & service type of accProps & "\"}"
 	end repeat
 end tell
@@ -46,7 +46,7 @@ end run
 const getChatWithAccount = `
 on run {chatID, accountID}
 	tell application "Messages"
-		set theService to account id accountID
+		set theService to service id accountID
 		set theChat to chat id chatID of theService
 		set chatProps to properties of theChat
 		log chatProps
@@ -57,8 +57,8 @@ end run
 const getBuddyWithAccount = `
 on run {buddyID, accountID}
 	tell application "Messages"
-		set theService to account id accountID
-		set theParticipant to participant buddyID of theService
+		set theService to service id accountID
+		set theParticipant to buddy buddyID of theService
 		set participantProps to properties of theParticipant
 		log participantProps
 	end tell
@@ -89,7 +89,8 @@ func getAccounts() ([]Account, error) {
 	return accounts, nil
 }
 
-func (mac *macOSDatabase) collect1728DebugInfo(chatID string) {
+func (mac *macOSDatabase) collect1728DebugInfo(identifier imessage.Identifier) {
+	chatID := identifier.String()
 	mac.log.Debugfln("------------------------------ %s -1728 debug info ------------------------------", chatID)
 	accounts, err := getAccounts()
 	mac.log.Debugln("Accounts error:", err)
@@ -108,7 +109,6 @@ func (mac *macOSDatabase) collect1728DebugInfo(chatID string) {
 		} else {
 			mac.log.Debugfln("Result when getting chat %s with %s: %s", chatID, acc.ID, accChatOutput)
 		}
-		identifier := imessage.ParseIdentifier(chatID)
 		if !identifier.IsGroup {
 			var accPartOutput string
 			accPartOutput, err = runOsascript(getBuddyWithAccount, identifier.LocalID, acc.ID)
