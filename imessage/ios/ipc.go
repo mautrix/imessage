@@ -305,7 +305,7 @@ func (ios *iOSConnector) SendMessage(chatID, text string) (*imessage.SendRespons
 }
 
 func (ios *iOSConnector) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
-	dir, err := ioutil.TempDir("", "mautrix-imessage-upload")
+	dir, err := imessage.TempDir("mautrix-imessage-upload")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}

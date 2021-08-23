@@ -19,6 +19,8 @@ package imessage
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
@@ -99,4 +101,13 @@ func NewAPI(bridge Bridge) (API, error) {
 		return nil, fmt.Errorf("no such platform \"%s\"", cfg.Platform)
 	}
 	return impl(bridge)
+}
+
+func TempDir(name string) (string, error) {
+	dir := os.TempDir()
+	err := os.MkdirAll(dir, 0700)
+	if err != nil {
+		return "", err
+	}
+	return ioutil.TempDir(dir, name)
 }
