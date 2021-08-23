@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"maunium.net/go/mautrix/pushrules"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -287,6 +288,45 @@ func (portal *Portal) backfill() {
 	}
 }
 
+func (portal *Portal) disableNotifications(user *User) {
+	if !portal.bridge.Config.Bridge.BackfillDisableNotifs {
+		return
+	}
+	puppet := portal.bridge.GetPuppetByGUID(portal.GUID)
+	if puppet == nil || user.DoublePuppetIntent == nil {
+		return
+	}
+	portal.log.Debugfln("Disabling notifications for %s for backfilling", user.MXID)
+	ruleID := fmt.Sprintf("net.maunium.silence_while_backfilling.%s", portal.MXID)
+	err := user.DoublePuppetIntent.PutPushRule("global", pushrules.OverrideRule, ruleID, &mautrix.ReqPutPushRule{
+		Actions: []pushrules.PushActionType{pushrules.ActionDontNotify},
+		Conditions: []pushrules.PushCondition{{
+			Kind:    pushrules.KindEventMatch,
+			Key:     "room_id",
+			Pattern: string(portal.MXID),
+		}},
+	})
+	if err != nil {
+		portal.log.Warnfln("Failed to disable notifications for %s while backfilling: %v", user.MXID, err)
+	}
+}
+
+func (portal *Portal) enableNotifications(user *User) {
+	if !portal.bridge.Config.Bridge.BackfillDisableNotifs {
+		return
+	}
+	puppet := portal.bridge.GetPuppetByGUID(portal.GUID)
+	if puppet == nil || user.DoublePuppetIntent == nil {
+		return
+	}
+	portal.log.Debugfln("Re-enabling notifications for %s after backfilling", user.MXID)
+	ruleID := fmt.Sprintf("net.maunium.silence_while_backfilling.%s", portal.MXID)
+	err := user.DoublePuppetIntent.DeletePushRule("global", pushrules.OverrideRule, ruleID)
+	if err != nil {
+		portal.log.Warnfln("Failed to re-enable notifications for %s after backfilling: %v", user.MXID, err)
+	}
+}
+
 func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	anyone := 0
 	nope := 99
@@ -518,8 +558,10 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
 	}
 	go func() {
+		portal.disableNotifications(portal.bridge.user)
 		portal.log.Debugln("Starting initial backfill")
 		portal.backfill()
+		portal.enableNotifications(portal.bridge.user)
 		portal.log.Debugln("Unlocking backfill (create)")
 		portal.unlockBackfill()
 	}()
