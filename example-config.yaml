@@ -70,6 +70,9 @@ bridge:
     chat_sync_max_age: 0.5
     # Maximum number of messages to backfill for new portal rooms.
     initial_backfill_limit: 100
+    # Whether or not notifications should be turned off while filling initial history.
+    # Only applicable when using double puppeting.
+    initial_backfill_disable_notifications: true
     # Whether or not the bridge should periodically resync chat and contact info.
     periodic_sync: true
 
