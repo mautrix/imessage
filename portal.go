@@ -680,10 +680,23 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		}
 		portal.messageDedupLock.Unlock()
 	}
+
+	var messageReplyID string
+	var messageReplyPart int
+	replyToID := msg.GetReplyTo()
+	if len(replyToID) > 0 {
+		msg.RemoveReplyFallback()
+		imsg := portal.bridge.DB.Message.GetByMXID(replyToID)
+		if imsg != nil {
+			messageReplyID = imsg.GUID
+			messageReplyPart = imsg.Part
+		}
+	}
+
 	var err error
 	var resp *imessage.SendResponse
 	if msg.MsgType == event.MsgText {
-		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body)
+		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart)
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		var data []byte
 		var url id.ContentURI
@@ -711,7 +724,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 				return
 			}
 		}
-		resp, err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data)
+		resp, err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data, messageReplyID, messageReplyPart)
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)

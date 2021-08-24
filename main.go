@@ -79,6 +79,7 @@ func init() {
 var configPath = flag.MakeFull("c", "config", "The path to your config file.", "config.yaml").String()
 var configURL = flag.MakeFull("u", "url", "The URL to download the config file from.", "").String()
 var configOutputRedirect = flag.MakeFull("o", "output-redirect", "Whether or not to output the URL of the first redirect when downloading the config file.", "false").Bool()
+
 //var baseConfigPath = flag.MakeFull("b", "base-config", "The path to the example config file.", "example-config.yaml").String()
 var registrationPath = flag.MakeFull("r", "registration", "The path where to save the appservice registration.", "registration.yaml").String()
 var generateRegistration = flag.MakeFull("g", "generate-registration", "Generate registration and quit.", "false").Bool()
@@ -194,7 +195,10 @@ func (bridge *Bridge) Init() {
 	_, _ = bridge.AS.Init()
 	bridge.Bot = bridge.AS.BotIntent()
 
-	bridge.Log = log.Create()
+	bridge.Log = log.Createm(map[string]interface{}{
+		"username": bridge.Config.Bridge.User.String(),
+	})
+
 	bridge.Config.Logging.Configure(bridge.Log)
 	log.DefaultLogger = bridge.Log.(*log.BasicLogger)
 	if len(bridge.Config.Logging.FileNameFormat) > 0 {
@@ -223,7 +227,7 @@ func (bridge *Bridge) Init() {
 	bridge.Log.Debugln("Initializing Matrix event handler")
 	bridge.MatrixHandler = NewMatrixHandler(bridge)
 
-	bridge.IPC = ipc.NewStdioProcessor(bridge.Log)
+	bridge.IPC = ipc.NewStdioProcessor(bridge.Log, bridge.Config.IMessage.LogIPCPayloads)
 	bridge.IPC.SetHandler("reset-encryption", bridge.ipcResetEncryption)
 	bridge.IPC.SetHandler("ping", bridge.ipcPing)
 	bridge.IPC.SetHandler("stop", bridge.ipcStop)
@@ -265,13 +269,13 @@ func (bridge *Bridge) PingServer() (start, serverTs, end time.Time) {
 	bridge.Log.Debugln("Pinging appservice websocket")
 	err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
 		Command: "ping",
-		Data: &PingData{Timestamp: start.UnixNano() / int64(time.Millisecond)},
+		Data:    &PingData{Timestamp: start.UnixNano() / int64(time.Millisecond)},
 	}, &resp)
 	end = time.Now()
 	if err != nil {
 		bridge.Log.Warnfln("Websocket ping returned error in %s: %v", end.Sub(start), err)
 	} else {
-		serverTs = time.Unix(0, resp.Timestamp * int64(time.Millisecond))
+		serverTs = time.Unix(0, resp.Timestamp*int64(time.Millisecond))
 		bridge.Log.Debugfln("Websocket ping returned success: request took %s, response took %s", serverTs.Sub(start), end.Sub(serverTs))
 	}
 	return

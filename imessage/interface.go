@@ -47,8 +47,8 @@ type API interface {
 	GetChatInfo(chatID string) (*ChatInfo, error)
 	GetGroupAvatar(chatID string) (*Attachment, error)
 
-	SendMessage(chatID, text string) (*SendResponse, error)
-	SendFile(chatID, filename string, data []byte) (*SendResponse, error)
+	SendMessage(chatID, text string, replyTo string, replyToPart int) (*SendResponse, error)
+	SendFile(chatID, filename string, data []byte, replyTo string, replyToPart int) (*SendResponse, error)
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
@@ -82,7 +82,8 @@ var Implementations = make(map[string]func(Bridge) (API, error))
 type PlatformConfig struct {
 	Platform string `yaml:"platform"`
 
-	IMRestPath string `yaml:"imessage_rest_path"`
+	IMRestPath     string `yaml:"imessage_rest_path"`
+	LogIPCPayloads bool   `yaml:"log_ipc_payloads"`
 }
 
 func (pc *PlatformConfig) BridgeName() string {

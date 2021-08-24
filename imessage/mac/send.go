@@ -162,11 +162,11 @@ func (mac *macOSDatabase) sendMessageWithRetry(script, fallbackScript1, fallback
 	return err
 }
 
-func (mac *macOSDatabase) SendMessage(chatID, text string) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
 	return nil, mac.sendMessageWithRetry(sendMessage, sendMessageWithService, sendMessageBuddy, imessage.ParseIdentifier(chatID), text)
 }
 
-func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
 	dir, err := imessage.TempDir("mautrix-imessage-upload")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)

@@ -39,20 +39,22 @@ const IncomingLog ipc.Command = "log"
 
 type MacNoSIPConnector struct {
 	ios.APIWithIPC
-	path    string
-	proc    *exec.Cmd
-	log     log.Logger
-	procLog log.Logger
+	path                string
+	proc                *exec.Cmd
+	log                 log.Logger
+	procLog             log.Logger
+	printPayloadContent bool
 }
 
 func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	logger := bridge.GetLog().Sub("iMessage").Sub("Mac-noSIP")
 	processLogger := bridge.GetLog().Sub("iMessage").Sub("Barcelona")
 	return &MacNoSIPConnector{
-		APIWithIPC: ios.NewPlainiOSConnector(logger, bridge),
-		path:       bridge.GetConnectorConfig().IMRestPath,
-		log:        logger,
-		procLog:    processLogger,
+		APIWithIPC:          ios.NewPlainiOSConnector(logger, bridge),
+		path:                bridge.GetConnectorConfig().IMRestPath,
+		log:                 logger,
+		procLog:             processLogger,
+		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
 	}, nil
 }
 
@@ -69,8 +71,14 @@ func (mac *MacNoSIPConnector) Start() error {
 		return fmt.Errorf("failed to get subprocess stdin pipe: %w", err)
 	}
 
-	ipcProc := ipc.NewCustomProcessor(stdin, stdout, mac.log)
-	go ipcProc.Loop()
+	ipcProc := ipc.NewCustomProcessor(stdin, stdout, mac.log, mac.printPayloadContent)
+	go func() {
+		ipcProc.Loop()
+		if mac.proc.ProcessState.Exited() {
+			mac.log.Errorf("nosip proc died with exit code %d – goodbye", mac.proc.ProcessState.ExitCode())
+			os.Exit(mac.proc.ProcessState.ExitCode())
+		}
+	}()
 	mac.SetIPC(ipcProc)
 
 	err = mac.proc.Start()
@@ -83,9 +91,10 @@ func (mac *MacNoSIPConnector) Start() error {
 }
 
 type LogLine struct {
-	Message string `json:"message"`
-	Level   string `json:"level"`
-	Module  string `json:"module"`
+	Message  string                 `json:"message"`
+	Level    string                 `json:"level"`
+	Module   string                 `json:"module"`
+	Metadata map[string]interface{} `json:"metadata"`
 }
 
 func getLevelFromName(name string) log.Level {
@@ -112,10 +121,7 @@ func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{
 		mac.log.Warnfln("Failed to parse incoming log line: %v (data: %s)", err, data)
 		return nil
 	}
-	logger := mac.procLog
-	if len(message.Module) > 0 {
-		logger = logger.Sub(message.Module)
-	}
+	logger := mac.procLog.Subm(message.Module, message.Metadata)
 	logger.Log(getLevelFromName(message.Level), message.Message)
 	return nil
 }
