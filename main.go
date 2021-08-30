@@ -325,27 +325,31 @@ func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	}
 }
 
+func (bridge *Bridge) requestStartSync() {
+	resp := map[string]interface{}{}
+	bridge.Log.Debugln("Sending /sync start request through websocket")
+	cryptoClient := bridge.Crypto.Client()
+	err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
+		Command: "start_sync",
+		Data: &StartSyncRequest{
+			AccessToken: cryptoClient.AccessToken,
+			DeviceID:    cryptoClient.DeviceID,
+			UserID:      cryptoClient.UserID,
+		},
+	}, &resp)
+	if err != nil {
+		go bridge.MatrixHandler.HandleSyncProxyError(nil, err)
+	} else {
+		bridge.Log.Debugln("Started receiving encryption data with sync proxy:", resp)
+	}
+}
+
 func (bridge *Bridge) startWebsocket() {
 	onConnect := func() {
 		// TODO disable this for non-mac connectors once they send bridge status updates themselves
 		go bridge.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
 		if bridge.Config.Bridge.Encryption.Appservice && bridge.Crypto != nil {
-			resp := map[string]interface{}{}
-			bridge.Log.Debugln("Sending /sync start request through websocket")
-			cryptoClient := bridge.Crypto.Client()
-			err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
-				Command: "start_sync",
-				Data: &StartSyncRequest{
-					AccessToken: cryptoClient.AccessToken,
-					DeviceID:    cryptoClient.DeviceID,
-					UserID:      cryptoClient.UserID,
-				},
-			}, &resp)
-			if err != nil {
-				bridge.Log.Errorln("Failed to request sync proxy to start syncing:", err)
-			} else {
-				bridge.Log.Debugln("Started receiving encryption data with sync proxy:", resp)
-			}
+			bridge.requestStartSync()
 		}
 	}
 	reconnectBackoff := defaultReconnectBackoff
