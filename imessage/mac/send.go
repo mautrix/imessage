@@ -42,7 +42,11 @@ end run
 const sendMessageWithService = `
 on run {targetChatID, messageText}
 	tell application "Messages"
-		set theService to 1st service whose service type = %s
+		try
+			set theService to 1st service whose service type = %s
+		on error number -2753
+			set theService to 1st service
+		end try
 		send messageText to chat id targetChatID of theService
 	end tell
 end run
@@ -51,7 +55,11 @@ end run
 const sendMessageBuddy = `
 on run {targetBuddyID, messageText}
 	tell application "Messages"
-		set theService to 1st service whose service type = %s
+		try
+			set theService to 1st service whose service type = %s
+		on error number -2753
+			set theService to 1st service
+		end try
 		set theBuddy to a reference to buddy targetBuddyID of theService
 		send messageText to theBuddy
 	end tell
@@ -69,7 +77,11 @@ end run
 const sendFileWithService = `
 on run {targetChatID, filePath}
 	tell application "Messages"
-		set theService to 1st service whose service type = %s
+		try
+			set theService to 1st service whose service type = %s
+		on error number -2753
+			set theService to 1st service
+		end try
 		send filePath as POSIX file to chat id targetChatID of theService
 	end tell
 end run
@@ -78,7 +90,11 @@ end run
 const sendFileBuddy = `
 on run {targetBuddyID, messageText}
 	tell application "Messages"
-		set theService to 1st service whose service type = %s
+		try
+			set theService to 1st service whose service type = %s
+		on error number -2753
+			set theService to 1st service
+		end try
 		set theBuddy to a reference to buddy targetBuddyID of theService
 		send filePath as POSIX file to theBuddy
 	end tell
