@@ -88,7 +88,7 @@ end run
 `
 
 const sendFileBuddy = `
-on run {targetBuddyID, messageText}
+on run {targetBuddyID, filePath}
 	tell application "Messages"
 		try
 			set theService to 1st service whose service type = %s
