@@ -329,8 +329,11 @@ func (bridge *Bridge) requestStartSync() {
 	resp := map[string]interface{}{}
 	bridge.Log.Debugln("Sending /sync start request through websocket")
 	cryptoClient := bridge.Crypto.Client()
-	err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
+	ctx, cancel := context.WithTimeout(context.Background(), 3 * time.Minute)
+	defer cancel()
+	err := bridge.AS.RequestWebsocket(ctx, &appservice.WebsocketRequest{
 		Command: "start_sync",
+		Deadline: 30 * time.Second,
 		Data: &StartSyncRequest{
 			AccessToken: cryptoClient.AccessToken,
 			DeviceID:    cryptoClient.DeviceID,
