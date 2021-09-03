@@ -230,6 +230,7 @@ func (bridge *Bridge) Init() {
 	bridge.IPC = ipc.NewStdioProcessor(bridge.Log, bridge.Config.IMessage.LogIPCPayloads)
 	bridge.IPC.SetHandler("reset-encryption", bridge.ipcResetEncryption)
 	bridge.IPC.SetHandler("ping", bridge.ipcPing)
+	bridge.IPC.SetHandler("ping-server", bridge.ipcPingServer)
 	bridge.IPC.SetHandler("stop", bridge.ipcStop)
 
 	bridge.Log.Debugln("Initializing iMessage connector")
@@ -288,6 +289,21 @@ func (bridge *Bridge) ipcResetEncryption(_ json.RawMessage) interface{} {
 
 func (bridge *Bridge) ipcPing(_ json.RawMessage) interface{} {
 	return PingResponse{true}
+}
+
+type PingServerResponse struct {
+	Start  int64 `json:"start_ts"`
+	Server int64 `json:"server_ts"`
+	End    int64 `json:"end_ts"`
+}
+
+func (bridge *Bridge) ipcPingServer(_ json.RawMessage) interface{} {
+	start, server, end := bridge.PingServer()
+	return &PingServerResponse{
+		Start:  start.UnixNano(),
+		Server: server.UnixNano(),
+		End:    end.UnixNano(),
+	}
 }
 
 const defaultReconnectBackoff = 2 * time.Second

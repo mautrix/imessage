@@ -39,7 +39,7 @@ const (
 	IncomingReadReceipt        ipc.Command = "read_receipt"
 	IncomingTypingNotification ipc.Command = "typing"
 	IncomingChat               ipc.Command = "chat"
-	IncomingServerPing         ipc.Command = "server_ping"
+	IncomingPingServer         ipc.Command = "ping_server"
 	IncomingBridgeStatus       ipc.Command = "bridge_status"
 )
 
@@ -103,7 +103,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
 	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
 	ios.IPC.SetHandler(IncomingChat, ios.handleIncomingChat)
-	ios.IPC.SetHandler(IncomingServerPing, ios.handleIncomingServerPing)
+	ios.IPC.SetHandler(IncomingPingServer, ios.handleIncomingServerPing)
 	ios.IPC.SetHandler(IncomingBridgeStatus, ios.handleIncomingStatus)
 	return nil
 }
