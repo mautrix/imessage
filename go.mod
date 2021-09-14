@@ -8,6 +8,6 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.7
 	gopkg.in/yaml.v2 v2.3.0
 	maunium.net/go/mauflag v1.0.0
-	maunium.net/go/maulogger/v2 v2.3.0
+	maunium.net/go/maulogger/v2 v2.3.1
 	maunium.net/go/mautrix v0.9.24
 )
