@@ -72,14 +72,14 @@ build ios armv7:
   - export CXX=$CC
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
-  - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage
-  - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
-  - ldid -S mautrix-imessage
-  - cp $HOME/lib/armv7/libolm.dylib libolm.3.dylib
+  - mkdir mautrix-imessage-ios-armv7
+  - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage-ios-armv7/mautrix-imessage
+  - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage-ios-armv7/mautrix-imessage
+  - ldid -S mautrix-imessage-ios-armv7/mautrix-imessage
+  - cp $HOME/lib/armv7/libolm.dylib mautrix-imessage-ios-armv7/libolm.3.dylib
   artifacts:
     paths:
-    - libolm.3.dylib
-    - mautrix-imessage
+    - mautrix-imessage-ios-armv7
 
 build ios arm64:
   tags:
@@ -102,15 +102,15 @@ build ios arm64:
   - export CXX=$CC
   - export GO_LDFLAGS="-X main.Tag=$CI_COMMIT_TAG -X main.Commit=$CI_COMMIT_SHA -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
   script:
-  - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage
-  - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
-  - ldid -S mautrix-imessage
-  - cp $HOME/lib/arm64/libolm.dylib libolm.3.dylib
-  - ldid -S libolm.3.dylib
+  - mkdir mautrix-imessage-ios-arm64
+  - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage-ios-arm64/mautrix-imessage
+  - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage-ios-arm64/mautrix-imessage
+  - ldid -S mautrix-imessage-ios-arm64/mautrix-imessage
+  - cp $HOME/lib/arm64/libolm.dylib mautrix-imessage-ios-arm64/libolm.3.dylib
+  - ldid -S mautrix-imessage-ios-arm64/libolm.3.dylib
   artifacts:
     paths:
-    - libolm.3.dylib
-    - mautrix-imessage
+    - mautrix-imessage-ios-arm64
 
 build universal:
   stage: combine
@@ -131,6 +131,31 @@ build universal:
   - cp mautrix-imessage-arm64/example-config.yaml .
   artifacts:
     name: mautrix-imessage-universal
+    paths:
+    - libolm.3.dylib
+    - mautrix-imessage
+    - example-config.yaml
+
+build ios universal:
+  stage: combine
+  tags:
+  - macos
+  - arm64
+  variables:
+    GIT_STRATEGY: none
+  dependencies:
+  - build ios armv7
+  - build ios arm64
+  needs:
+  - build ios armv7
+  - build ios arm64
+  script:
+  - lipo -create -output libolm.3.dylib mautrix-imessage-ios-arm64/libolm.3.dylib mautrix-imessage-ios-armv7/libolm.3.dylib
+  - ldid -S libolm.3.dylib
+  - lipo -create -output mautrix-imessage mautrix-imessage-ios-arm64/mautrix-imessage mautrix-imessage-ios-armv7/mautrix-imessage
+  - ldid -S mautrix-imessage
+  artifacts:
+    name: mautrix-imessage-ios-universal
     paths:
     - libolm.3.dylib
     - mautrix-imessage
