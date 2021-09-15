@@ -63,7 +63,7 @@ build ios armv7:
   before_script:
   - export SDK_PATH=$(xcrun -sdk $SDK -show-sdk-path)
   - export CLANG=$(xcrun -sdk $SDK -find clang)
-  - export LIBRARY_PATH=$HOME/lib
+  - export LIBRARY_PATH=$HOME/lib/armv7
   - export GOROOT=$HOME/Library/Go1.14
   - export GOPATH=$HOME/go-1.14
   - export CPATH=/opt/homebrew/include
@@ -75,7 +75,7 @@ build ios armv7:
   - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage
   - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
   - ldid -S mautrix-imessage
-  - cp $HOME/lib/libolm.dylib libolm.3.dylib
+  - cp $HOME/lib/armv7/libolm.dylib libolm.3.dylib
   artifacts:
     paths:
     - libolm.3.dylib
@@ -95,7 +95,7 @@ build ios arm64:
   before_script:
   - export SDK_PATH=$(xcrun -sdk $SDK -show-sdk-path)
   - export CLANG=$(xcrun -sdk $SDK -find clang)
-  - export LIBRARY_PATH=$HOME/lib
+  - export LIBRARY_PATH=$HOME/lib/arm64
   - export CPATH=/opt/homebrew/include
   - export PATH=/opt/homebrew/bin:$PATH
   - export CC=$(pwd)/clangwrap.sh
@@ -105,8 +105,8 @@ build ios arm64:
   - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage
   - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage
   - ldid -S mautrix-imessage
+  - cp $HOME/lib/arm64/libolm.dylib libolm.3.dylib
   - ldid -S libolm.3.dylib
-  - cp $HOME/lib/libolm.dylib libolm.3.dylib
   artifacts:
     paths:
     - libolm.3.dylib
