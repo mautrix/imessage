@@ -74,7 +74,7 @@ build ios armv7:
   script:
   - mkdir mautrix-imessage-ios-armv7
   - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage-ios-armv7/mautrix-imessage
-  - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage-ios-armv7/mautrix-imessage
+  - install_name_tool -change build/libolm.dylib.3.2.4 @executable_path/libolm.3.dylib mautrix-imessage-ios-armv7/mautrix-imessage
   - ldid -S mautrix-imessage-ios-armv7/mautrix-imessage
   - cp $HOME/lib/armv7/libolm.dylib mautrix-imessage-ios-armv7/libolm.3.dylib
   artifacts:
@@ -104,7 +104,7 @@ build ios arm64:
   script:
   - mkdir mautrix-imessage-ios-arm64
   - go build -tags ios -ldflags "$GO_LDFLAGS" -o mautrix-imessage-ios-arm64/mautrix-imessage
-  - install_name_tool -change build/libolm.dylib.3.2.2 @executable_path/libolm.3.dylib mautrix-imessage-ios-arm64/mautrix-imessage
+  - install_name_tool -change build/libolm.dylib.3.2.4 @executable_path/libolm.3.dylib mautrix-imessage-ios-arm64/mautrix-imessage
   - ldid -S mautrix-imessage-ios-arm64/mautrix-imessage
   - cp $HOME/lib/arm64/libolm.dylib mautrix-imessage-ios-arm64/libolm.3.dylib
   - ldid -S mautrix-imessage-ios-arm64/libolm.3.dylib
