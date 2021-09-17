@@ -89,6 +89,7 @@ build ios arm64:
   variables:
     CGO_ENABLED: 1
     GOARCH: arm64
+    GOOS: ios
     IPHONEOS_DEPLOYMENT_TARGET: "7.0"
     SDK: iphoneos
     ARCH: arm64
