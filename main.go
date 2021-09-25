@@ -370,7 +370,7 @@ func (bridge *Bridge) startWebsocket() {
 		// TODO disable this for non-mac connectors once they send bridge status updates themselves
 		if bridge.latestState != nil {
 			go bridge.SendBridgeStatus(*bridge.latestState)
-		} else {
+		} else if bridge.GetConnectorConfig().Platform != "mac-nosip" {
 			go bridge.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
 		}
 		if bridge.Config.Bridge.Encryption.Appservice && bridge.Crypto != nil {
