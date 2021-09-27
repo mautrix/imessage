@@ -46,7 +46,7 @@ type MatrixHandler struct {
 
 	lastSyncProxyError time.Time
 	syncProxyBackoff   time.Duration
-	syncProxyWaiting int64
+	syncProxyWaiting   int64
 }
 
 func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
@@ -72,12 +72,20 @@ func (mx *MatrixHandler) HandleWebsocketCommands() {
 	for cmd := range mx.as.WebsocketCommands {
 		switch cmd.Command {
 		case "ping":
-			err := mx.bridge.AS.SendWebsocket(cmd.MakeResponse(&imessage.BridgeStatus{
-				StateEvent: BridgeStatusConnected,
-				Timestamp:  time.Now().Unix(),
-				TTL:        600,
-				Source:     "bridge",
-			}))
+			var status imessage.BridgeStatus = imessage.BridgeStatus{}
+
+			if len(mx.bridge.latestState.StateEvent) > 0 {
+				status = mx.bridge.latestState
+			} else {
+				status = imessage.BridgeStatus{
+					StateEvent: BridgeStatusConnected,
+					Timestamp:  time.Now().Unix(),
+					TTL:        600,
+					Source:     "bridge",
+				}
+			}
+
+			err := mx.bridge.AS.SendWebsocket(cmd.MakeResponse(&status))
 			if err != nil {
 				mx.log.Warnfln("Error responding to command %s %d: %v", cmd.Command, cmd.ReqID, err)
 			} else {
