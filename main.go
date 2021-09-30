@@ -320,6 +320,7 @@ type StartSyncRequest struct {
 const BridgeStatusConnected = "CONNECTED"
 
 func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
+	bridge.latestState = state
 	bridge.Log.Debugln("Sending bridge status to server")
 	if state.Timestamp == 0 {
 		state.Timestamp = time.Now().Unix()
@@ -333,7 +334,6 @@ func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	if len(state.UserID) == 0 {
 		state.UserID = bridge.user.MXID
 	}
-	bridge.latestState = state
 	err := bridge.AS.SendWebsocket(&appservice.WebsocketRequest{
 		Command: "bridge_status",
 		Data:    &state,
@@ -367,7 +367,6 @@ func (bridge *Bridge) requestStartSync() {
 
 func (bridge *Bridge) startWebsocket() {
 	onConnect := func() {
-		// TODO disable this for non-mac connectors once they send bridge status updates themselves
 		if len(bridge.latestState.StateEvent) > 0 {
 			go bridge.SendBridgeStatus(bridge.latestState)
 		} else if bridge.GetConnectorConfig().Platform != "mac-nosip" {
