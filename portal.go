@@ -26,10 +26,10 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
-	"maunium.net/go/mautrix/crypto/attachment"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/pushrules"
@@ -341,44 +341,24 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	}
 }
 
-type BridgeInfoSection struct {
-	ID          string              `json:"id"`
-	DisplayName string              `json:"displayname,omitempty"`
-	AvatarURL   id.ContentURIString `json:"avatar_url,omitempty"`
-	ExternalURL string              `json:"external_url,omitempty"`
-
-	GUID    string `json:"fi.mau.imessage.guid,omitempty"`
-	Service string `json:"fi.mau.imessage.service,omitempty"`
-	IsGroup bool   `json:"fi.mau.imessage.is_group,omitempty"`
-}
-
-type BridgeInfoContent struct {
-	BridgeBot id.UserID          `json:"bridgebot"`
-	Creator   id.UserID          `json:"creator,omitempty"`
-	Protocol  BridgeInfoSection  `json:"protocol"`
-	Network   *BridgeInfoSection `json:"network,omitempty"`
-	Channel   BridgeInfoSection  `json:"channel"`
-}
-
-var (
-	StateBridgeInfo         = event.Type{Type: "m.bridge", Class: event.StateEventType}
-	StateHalfShotBridgeInfo = event.Type{Type: "uk.half-shot.bridge", Class: event.StateEventType}
-)
-
-func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
-	bridgeInfo := BridgeInfoContent{
-		BridgeBot: portal.bridge.Bot.UserID,
-		Creator:   portal.MainIntent().UserID,
-		Protocol: BridgeInfoSection{
-			ID:          "imessage",
-			DisplayName: "iMessage",
-			AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
-			ExternalURL: "https://support.apple.com/messages",
+func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
+	bridgeInfo := CustomBridgeInfoContent{
+		BridgeEventContent: event.BridgeEventContent{
+			BridgeBot: portal.bridge.Bot.UserID,
+			Creator:   portal.MainIntent().UserID,
+			Protocol: event.BridgeInfoSection{
+				ID:          "imessage",
+				DisplayName: "iMessage",
+				AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+				ExternalURL: "https://support.apple.com/messages",
+			},
 		},
-		Channel: BridgeInfoSection{
-			ID:          portal.Identifier.LocalID,
-			DisplayName: portal.Name,
-			AvatarURL:   portal.AvatarURL.CUString(),
+		Channel: CustomBridgeInfoSection{
+			BridgeInfoSection: event.BridgeInfoSection{
+				ID:          portal.Identifier.LocalID,
+				DisplayName: portal.Name,
+				AvatarURL:   portal.AvatarURL.CUString(),
+			},
 
 			GUID:    portal.GUID,
 			IsGroup: portal.Identifier.IsGroup,
@@ -399,8 +379,8 @@ func (portal *Portal) getBridgeInfo() (string, BridgeInfoContent) {
 	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
 		bridgeInfo.Protocol.ID = "imessage-nosip"
 	}
-	bridgeInfoStateKey := fmt.Sprintf("fi.mau.imessage://%s/%s",
-		strings.ToLower(portal.Identifier.Service), portal.GUID)
+	bridgeInfoStateKey := fmt.Sprintf("%s://%s/%s",
+		bridgeInfoProto, strings.ToLower(portal.Identifier.Service), portal.GUID)
 	return bridgeInfoStateKey, bridgeInfo
 }
 
@@ -411,11 +391,11 @@ func (portal *Portal) UpdateBridgeInfo() {
 	}
 	portal.log.Debugln("Updating bridge info...")
 	stateKey, content := portal.getBridgeInfo()
-	_, err := portal.MainIntent().SendStateEvent(portal.MXID, StateBridgeInfo, stateKey, content)
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateBridge, stateKey, content)
 	if err != nil {
 		portal.log.Warnln("Failed to update m.bridge:", err)
 	}
-	_, err = portal.MainIntent().SendStateEvent(portal.MXID, StateHalfShotBridgeInfo, stateKey, content)
+	_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateHalfShotBridge, stateKey, content)
 	if err != nil {
 		portal.log.Warnln("Failed to update uk.half-shot.bridge:", err)
 	}
@@ -472,12 +452,12 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 			Parsed: portal.GetBasePowerLevels(),
 		},
 	}, {
-		Type:     StateBridgeInfo,
+		Type:     event.StateBridge,
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}, {
 		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
-		Type:     StateHalfShotBridgeInfo,
+		Type:     event.StateHalfShotBridge,
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
