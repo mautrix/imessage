@@ -154,18 +154,29 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get supported login flows: %w", err)
 	}
-	if !flows.HasFlow(mautrix.AuthTypeHalfyAppservice) {
-		return nil, fmt.Errorf("homeserver does not support appservice login")
+	authType := mautrix.AuthTypeAppservice
+	if !flows.HasFlow(authType) {
+		authType = mautrix.AuthTypeHalfyAppservice
+		if !flows.HasFlow(authType) {
+			return nil, fmt.Errorf("homeserver does not support appservice login")
+		}
 	}
 	// We set the API token to the AS token here to authenticate the appservice login
 	// It'll get overridden after the login
 	client.AccessToken = helper.bridge.AS.Registration.AppToken
 	resp, err := client.Login(&mautrix.ReqLogin{
-		Type:                     mautrix.AuthTypeHalfyAppservice,
-		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(helper.bridge.AS.BotMXID())},
+		Type: authType,
+		Identifier: mautrix.UserIdentifier{
+			Type: mautrix.IdentifierTypeUser,
+			User: string(helper.bridge.AS.BotMXID()),
+		},
+
 		DeviceID:                 deviceID,
 		InitialDeviceDisplayName: helper.bridge.Config.IMessage.BridgeName(),
-		StoreCredentials:         true,
+
+		// We don't want to use the public URL even if the homeserver provides one
+		StoreHomeserverURL: false,
+		StoreCredentials:   true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to log in as bridge bot: %w", err)
