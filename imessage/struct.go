@@ -217,4 +217,5 @@ type ConnectorCapabilities struct {
 	SendTapbacks            bool
 	SendReadReceipts        bool
 	SendTypingNotifications bool
+	BridgeState             bool
 }

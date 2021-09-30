@@ -132,7 +132,7 @@ type Bridge struct {
 	puppetsLock   sync.Mutex
 	stopping      bool
 	stop          chan struct{}
-	latestState   imessage.BridgeStatus
+	latestState   *imessage.BridgeStatus
 }
 
 type Crypto interface {
@@ -320,7 +320,6 @@ type StartSyncRequest struct {
 const BridgeStatusConnected = "CONNECTED"
 
 func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
-	bridge.latestState = state
 	bridge.Log.Debugln("Sending bridge status to server")
 	if state.Timestamp == 0 {
 		state.Timestamp = time.Now().Unix()
@@ -333,6 +332,9 @@ func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	}
 	if len(state.UserID) == 0 {
 		state.UserID = bridge.user.MXID
+	}
+	if bridge.IM.Capabilities().BridgeState {
+		bridge.latestState = &state
 	}
 	err := bridge.AS.SendWebsocket(&appservice.WebsocketRequest{
 		Command: "bridge_status",
@@ -367,9 +369,9 @@ func (bridge *Bridge) requestStartSync() {
 
 func (bridge *Bridge) startWebsocket() {
 	onConnect := func() {
-		if len(bridge.latestState.StateEvent) > 0 {
-			go bridge.SendBridgeStatus(bridge.latestState)
-		} else if bridge.GetConnectorConfig().Platform != "mac-nosip" {
+		if bridge.latestState != nil {
+			go bridge.SendBridgeStatus(*bridge.latestState)
+		} else if !bridge.IM.Capabilities().BridgeState {
 			go bridge.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
 		}
 		if bridge.Config.Bridge.Encryption.Appservice && bridge.Crypto != nil {

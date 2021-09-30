@@ -90,5 +90,6 @@ func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
 		SendTapbacks:            false,
 		SendReadReceipts:        false,
 		SendTypingNotifications: false,
+		BridgeState:             false,
 	}
 }

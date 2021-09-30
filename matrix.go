@@ -72,10 +72,10 @@ func (mx *MatrixHandler) HandleWebsocketCommands() {
 	for cmd := range mx.as.WebsocketCommands {
 		switch cmd.Command {
 		case "ping":
-			var status imessage.BridgeStatus = imessage.BridgeStatus{}
+			var status imessage.BridgeStatus
 
-			if len(mx.bridge.latestState.StateEvent) > 0 {
-				status = mx.bridge.latestState
+			if mx.bridge.latestState != nil {
+				status = *mx.bridge.latestState
 			} else {
 				status = imessage.BridgeStatus{
 					StateEvent: BridgeStatusConnected,

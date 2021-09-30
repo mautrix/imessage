@@ -147,6 +147,16 @@ func (mac *MacNoSIPConnector) Stop() {
 	}
 }
 
+func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
+	return imessage.ConnectorCapabilities{
+		MessageSendResponses:    true,
+		SendTapbacks:            true,
+		SendReadReceipts:        true,
+		SendTypingNotifications: true,
+		BridgeState:             true,
+	}
+}
+
 func init() {
 	imessage.Implementations["mac-nosip"] = NewMacNoSIPConnector
 }

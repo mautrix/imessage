@@ -370,5 +370,6 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTapbacks:            !ios.isAndroid,
 		SendReadReceipts:        !ios.isAndroid,
 		SendTypingNotifications: !ios.isAndroid,
+		BridgeState:             false,
 	}
 }
