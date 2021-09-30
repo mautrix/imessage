@@ -258,12 +258,16 @@ func (portal *Portal) backfill() {
 	var messages []*imessage.Message
 	var err error
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
-	if lastMessage == nil {
+	if lastMessage == nil && portal.BackfillStartTS == 0 {
 		portal.log.Debugfln("Fetching up to %d messages for initial backfill", portal.bridge.Config.Bridge.InitialBackfillLimit)
 		messages, err = portal.bridge.IM.GetMessagesWithLimit(portal.GUID, portal.bridge.Config.Bridge.InitialBackfillLimit)
-	} else {
+	} else if lastMessage != nil {
 		portal.log.Debugfln("Fetching messages since %s for catchup backfill", lastMessage.Time().String())
 		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, lastMessage.Time())
+	} else if portal.BackfillStartTS != 0 {
+		startTime := time.Unix(0, portal.BackfillStartTS*int64(time.Millisecond))
+		portal.log.Debugfln("Fetching messages since %s for catchup backfill after portal recovery", startTime.String())
+		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, startTime)
 	}
 	if err != nil {
 		portal.log.Errorln("Failed to fetch messages for backfilling:", err)

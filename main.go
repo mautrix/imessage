@@ -133,6 +133,8 @@ type Bridge struct {
 	stopping      bool
 	stop          chan struct{}
 	latestState   *imessage.BridgeStatus
+
+	suppressSyncStart bool
 }
 
 type Crypto interface {
@@ -142,6 +144,7 @@ type Crypto interface {
 	WaitForSession(id.RoomID, id.SenderKey, id.SessionID, time.Duration) bool
 	ResetSession(id.RoomID)
 	Reset()
+	RegisterAppserviceListener()
 	Init() error
 	Start()
 	Stop()
@@ -346,6 +349,9 @@ func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
 }
 
 func (bridge *Bridge) requestStartSync() {
+	if !bridge.Config.Bridge.Encryption.Appservice || bridge.Crypto == nil {
+		return
+	}
 	resp := map[string]interface{}{}
 	bridge.Log.Debugln("Sending /sync start request through websocket")
 	cryptoClient := bridge.Crypto.Client()
@@ -374,7 +380,7 @@ func (bridge *Bridge) startWebsocket() {
 		} else if !bridge.IM.Capabilities().BridgeState {
 			go bridge.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
 		}
-		if bridge.Config.Bridge.Encryption.Appservice && bridge.Crypto != nil {
+		if !bridge.suppressSyncStart {
 			bridge.requestStartSync()
 		}
 	}
@@ -424,6 +430,12 @@ func (bridge *Bridge) Start() {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
 		os.Exit(15)
 	}
+
+	needsPortalFinding := bridge.Config.Bridge.FindPortalsIfEmpty && bridge.DB.Portal.Count() == 0
+	if needsPortalFinding {
+		bridge.suppressSyncStart = true
+	}
+
 	bridge.Log.Debugln("Checking connection to homeserver")
 	bridge.ensureConnection()
 	if bridge.Crypto != nil {
@@ -431,6 +443,9 @@ func (bridge *Bridge) Start() {
 		if err != nil {
 			bridge.Log.Fatalln("Error initializing end-to-bridge encryption:", err)
 			os.Exit(19)
+		}
+		if !bridge.suppressSyncStart {
+			bridge.Crypto.RegisterAppserviceListener()
 		}
 	}
 	bridge.Log.Debugln("Finding bridge user")
@@ -443,6 +458,19 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 	go bridge.MatrixHandler.HandleWebsocketCommands()
+
+	if needsPortalFinding {
+		bridge.Log.Infoln("Portal database is empty, finding portals from Matrix room state")
+		err = bridge.FindPortalsFromMatrix()
+		if err != nil {
+			bridge.Log.Fatalln("Error finding portals:", err)
+			os.Exit(30)
+		}
+		// The database was probably reset, so log out of all bridge bot devices to keep the list clean
+		bridge.Crypto.Reset()
+		bridge.suppressSyncStart = false
+	}
+
 	bridge.Log.Debugln("Starting iMessage handler")
 	go bridge.IMHandler.Start()
 	bridge.Log.Debugln("Starting IPC loop")

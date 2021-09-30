@@ -185,11 +185,18 @@ func (helper *CryptoHelper) loginBot() (*mautrix.Client, error) {
 	return client, nil
 }
 
-func (helper *CryptoHelper) Start() {
+func (helper *CryptoHelper) RegisterAppserviceListener() {
 	if helper.bridge.Config.Bridge.Encryption.Appservice {
-		helper.log.Debugln("End-to-bridge encryption is in appservice mode")
+		helper.log.Debugln("End-to-bridge encryption is in appservice mode, registering event listeners")
 		helper.bridge.AS.Registration.EphemeralEvents = true
 		helper.mach.AddAppserviceListener(helper.bridge.EventProcessor, helper.bridge.AS)
+		return
+	}
+}
+
+func (helper *CryptoHelper) Start() {
+	if helper.bridge.Config.Bridge.Encryption.Appservice {
+		helper.log.Debugln("End-to-bridge encryption is in appservice mode, not starting syncer")
 		return
 	}
 	helper.syncDone.Add(1)
@@ -244,8 +251,10 @@ func (helper *CryptoHelper) Reset() {
 		helper.log.Fatalln("Error reinitializing end-to-bridge encryption:", err)
 		os.Exit(50)
 	}
-	go helper.Start()
 	helper.log.Infoln("End-to-bridge encryption successfully reset")
+	helper.RegisterAppserviceListener()
+	go helper.Start()
+	helper.bridge.requestStartSync()
 }
 
 func (helper *CryptoHelper) Client() *mautrix.Client {

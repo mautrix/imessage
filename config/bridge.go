@@ -40,6 +40,7 @@ type BridgeConfig struct {
 	InitialBackfillLimit  int     `yaml:"initial_backfill_limit"`
 	BackfillDisableNotifs bool    `yaml:"initial_backfill_disable_notifications"`
 	PeriodicSync          bool    `yaml:"periodic_sync"`
+	FindPortalsIfEmpty    bool    `yaml:"find_portals_if_db_empty"`
 
 	CommandPrefix string `yaml:"command_prefix"`
 

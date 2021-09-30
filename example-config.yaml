@@ -75,6 +75,9 @@ bridge:
     initial_backfill_disable_notifications: true
     # Whether or not the bridge should periodically resync chat and contact info.
     periodic_sync: true
+    # Should the bridge look through joined rooms to find existing portals if the database has none?
+    # This can be used to recover from bridge database loss.
+    find_portals_if_db_empty: false
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"

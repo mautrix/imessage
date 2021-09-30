@@ -36,6 +36,15 @@ func (pq *PortalQuery) New() *Portal {
 	}
 }
 
+func (pq *PortalQuery) Count() (count int) {
+	err := pq.db.QueryRow("SELECT COUNT(*) FROM portal").Scan(&count)
+	if err != nil {
+		pq.log.Warnln("Failed to scan number of portals:", err)
+		count = -1
+	}
+	return
+}
+
 func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll("SELECT * FROM portal")
 }
@@ -84,6 +93,8 @@ type Portal struct {
 	AvatarHash *[32]byte
 	AvatarURL  id.ContentURI
 	Encrypted  bool
+
+	BackfillStartTS int64
 }
 
 func (portal *Portal) avatarHashSlice() []byte {
@@ -96,7 +107,7 @@ func (portal *Portal) avatarHashSlice() []byte {
 func (portal *Portal) Scan(row Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted)
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -121,8 +132,8 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted) VALUES ($1, $2, $3, $4, $5, $6)",
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted)
+	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
 	}
@@ -133,8 +144,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5 WHERE guid=$6",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.GUID)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6 WHERE guid=$7",
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}
