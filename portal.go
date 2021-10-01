@@ -58,6 +58,40 @@ func (bridge *Bridge) GetPortalByGUID(guid string) *Portal {
 	return portal
 }
 
+func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) {
+	bridge.portalsLock.Lock()
+	defer bridge.portalsLock.Unlock()
+
+	portal, ok := bridge.portalsByGUID[oldGUID]
+	if !ok {
+		portal = bridge.loadDBPortal(bridge.DB.Portal.GetByGUID(oldGUID), "")
+		if portal == nil {
+			bridge.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
+			return
+		}
+	}
+
+	newPortal, ok := bridge.portalsByGUID[newGUID]
+	if !ok {
+		newPortal = bridge.loadDBPortal(bridge.DB.Portal.GetByGUID(newGUID), "")
+	}
+	if newPortal != nil {
+		bridge.Log.Warnfln("Ignoring chat ID change %s->%s, portal with new ID already exists", oldGUID, newGUID)
+		return
+	}
+
+	portal.log.Infoln("Changing chat ID to", newGUID)
+	delete(bridge.portalsByGUID, portal.GUID)
+	portal.Portal.ReID(newGUID)
+	portal.Identifier = imessage.ParseIdentifier(portal.GUID)
+	portal.log = portal.bridge.Log.Sub(fmt.Sprintf("Portal/%s", portal.GUID))
+	bridge.portalsByGUID[portal.GUID] = portal
+	if len(portal.MXID) > 0 {
+		portal.UpdateBridgeInfo()
+	}
+	portal.log.Debugln("Chat ID changed successfully")
+}
+
 func (bridge *Bridge) GetAllPortals() []*Portal {
 	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAll())
 }
@@ -165,6 +199,18 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 	return nil
 }
 
+func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
+	update := false
+	if len(chatInfo.DisplayName) > 0 {
+		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
+	}
+	portal.SyncParticipants(chatInfo)
+	if update {
+		portal.Update()
+		portal.UpdateBridgeInfo()
+	}
+}
+
 func (portal *Portal) Sync(backfill bool) {
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room due to sync")
@@ -185,15 +231,7 @@ func (portal *Portal) Sync(backfill bool) {
 			portal.log.Errorln("Failed to get chat info:", err)
 		}
 		if chatInfo != nil {
-			update := false
-			if len(chatInfo.DisplayName) > 0 {
-				update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
-			}
-			portal.SyncParticipants(chatInfo)
-			if update {
-				portal.Update()
-				portal.UpdateBridgeInfo()
-			}
+			portal.SyncWithInfo(chatInfo)
 		} else {
 			portal.log.Warnln("Didn't get any chat info")
 		}

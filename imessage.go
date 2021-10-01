@@ -117,12 +117,18 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 }
 
 func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
+	if len(chat.NewGUID) > 0 {
+		imh.bridge.ReIDPortal(chat.Identifier.String(), chat.NewGUID)
+	}
 	portal := imh.bridge.GetPortalByGUID(chat.Identifier.String())
-	if len(portal.MXID) == 0 {
-		portal.log.Infoln("Creating Matrix room to handle message")
+	if len(portal.MXID) > 0 {
+		portal.log.Infoln("Syncing Matrix room to handle chat command")
+		portal.SyncWithInfo(chat)
+	} else if !chat.NoCreateRoom {
+		portal.log.Infoln("Creating Matrix room to handle chat command")
 		err := portal.CreateMatrixRoom(chat)
 		if err != nil {
-			imh.log.Warnfln("Failed to create Matrix room to handle message: %v", err)
+			imh.log.Warnfln("Failed to create Matrix room to handle chat command: %v", err)
 			return
 		}
 	}

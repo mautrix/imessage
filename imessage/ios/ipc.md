@@ -185,6 +185,8 @@ Another error response:
   * `typing` (bool) - Whether the user is typing or not.
 * Chat info changes and new chats (request type `chat`)
   * Same info as `get_chat` responses: `title` and `members`, plus a `chat_guid` field to identify the chat.
+  * Optionally, `new_guid` to change the ID of the chat.
+  * `no_create_room` can be set to `true` to disable creating a new room if one doesn't exist.
 * Contact info changes (request type `contact`)
   * Same info as `get_contact` responses, plus a `user_guid` field to identify the contact.
 * Outgoing message status (request type `send_message_status`)

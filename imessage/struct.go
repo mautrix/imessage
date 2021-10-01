@@ -177,6 +177,9 @@ type ChatInfo struct {
 	Identifier   `json:"-"`
 	DisplayName  string   `json:"title"`
 	Members      []string `json:"members"`
+
+	NewGUID      string `json:"new_guid"`
+	NoCreateRoom bool   `json:"no_create_room"`
 }
 
 type Identifier struct {

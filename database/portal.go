@@ -151,6 +151,15 @@ func (portal *Portal) Update() {
 	}
 }
 
+func (portal *Portal) ReID(newGUID string) {
+	_, err := portal.db.Exec("UPDATE portal SET guid=$1 WHERE guid=$2", newGUID, portal.GUID)
+	if err != nil {
+		portal.log.Warnfln("Failed to re-id %s: %v", portal.GUID, err)
+	} else {
+		portal.GUID = newGUID
+	}
+}
+
 func (portal *Portal) Delete() {
 	_, err := portal.db.Exec("DELETE FROM portal WHERE guid=$1", portal.GUID)
 	if err != nil {
