@@ -185,8 +185,13 @@ Another error response:
   * `typing` (bool) - Whether the user is typing or not.
 * Chat info changes and new chats (request type `chat`)
   * Same info as `get_chat` responses: `title` and `members`, plus a `chat_guid` field to identify the chat.
-  * Optionally, `new_guid` to change the ID of the chat.
+  * ~~Optionally, `new_guid` to change the ID of the chat.~~ Moved to `chat_id` command below.
   * `no_create_room` can be set to `true` to disable creating a new room if one doesn't exist.
+* Chat ID change (request type `chat_id`)
+  * `old_guid` (str) - The old chat GUID.
+  * `new_guid` (str) - The new chat GUID.
+  * Returns `changed` with a boolean indicating whether the change was applied.
+    * If false, it means a chat with the new GUID already existed, or a chat with the old GUID didn't exist.
 * Contact info changes (request type `contact`)
   * Same info as `get_contact` responses, plus a `user_guid` field to identify the contact.
 * Outgoing message status (request type `send_message_status`)

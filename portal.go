@@ -58,7 +58,7 @@ func (bridge *Bridge) GetPortalByGUID(guid string) *Portal {
 	return portal
 }
 
-func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) {
+func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) bool {
 	bridge.portalsLock.Lock()
 	defer bridge.portalsLock.Unlock()
 
@@ -67,7 +67,7 @@ func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) {
 		portal = bridge.loadDBPortal(bridge.DB.Portal.GetByGUID(oldGUID), "")
 		if portal == nil {
 			bridge.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
-			return
+			return false
 		}
 	}
 
@@ -77,7 +77,7 @@ func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) {
 	}
 	if newPortal != nil {
 		bridge.Log.Warnfln("Ignoring chat ID change %s->%s, portal with new ID already exists", oldGUID, newGUID)
-		return
+		return false
 	}
 
 	portal.log.Infoln("Changing chat ID to", newGUID)
@@ -90,6 +90,7 @@ func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) {
 		portal.UpdateBridgeInfo()
 	}
 	portal.log.Debugln("Chat ID changed successfully")
+	return true
 }
 
 func (bridge *Bridge) GetAllPortals() []*Portal {

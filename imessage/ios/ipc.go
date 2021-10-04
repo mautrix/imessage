@@ -39,6 +39,7 @@ const (
 	IncomingReadReceipt        ipc.Command = "read_receipt"
 	IncomingTypingNotification ipc.Command = "typing"
 	IncomingChat               ipc.Command = "chat"
+	IncomingChatID             ipc.Command = "chat_id"
 	IncomingPingServer         ipc.Command = "ping_server"
 	IncomingBridgeStatus       ipc.Command = "bridge_status"
 )
@@ -103,6 +104,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
 	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
 	ios.IPC.SetHandler(IncomingChat, ios.handleIncomingChat)
+	ios.IPC.SetHandler(IncomingChatID, ios.handleChatIDChange)
 	ios.IPC.SetHandler(IncomingPingServer, ios.handleIncomingServerPing)
 	ios.IPC.SetHandler(IncomingBridgeStatus, ios.handleIncomingStatus)
 	return nil
@@ -202,6 +204,27 @@ func (ios *iOSConnector) handleIncomingChat(data json.RawMessage) interface{} {
 		ios.log.Warnln("Incoming chat buffer is full")
 	}
 	return nil
+}
+
+type ChatIDChangeRequest struct {
+	OldGUID string `json:"old_guid"`
+	NewGUID string `json:"new_guid"`
+}
+
+type ChatIDChangeResponse struct {
+	Changed   bool `json:"changed"`
+}
+
+func (ios *iOSConnector) handleChatIDChange(data json.RawMessage) interface{} {
+	var chatIDChange ChatIDChangeRequest
+	err := json.Unmarshal(data, &chatIDChange)
+	if err != nil {
+		ios.log.Warnln("Failed to parse chat ID change:", err)
+		return nil
+	}
+	return &ChatIDChangeResponse{
+		Changed: ios.bridge.ReIDPortal(chatIDChange.OldGUID, chatIDChange.NewGUID),
+	}
 }
 
 func (ios *iOSConnector) handleIncomingServerPing(_ json.RawMessage) interface{} {
