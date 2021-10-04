@@ -185,7 +185,6 @@ Another error response:
   * `typing` (bool) - Whether the user is typing or not.
 * Chat info changes and new chats (request type `chat`)
   * Same info as `get_chat` responses: `title` and `members`, plus a `chat_guid` field to identify the chat.
-  * ~~Optionally, `new_guid` to change the ID of the chat.~~ Moved to `chat_id` command below.
   * `no_create_room` can be set to `true` to disable creating a new room if one doesn't exist.
 * Chat ID change (request type `chat_id`)
   * `old_guid` (str) - The old chat GUID.

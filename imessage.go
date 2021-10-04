@@ -117,11 +117,6 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 }
 
 func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
-	if len(chat.NewGUID) > 0 {
-		imh.log.Warnln("Deprecated chat ID change using `chat` command")
-		imh.bridge.ReIDPortal(chat.Identifier.String(), chat.NewGUID)
-		return
-	}
 	portal := imh.bridge.GetPortalByGUID(chat.Identifier.String())
 	if len(portal.MXID) > 0 {
 		portal.log.Infoln("Syncing Matrix room to handle chat command")
