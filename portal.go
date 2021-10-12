@@ -212,6 +212,33 @@ func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	}
 }
 
+func (portal *Portal) ensureUserInvited(user *User) {
+	inviteContent := event.Content{
+		Parsed: &event.MemberEventContent{
+			Membership: event.MembershipInvite,
+			IsDirect: portal.IsPrivateChat(),
+		},
+		Raw: map[string]interface{}{},
+	}
+	if user.DoublePuppetIntent != nil {
+		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+	}
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateMember, user.MXID.String(), &inviteContent)
+	var httpErr mautrix.HTTPError
+	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
+		portal.bridge.StateStore.SetMembership(portal.MXID, user.MXID, event.MembershipJoin)
+	} else if err != nil {
+		portal.log.Warnfln("Failed to invite %s: %v", user.MXID, err)
+	}
+
+	if user.DoublePuppetIntent != nil {
+		err = user.DoublePuppetIntent.EnsureJoined(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to auto-join portal as %s: %v", user.MXID, err)
+		}
+	}
+}
+
 func (portal *Portal) Sync(backfill bool) {
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room due to sync")
@@ -222,9 +249,7 @@ func (portal *Portal) Sync(backfill bool) {
 		return
 	}
 
-	if portal.bridge.user.DoublePuppetIntent != nil {
-		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
-	}
+	portal.ensureUserInvited(portal.bridge.user)
 
 	if !portal.IsPrivateChat() {
 		chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
@@ -513,7 +538,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 		})
 	}
 
-	invite := []id.UserID{portal.bridge.user.MXID}
+	var invite []id.UserID
 
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
@@ -560,6 +585,8 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 			portal.log.Errorln("Failed to join created portal with bridge bot for e2be:", err)
 		}
 	}
+
+	portal.ensureUserInvited(portal.bridge.user)
 
 	if !portal.IsPrivateChat() {
 		portal.log.Debugln("New portal is group chat, syncing participants")
