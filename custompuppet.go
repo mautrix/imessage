@@ -213,10 +213,9 @@ func (user *User) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 			case event.EphemeralEventReceipt:
 				go user.handleReceiptEvent(portal, evt)
 			case event.EphemeralEventTyping:
-				if !portal.IsPrivateChat() {
-					continue
+				if portal.IsPrivateChat() {
+					go user.handleTypingEvent(portal, evt)
 				}
-				go user.handleTypingEvent(portal, evt)
 			}
 		}
 	}
