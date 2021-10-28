@@ -201,7 +201,7 @@ func (user *User) handleTypingEvent(portal *Portal, evt *event.Event) {
 func (user *User) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 	for roomID, events := range resp.Rooms.Join {
 		portal := user.bridge.GetPortalByMXID(roomID)
-		if portal == nil || !portal.IsPrivateChat() {
+		if portal == nil {
 			continue
 		}
 		for _, evt := range events.Ephemeral.Events {
@@ -213,7 +213,9 @@ func (user *User) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 			case event.EphemeralEventReceipt:
 				go user.handleReceiptEvent(portal, evt)
 			case event.EphemeralEventTyping:
-				go user.handleTypingEvent(portal, evt)
+				if portal.IsPrivateChat() {
+					go user.handleTypingEvent(portal, evt)
+				}
 			}
 		}
 	}
