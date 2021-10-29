@@ -114,6 +114,7 @@ type Contact struct {
 	AvatarB64 string   `json:"avatar,omitempty"`
 	Phones    []string `json:"phones,omitempty"`
 	Emails    []string `json:"emails,omitempty"`
+	UserGUID  string   `json:"user_guid"`
 }
 
 func (contact *Contact) Name() string {

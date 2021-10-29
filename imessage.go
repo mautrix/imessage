@@ -42,6 +42,7 @@ func (imh *iMessageHandler) Start() {
 	readReceipts := imh.bridge.IM.ReadReceiptChan()
 	typingNotifications := imh.bridge.IM.TypingNotificationChan()
 	chat := imh.bridge.IM.ChatChan()
+	contact := imh.bridge.IM.ContactChan()
 	for {
 		select {
 		case msg := <-messages:
@@ -52,6 +53,8 @@ func (imh *iMessageHandler) Start() {
 			imh.HandleTypingNotification(notif)
 		case c := <-chat:
 			imh.HandleChat(c)
+		case contact := <-contact:
+			imh.HandleContact(contact)
 		case <-imh.stop:
 			return
 		}
@@ -128,6 +131,14 @@ func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
 			imh.log.Warnfln("Failed to create Matrix room to handle chat command: %v", err)
 			return
 		}
+	}
+}
+
+func (imh *iMessageHandler) HandleContact(contact *imessage.Contact) {
+	puppet := imh.bridge.GetPuppetByGUID(contact.UserGUID)
+	if len(puppet.MXID) > 0 {
+		puppet.log.Infoln("Syncing Puppet to handle contact command")
+		puppet.SyncWithContact(contact)
 	}
 }
 
