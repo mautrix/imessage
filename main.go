@@ -457,7 +457,6 @@ func (bridge *Bridge) Start() {
 	go bridge.startWebsocket()
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
-	go bridge.MatrixHandler.HandleWebsocketCommands()
 
 	if needsPortalFinding {
 		bridge.Log.Infoln("Portal database is empty, finding portals from Matrix room state")

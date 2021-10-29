@@ -65,50 +65,44 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	bridge.EventProcessor.On(event.EventRedaction, handler.HandleRedaction)
 	bridge.EventProcessor.On(event.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(event.StateEncryption, handler.HandleEncryption)
+	bridge.AS.SetWebsocketCommandHandler("ping", handler.handleWSPing)
+	bridge.AS.SetWebsocketCommandHandler("syncproxy_error", handler.handleWSSyncProxyError)
 	return handler
 }
 
-func (mx *MatrixHandler) HandleWebsocketCommands() {
-	for cmd := range mx.as.WebsocketCommands {
-		switch cmd.Command {
-		case "ping":
-			var status imessage.BridgeStatus
+func (mx *MatrixHandler) handleWSPing(cmd appservice.WebsocketCommand) (bool, interface{}) {
+	var status imessage.BridgeStatus
 
-			if mx.bridge.latestState != nil {
-				status = *mx.bridge.latestState
-			} else {
-				status = imessage.BridgeStatus{
-					StateEvent: BridgeStatusConnected,
-					Timestamp:  time.Now().Unix(),
-					TTL:        600,
-					Source:     "bridge",
-				}
-			}
-
-			err := mx.bridge.AS.SendWebsocket(cmd.MakeResponse(&status))
-			if err != nil {
-				mx.log.Warnfln("Error responding to command %s %d: %v", cmd.Command, cmd.ReqID, err)
-			} else {
-				mx.log.Debugln("Sent response to", cmd.Command, cmd.ReqID)
-			}
-		case "syncproxy_error":
-			var data mautrix.RespError
-			err := json.Unmarshal(cmd.Data, &data)
-
-			if err != nil {
-				mx.log.Warnln("Failed to unmarshal syncproxy_error data:", err)
-			} else if txnID, ok := data.ExtraData["txn_id"].(string); !ok {
-				mx.log.Warnln("Got syncproxy_error data with no transaction ID")
-			} else if mx.errorTxnIDC.IsProcessed(txnID) {
-				mx.log.Debugln("Ignoring syncproxy_error with duplicate transaction ID", txnID)
-			} else {
-				go mx.HandleSyncProxyError(&data, nil)
-				mx.errorTxnIDC.MarkProcessed(txnID)
-			}
-		default:
-			mx.log.Warnfln("Unknown websocket command %s %d / %s", cmd.Command, cmd.ReqID, cmd.Data)
+	if mx.bridge.latestState != nil {
+		status = *mx.bridge.latestState
+	} else {
+		status = imessage.BridgeStatus{
+			StateEvent: BridgeStatusConnected,
+			Timestamp:  time.Now().Unix(),
+			TTL:        600,
+			Source:     "bridge",
 		}
 	}
+
+	return true, &status
+}
+
+func (mx *MatrixHandler) handleWSSyncProxyError(cmd appservice.WebsocketCommand) (bool, interface{}) {
+	var data mautrix.RespError
+	err := json.Unmarshal(cmd.Data, &data)
+
+	if err != nil {
+		mx.log.Warnln("Failed to unmarshal syncproxy_error data:", err)
+	} else if txnID, ok := data.ExtraData["txn_id"].(string); !ok {
+		mx.log.Warnln("Got syncproxy_error data with no transaction ID")
+	} else if mx.errorTxnIDC.IsProcessed(txnID) {
+		mx.log.Debugln("Ignoring syncproxy_error with duplicate transaction ID", txnID)
+	} else {
+		go mx.HandleSyncProxyError(&data, nil)
+		mx.errorTxnIDC.MarkProcessed(txnID)
+	}
+
+	return true, &data
 }
 
 func (mx *MatrixHandler) HandleSyncProxyError(syncErr *mautrix.RespError, startErr error) {
