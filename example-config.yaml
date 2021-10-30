@@ -82,6 +82,10 @@ bridge:
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"
 
+    # Whether or not created rooms should have federation enabled.
+    # If false, created portal rooms will never be federated.
+    federate_rooms: false
+
     # End-to-bridge encryption support options.
     # See https://docs.mau.fi/bridges/general/end-to-bridge-encryption.html
     encryption:
