@@ -42,6 +42,8 @@ type BridgeConfig struct {
 	PeriodicSync          bool    `yaml:"periodic_sync"`
 	FindPortalsIfEmpty    bool    `yaml:"find_portals_if_db_empty"`
 
+	FederateRooms bool `yaml:"federate_rooms"`
+
 	CommandPrefix string `yaml:"command_prefix"`
 
 	Encryption struct {
@@ -70,6 +72,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InitialBackfillLimit = 100
 	bc.BackfillDisableNotifs = true
 	bc.PeriodicSync = true
+	bc.FederateRooms = true
 }
 
 type umBridgeConfig BridgeConfig

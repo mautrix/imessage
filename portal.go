@@ -216,7 +216,7 @@ func (portal *Portal) ensureUserInvited(user *User) {
 	inviteContent := event.Content{
 		Parsed: &event.MemberEventContent{
 			Membership: event.MembershipInvite,
-			IsDirect: portal.IsPrivateChat(),
+			IsDirect:   portal.IsPrivateChat(),
 		},
 		Raw: map[string]interface{}{},
 	}
@@ -553,13 +553,18 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 		invite = append(invite, portal.bridge.Bot.UserID)
 	}
 
+	creationContent := make(map[string]interface{})
+	if !portal.bridge.Config.Bridge.FederateRooms {
+		creationContent["m.federate"] = false
+	}
 	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
-		Visibility:   "private",
-		Name:         portal.Name,
-		Invite:       invite,
-		Preset:       "private_chat",
-		IsDirect:     portal.IsPrivateChat(),
-		InitialState: initialState,
+		Visibility:      "private",
+		Name:            portal.Name,
+		Invite:          invite,
+		Preset:          "private_chat",
+		IsDirect:        portal.IsPrivateChat(),
+		InitialState:    initialState,
+		CreationContent: creationContent,
 	})
 	if err != nil {
 		return err
