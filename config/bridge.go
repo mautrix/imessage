@@ -72,6 +72,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.InitialBackfillLimit = 100
 	bc.BackfillDisableNotifs = true
 	bc.PeriodicSync = true
+	bc.FederateRooms = true
 }
 
 type umBridgeConfig BridgeConfig
