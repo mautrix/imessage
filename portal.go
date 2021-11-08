@@ -76,7 +76,12 @@ func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) bool {
 		newPortal = bridge.loadDBPortal(bridge.DB.Portal.GetByGUID(newGUID), "")
 	}
 	if newPortal != nil {
-		bridge.Log.Warnfln("Ignoring chat ID change %s->%s, portal with new ID already exists", oldGUID, newGUID)
+		bridge.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", oldGUID, newGUID)
+		portal.Delete()
+		if len(portal.MXID) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
+			_, _ = portal.bridge.user.DoublePuppetIntent.LeaveRoom(portal.MXID)
+		}
+		portal.Cleanup(false)
 		return false
 	}
 
