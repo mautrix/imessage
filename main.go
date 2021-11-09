@@ -466,7 +466,9 @@ func (bridge *Bridge) Start() {
 			os.Exit(30)
 		}
 		// The database was probably reset, so log out of all bridge bot devices to keep the list clean
-		bridge.Crypto.Reset()
+		if bridge.Crypto != nil {
+			bridge.Crypto.Reset()
+		}
 		bridge.suppressSyncStart = false
 	}
 
