@@ -63,11 +63,17 @@ func (bridge *Bridge) findPortal(roomID id.RoomID, state mautrix.RoomStateMap) b
 	} else if portal := bridge.GetPortalByGUID(bridgeInfo.Channel.GUID); len(portal.MXID) > 0 {
 		bridge.Log.Debugfln("Skipping %s (to %s): portal to chat already exists (%s)", roomID, portal.GUID, portal.MXID)
 	} else {
+		encryptionEvent, ok := state[event.StateEncryption][""]
+		isEncrypted := ok && encryptionEvent.Content.AsEncryption().Algorithm == id.AlgorithmMegolmV1
+		if !isEncrypted && bridge.Config.Bridge.Encryption.Default {
+			bridge.Log.Debugfln("Skipping %s (to %s): room is not encrypted, but encryption is enabled by default", roomID, portal.GUID)
+			return false
+		}
+
 		portal.MXID = roomID
 		portal.Name = bridgeInfo.Channel.DisplayName
 		portal.AvatarURL = bridgeInfo.Channel.AvatarURL.ParseOrIgnore()
-		encryptionEvent, ok := state[event.StateEncryption][""]
-		portal.Encrypted = ok && encryptionEvent.Content.AsEncryption().Algorithm == id.AlgorithmMegolmV1
+		portal.Encrypted = isEncrypted
 		// TODO find last message timestamp somewhere
 		portal.BackfillStartTS = time.Now().UnixNano() / int64(time.Millisecond)
 		portal.Update()
