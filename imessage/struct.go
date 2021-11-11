@@ -60,6 +60,8 @@ type Message struct {
 
 	Attachments []*Attachment `json:"attachments,omitempty"`
 
+	ErrorNotice string `json:"error_notice,omitempty"`
+
 	ItemType        ItemType        `json:"item_type,omitempty"`
 	GroupActionType GroupActionType `json:"group_action_type,omitempty"`
 	NewGroupName    string          `json:"new_group_title,omitempty"`
@@ -104,6 +106,8 @@ const (
 	ItemTypeMember
 	ItemTypeName
 	ItemTypeAvatar
+
+	ItemTypeError ItemType = -100
 )
 
 type Contact struct {

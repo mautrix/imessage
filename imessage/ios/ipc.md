@@ -168,7 +168,8 @@ Another error response:
   * `associated_message` (object, optional) - Associated message info (tapback/sticker)
     * `target_guid` (str) - The message that this event is targeting, e.g. `p:0/<uuid>`
     * `type` (int) - The type of association (1000 = sticker, 200x = tapback, 300x = tapback remove)
-  * `item_type` (int, optional) - Message type, 0 = normal message, 1 = member change, 2 = name change, 3 = avatar change
+  * `error_notice` (str, optional) - An error notice to send to Matrix. Can be a dedicated message (with `item_type` = -100) or a part of a real message.
+  * `item_type` (int, optional) - Message type, 0 = normal message, 1 = member change, 2 = name change, 3 = avatar change, -100 = error notice.
   * `group_action_type` (int, optional) - Group action type, which is a subtype of `item_type`
     * For member changes, 0 = add member, 1 = remove member
     * For avatar changes, 1 = set avatar, 2 = remove avatar

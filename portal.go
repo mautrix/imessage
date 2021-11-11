@@ -1058,6 +1058,26 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 		portal.log.Debugfln("Handled iMessage text %s.%d -> %s", msg.GUID, dbMessage.Part, resp.EventID)
 		dbMessage.MXID = resp.EventID
 		dbMessage.Insert()
+		dbMessage.Part++
+	}
+}
+
+func (portal *Portal) handleIMError(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+	if len(msg.ErrorNotice) > 0 {
+		content := &event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    msg.ErrorNotice,
+		}
+		portal.SetReply(content, msg)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
+		if err != nil {
+			portal.log.Errorfln("Failed to send error notice %s: %v", msg.GUID, err)
+			return
+		}
+		portal.log.Debugfln("Handled iMessage error notice %s.%d -> %s", msg.GUID, dbMessage.Part, resp.EventID)
+		dbMessage.MXID = resp.EventID
+		dbMessage.Insert()
+		dbMessage.Part++
 	}
 }
 
@@ -1121,10 +1141,14 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 		groupUpdateEventID = portal.UpdateName(msg.NewGroupName, intent)
 	case imessage.ItemTypeAvatar:
 		groupUpdateEventID = portal.handleIMAvatarChange(msg, intent)
+	case imessage.ItemTypeError:
+		// Handled below
 	default:
 		portal.log.Debugfln("Dropping message %s with unknown item type %d", msg.GUID, msg.ItemType)
 		return ""
 	}
+
+	portal.handleIMError(msg, dbMessage, intent)
 
 	if groupUpdateEventID != nil {
 		dbMessage.MXID = *groupUpdateEventID
