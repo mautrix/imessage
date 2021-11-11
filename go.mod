@@ -9,7 +9,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.3.1
-	maunium.net/go/mautrix v0.9.32-0.20211029160607-edff210dd28b
+	maunium.net/go/mautrix v0.10.1
 )
 
 // Newer golang.org/x/sys versions break darwin/arm32
