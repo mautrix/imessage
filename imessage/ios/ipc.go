@@ -43,6 +43,7 @@ const (
 	IncomingPingServer         ipc.Command = "ping_server"
 	IncomingBridgeStatus       ipc.Command = "bridge_status"
 	IncomingContact            ipc.Command = "contact"
+	IncomingMessageIDQuery     ipc.Command = "message_ids_after_time"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -111,6 +112,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingPingServer, ios.handleIncomingServerPing)
 	ios.IPC.SetHandler(IncomingBridgeStatus, ios.handleIncomingStatus)
 	ios.IPC.SetHandler(IncomingContact, ios.handleIncomingContact)
+	ios.IPC.SetHandler(IncomingMessageIDQuery, ios.handleMessageIDQuery)
 	return nil
 }
 
@@ -228,6 +230,27 @@ func (ios *iOSConnector) handleChatIDChange(data json.RawMessage) interface{} {
 	}
 	return &ChatIDChangeResponse{
 		Changed: ios.bridge.ReIDPortal(chatIDChange.OldGUID, chatIDChange.NewGUID),
+	}
+}
+
+type MessageIDQueryRequest struct {
+	ChatGUID  string  `json:"chat_guid"`
+	AfterTime float64 `json:"after_time"`
+}
+
+type MessageIDQueryResponse struct {
+	IDs []string `json:"ids"`
+}
+
+func (ios *iOSConnector) handleMessageIDQuery(data json.RawMessage) interface{} {
+	var query MessageIDQueryRequest
+	err := json.Unmarshal(data, &query)
+	if err != nil {
+		ios.log.Warnln("Failed to parse message ID query:", err)
+		return nil
+	}
+	return &MessageIDQueryResponse{
+		IDs: ios.bridge.GetMessagesSince(query.ChatGUID, floatToTime(query.AfterTime)),
 	}
 }
 

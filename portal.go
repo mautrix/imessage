@@ -58,6 +58,10 @@ func (bridge *Bridge) GetPortalByGUID(guid string) *Portal {
 	return portal
 }
 
+func (bridge *Bridge) GetMessagesSince(chatGUID string, since time.Time) (out []string) {
+	return bridge.DB.Message.GetIDsSince(chatGUID, since)
+}
+
 func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) bool {
 	bridge.portalsLock.Lock()
 	defer bridge.portalsLock.Unlock()

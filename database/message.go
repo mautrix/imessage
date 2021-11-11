@@ -36,14 +36,20 @@ func (mq *MessageQuery) New() *Message {
 	}
 }
 
-func (mq *MessageQuery) GetAll(chat string) (messages []*Message) {
-	rows, err := mq.db.Query("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp FROM message WHERE chat_guid=$1", chat)
+func (mq *MessageQuery) GetIDsSince(chat string, since time.Time) (messages []string) {
+	rows, err := mq.db.Query("SELECT guid FROM message WHERE chat_guid=$1 AND timestamp>=$2 AND part=0 ORDER BY timestamp ASC", chat, since.Unix()*1000)
 	if err != nil || rows == nil {
 		return nil
 	}
 	defer rows.Close()
 	for rows.Next() {
-		messages = append(messages, mq.New().Scan(rows))
+		var msgID string
+		err = rows.Scan(&msgID)
+		if err != nil {
+			mq.log.Errorln("Database scan failed:", err)
+		} else {
+			messages = append(messages, msgID)
+		}
 	}
 	return
 }

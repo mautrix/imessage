@@ -76,6 +76,7 @@ type Bridge interface {
 	PingServer() (start, serverTs, end time.Time)
 	SendBridgeStatus(state BridgeStatus)
 	ReIDPortal(oldGUID, newGUID string) bool
+	GetMessagesSince(chatGUID string, since time.Time) []string
 }
 
 var AppleEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
