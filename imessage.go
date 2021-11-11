@@ -109,7 +109,7 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 	if len(portal.MXID) == 0 {
 		return
 	}
-	_, err := portal.MainIntent().UserTyping(portal.MXID, notif.Typing, 60 * 1000)
+	_, err := portal.MainIntent().UserTyping(portal.MXID, notif.Typing, 60*1000)
 	if err != nil {
 		action := "typing"
 		if !notif.Typing {

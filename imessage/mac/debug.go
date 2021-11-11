@@ -119,5 +119,5 @@ func (mac *macOSDatabase) collect1728DebugInfo(identifier imessage.Identifier) {
 			}
 		}
 	}
-	mac.log.Debugln(strings.Repeat("-", len(chatID) + 79))
+	mac.log.Debugln(strings.Repeat("-", len(chatID)+79))
 }

@@ -216,7 +216,7 @@ type ChatIDChangeRequest struct {
 }
 
 type ChatIDChangeResponse struct {
-	Changed   bool `json:"changed"`
+	Changed bool `json:"changed"`
 }
 
 func (ios *iOSConnector) handleChatIDChange(data json.RawMessage) interface{} {

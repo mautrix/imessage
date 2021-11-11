@@ -181,7 +181,7 @@ func (puppet *Puppet) UpdateAvatar(contact *imessage.Contact) bool {
 	if puppet.AvatarHash == nil || *puppet.AvatarHash != avatarHash {
 		puppet.AvatarHash = &avatarHash
 		mimeTypeData := mimetype.Detect(contact.Avatar)
-		resp, err := puppet.Intent.UploadBytesWithName(contact.Avatar, mimeTypeData.String(), "image" + mimeTypeData.Extension())
+		resp, err := puppet.Intent.UploadBytesWithName(contact.Avatar, mimeTypeData.String(), "image"+mimeTypeData.Extension())
 		if err != nil {
 			puppet.AvatarHash = nil
 			puppet.log.Warnln("Failed to upload avatar:", err)

@@ -20,7 +20,6 @@ const createPuppetTable2 = `CREATE TABLE puppet (
 	avatar_url   TEXT
 )`
 
-
 func init() {
 	upgrades[1] = upgrade{"Make avatar fields optional", func(tx *sql.Tx, ctx context) error {
 		_, err := tx.Exec("PRAGMA defer_foreign_keys = ON")
