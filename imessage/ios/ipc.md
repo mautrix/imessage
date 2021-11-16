@@ -210,3 +210,6 @@ Another error response:
   * `message` (str) - Human-readable error message.
   * `remote_id` (str, optional) - The iMessage user ID of the bridge user.
   * `remote_name` (str, optional) - The iMessage displayname of the bridge user.
+* Get bridged message IDs after certain time (request type `message_ids_after_time`)
+  * `chat_guid` (str) - The chat GUID to get the message IDs from.
+  * `after_time` (double) - The unix timestamp after which to find messages.
