@@ -726,6 +726,19 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
 			portal.log.Debugfln("Failed to send delivery receipt for %s: %v", eventID, err)
 		}
 	}
+
+	// We don't have access to the entire event, so we are omitting some
+	// metadata here. However, that metadata can be inferred from previous
+	// checkpoints.
+	checkpoint := appservice.MessageSendCheckpoint{
+		EventID:    eventID,
+		RoomID:     portal.MXID,
+		Step:       appservice.StepRemote,
+		Timestamp:  time.Now(),
+		Status:     appservice.StatusSuccesss,
+		ReportedBy: appservice.ReportedByBridge,
+	}
+	go checkpoint.Send(portal.bridge.AS)
 }
 
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
@@ -852,10 +865,13 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 		_, err := portal.bridge.IM.SendTapback(portal.GUID, redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, true)
 		if err != nil {
 			portal.log.Errorfln("Failed to send removal of tapback %d to %s/%d: %v", redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart, err)
+			portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 		} else {
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
+			portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		}
 	}
+	portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, fmt.Errorf("Event %s is not a reaction. Cannot redact.", evt.ID), true)
 }
 
 func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
