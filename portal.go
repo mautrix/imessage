@@ -734,7 +734,7 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
 		EventID:    eventID,
 		RoomID:     portal.MXID,
 		Step:       appservice.StepRemote,
-		Timestamp:  time.Now(),
+		Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
 		Status:     appservice.StatusSuccesss,
 		ReportedBy: appservice.ReportedByBridge,
 	}
