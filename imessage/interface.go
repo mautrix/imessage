@@ -24,6 +24,7 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/ipc"
@@ -77,6 +78,7 @@ type Bridge interface {
 	SendBridgeStatus(state BridgeStatus)
 	ReIDPortal(oldGUID, newGUID string) bool
 	GetMessagesSince(chatGUID string, since time.Time) []string
+	SetPushKey(req *PushKeyRequest)
 }
 
 var AppleEpoch = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)

@@ -44,6 +44,7 @@ const (
 	IncomingBridgeStatus       ipc.Command = "bridge_status"
 	IncomingContact            ipc.Command = "contact"
 	IncomingMessageIDQuery     ipc.Command = "message_ids_after_time"
+	IncomingPushKey            ipc.Command = "push_key"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -113,6 +114,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingBridgeStatus, ios.handleIncomingStatus)
 	ios.IPC.SetHandler(IncomingContact, ios.handleIncomingContact)
 	ios.IPC.SetHandler(IncomingMessageIDQuery, ios.handleMessageIDQuery)
+	ios.IPC.SetHandler(IncomingPushKey, ios.handlePushKey)
 	return nil
 }
 
@@ -252,6 +254,17 @@ func (ios *iOSConnector) handleMessageIDQuery(data json.RawMessage) interface{} 
 	return &MessageIDQueryResponse{
 		IDs: ios.bridge.GetMessagesSince(query.ChatGUID, floatToTime(query.AfterTime)),
 	}
+}
+
+func (ios *iOSConnector) handlePushKey(data json.RawMessage) interface{} {
+	var query imessage.PushKeyRequest
+	err := json.Unmarshal(data, &query)
+	if err != nil {
+		ios.log.Warnln("Failed to parse set push key request:", err)
+		return nil
+	}
+	ios.bridge.SetPushKey(&query)
+	return nil
 }
 
 func (ios *iOSConnector) handleIncomingServerPing(_ json.RawMessage) interface{} {

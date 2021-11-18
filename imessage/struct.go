@@ -225,3 +225,13 @@ type ConnectorCapabilities struct {
 	SendTypingNotifications bool
 	BridgeState             bool
 }
+
+type PushKeyRequest struct {
+	URL string `json:"url"`
+
+	AppID     string `json:"app_id"`
+	PushKey   string `json:"pushkey"`
+	PushKeyTS int64  `json:"pushkey_ts"`
+
+	Data map[string]interface{} `json:"data"`
+}

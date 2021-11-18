@@ -133,6 +133,7 @@ type Bridge struct {
 	stopping      bool
 	stop          chan struct{}
 	latestState   *imessage.BridgeStatus
+	pushKey       *imessage.PushKeyRequest
 
 	suppressSyncStart bool
 }
@@ -348,6 +349,32 @@ func (bridge *Bridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	}
 }
 
+func (bridge *Bridge) sendPushKey() {
+	if bridge.pushKey == nil {
+		return
+	}
+	err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
+		Command: "push_key",
+		Data:    bridge.pushKey,
+	}, nil)
+	if err != nil {
+		// Don't care about websocket not connected errors, we'll retry automatically when reconnecting
+		if !errors.Is(err, appservice.WebsocketNotConnected) {
+			bridge.Log.Warnln("Error sending push key to asmux:", err)
+		}
+	} else {
+		bridge.Log.Infoln("Successfully sent push key to asmux")
+	}
+}
+
+func (bridge *Bridge) SetPushKey(req *imessage.PushKeyRequest) {
+	if req.PushKeyTS == 0 {
+		req.PushKeyTS = time.Now().Unix()
+	}
+	bridge.pushKey = req
+	go bridge.sendPushKey()
+}
+
 func (bridge *Bridge) requestStartSync() {
 	if !bridge.Config.Bridge.Encryption.Appservice || bridge.Crypto == nil {
 		return
@@ -380,6 +407,7 @@ func (bridge *Bridge) startWebsocket() {
 		} else if !bridge.IM.Capabilities().BridgeState {
 			go bridge.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
 		}
+		go bridge.sendPushKey()
 		if !bridge.suppressSyncStart {
 			bridge.requestStartSync()
 		}
