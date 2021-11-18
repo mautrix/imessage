@@ -726,6 +726,19 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
 			portal.log.Debugfln("Failed to send delivery receipt for %s: %v", eventID, err)
 		}
 	}
+
+	// We don't have access to the entire event, so we are omitting some
+	// metadata here. However, that metadata can be inferred from previous
+	// checkpoints.
+	checkpoint := appservice.MessageSendCheckpoint{
+		EventID:    eventID,
+		RoomID:     portal.MXID,
+		Step:       appservice.StepRemote,
+		Timestamp:  time.Now(),
+		Status:     appservice.StatusSuccesss,
+		ReportedBy: appservice.ReportedByBridge,
+	}
+	go checkpoint.Send(portal.bridge.AS)
 }
 
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
@@ -817,14 +830,19 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	} else if tapbackType := imessage.TapbackFromEmoji(reaction.RelatesTo.Key); tapbackType == 0 {
 		portal.log.Debugfln("Unknown reaction type %s in %s", reaction.RelatesTo.Key, reaction.RelatesTo.EventID)
 	} else if target := portal.bridge.DB.Message.GetByMXID(reaction.RelatesTo.EventID); target == nil {
-		portal.log.Debugfln("Unknown reaction target %s", reaction.RelatesTo.EventID)
+		errMsg := fmt.Sprintf("Unknown reaction target %s", reaction.RelatesTo.EventID)
+		portal.log.Debugfln(errMsg)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New(errMsg), true)
 	} else if existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, target.Part, ""); existing != nil && existing.Type == tapbackType {
 		portal.log.Debugfln("Ignoring outgoing tapback to %s/%s: type is same", reaction.RelatesTo.EventID, target.GUID)
 	} else if resp, err := portal.bridge.IM.SendTapback(portal.GUID, target.GUID, target.Part, tapbackType, false); err != nil {
-		portal.log.Errorfln("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
+		errMsg := fmt.Sprintf("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
+		portal.log.Errorfln(errMsg)
+		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New(errMsg), true)
 	} else if existing == nil {
 		// TODO should tapback GUID and timestamp be stored?
 		portal.log.Debugfln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
 		tapback.MessageGUID = target.GUID
@@ -834,6 +852,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		tapback.Insert()
 	} else {
 		portal.log.Debugfln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
+		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		_, err = portal.MainIntent().RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to redact old tapback %s to %s: %v", existing.MXID, target.MXID, err)
@@ -852,10 +871,13 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 		_, err := portal.bridge.IM.SendTapback(portal.GUID, redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, true)
 		if err != nil {
 			portal.log.Errorfln("Failed to send removal of tapback %d to %s/%d: %v", redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart, err)
+			portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 		} else {
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
+			portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		}
 	}
+	portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, fmt.Errorf("Event %s is not a reaction. Cannot redact.", evt.ID), true)
 }
 
 func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
