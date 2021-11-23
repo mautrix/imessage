@@ -145,12 +145,10 @@ func getLevelFromName(name string) log.Level {
 }
 
 func (mac *MacNoSIPConnector) killPinger() {
-	if len(mac.stopPinger) == 0 {
-		return
+	select {
+	case mac.stopPinger <- true:
+	default:
 	}
-
-	mac.stopPinger <- true
-	mac.stopPinger = nil
 }
 
 func (mac *MacNoSIPConnector) handleIncomingPong(data json.RawMessage) interface{} {
