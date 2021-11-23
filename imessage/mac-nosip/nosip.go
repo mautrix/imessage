@@ -59,6 +59,8 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		log:                 logger,
 		procLog:             processLogger,
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
+		receivedPing:        true,
+		stopPinger:          make(chan bool),
 	}, nil
 }
 
