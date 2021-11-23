@@ -36,6 +36,8 @@ import (
 )
 
 const IncomingLog ipc.Command = "log"
+const OutgoingPing ipc.Command = "ping"
+const IncomingPong ipc.Command = "pong"
 
 type MacNoSIPConnector struct {
 	ios.APIWithIPC
@@ -44,6 +46,8 @@ type MacNoSIPConnector struct {
 	log                 log.Logger
 	procLog             log.Logger
 	printPayloadContent bool
+	receivedPing        bool
+	stopPinger          chan bool
 }
 
 func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -87,6 +91,30 @@ func (mac *MacNoSIPConnector) Start() error {
 	}
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
 	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
+	ipcProc.SetHandler(IncomingPong, mac.handleIncomingPong)
+
+	mac.killPinger()
+	pinger := time.NewTicker(time.Duration(15000) * time.Millisecond)
+	go func() {
+		// set to true initially to start the circuit
+		mac.receivedPing = true
+		for {
+			select {
+			case <-pinger.C:
+				// mac did not pong within 15s of last ping
+				if !mac.receivedPing {
+					mac.log.Fatalln("Barcelona did not respond to our last ping. Gotta go!")
+					os.Exit(-1)
+				}
+				ipcProc.Send(OutgoingPing, OutgoingPing)
+				mac.receivedPing = false
+			case <-mac.stopPinger:
+				pinger.Stop()
+				return
+			}
+		}
+	}()
+
 	return mac.APIWithIPC.Start()
 }
 
@@ -114,6 +142,20 @@ func getLevelFromName(name string) log.Level {
 	}
 }
 
+func (mac *MacNoSIPConnector) killPinger() {
+	if len(mac.stopPinger) == 0 {
+		return
+	}
+
+	mac.stopPinger <- true
+	mac.stopPinger = nil
+}
+
+func (mac *MacNoSIPConnector) handleIncomingPong(data json.RawMessage) interface{} {
+	mac.receivedPing = true
+	return nil
+}
+
 func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{} {
 	var message LogLine
 	err := json.Unmarshal(data, &message)
@@ -127,6 +169,7 @@ func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{
 }
 
 func (mac *MacNoSIPConnector) Stop() {
+	mac.killPinger()
 	if mac.proc == nil || mac.proc.ProcessState == nil || mac.proc.ProcessState.Exited() {
 		mac.log.Debugln("imessage-rest subprocess not running when Stop was called")
 		return
