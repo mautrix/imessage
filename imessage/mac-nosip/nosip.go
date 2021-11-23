@@ -106,7 +106,7 @@ func (mac *MacNoSIPConnector) Start() error {
 				// mac did not pong within 15s of last ping
 				if !mac.receivedPing {
 					mac.log.Fatalln("Barcelona did not respond to our last ping. Gotta go!")
-					os.Exit(-1)
+					os.Exit(255)
 				}
 				ipcProc.Send(OutgoingPing, OutgoingPing)
 				mac.receivedPing = false
