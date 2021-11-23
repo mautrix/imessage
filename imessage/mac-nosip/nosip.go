@@ -28,6 +28,8 @@ import (
 	"syscall"
 	"time"
 
+	"context"
+
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -46,7 +48,6 @@ type MacNoSIPConnector struct {
 	log                 log.Logger
 	procLog             log.Logger
 	printPayloadContent bool
-	receivedPing        bool
 	stopPinger          chan bool
 }
 
@@ -59,7 +60,6 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		log:                 logger,
 		procLog:             processLogger,
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
-		receivedPing:        true,
 		stopPinger:          make(chan bool),
 	}, nil
 }
@@ -93,26 +93,23 @@ func (mac *MacNoSIPConnector) Start() error {
 	}
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
 	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
-	ipcProc.SetHandler(IncomingPong, mac.handleIncomingPong)
 
-	mac.killPinger()
-	pinger := time.NewTicker(15 * time.Second)
 	go func() {
-		// set to true initially to start the circuit
-		mac.receivedPing = true
 		for {
 			select {
-			case <-pinger.C:
-				// mac did not pong within 15s of last ping
-				if !mac.receivedPing {
-					mac.log.Fatalln("Barcelona did not respond to our last ping. Gotta go!")
+			case <-mac.stopPinger:
+				return
+			default:
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				err := ipcProc.Request(ctx, OutgoingPing, nil, nil)
+
+				if err != nil {
+					mac.log.Fatalln("Failed to ping Barcelona within 15s. Terminating process")
 					os.Exit(255)
 				}
-				ipcProc.Send(OutgoingPing, OutgoingPing)
-				mac.receivedPing = false
-			case <-mac.stopPinger:
-				pinger.Stop()
-				return
+
+				cancel()
+				time.Sleep(15 * time.Second)
 			}
 		}
 	}()
@@ -144,18 +141,6 @@ func getLevelFromName(name string) log.Level {
 	}
 }
 
-func (mac *MacNoSIPConnector) killPinger() {
-	select {
-	case mac.stopPinger <- true:
-	default:
-	}
-}
-
-func (mac *MacNoSIPConnector) handleIncomingPong(data json.RawMessage) interface{} {
-	mac.receivedPing = true
-	return nil
-}
-
 func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{} {
 	var message LogLine
 	err := json.Unmarshal(data, &message)
@@ -169,11 +154,11 @@ func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{
 }
 
 func (mac *MacNoSIPConnector) Stop() {
-	mac.killPinger()
 	if mac.proc == nil || mac.proc.ProcessState == nil || mac.proc.ProcessState.Exited() {
 		mac.log.Debugln("imessage-rest subprocess not running when Stop was called")
 		return
 	}
+	mac.stopPinger <- true
 	err := mac.proc.Process.Signal(syscall.SIGTERM)
 	if err != nil && !errors.Is(err, os.ErrProcessDone) {
 		mac.log.Warnln("Failed to send SIGTERM to imessage-rest process:", err)
