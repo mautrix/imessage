@@ -96,7 +96,7 @@ func (mac *MacNoSIPConnector) Start() error {
 	ipcProc.SetHandler(IncomingPong, mac.handleIncomingPong)
 
 	mac.killPinger()
-	pinger := time.NewTicker(time.Duration(15000) * time.Millisecond)
+	pinger := time.NewTicker(15 * time.Second)
 	go func() {
 		// set to true initially to start the circuit
 		mac.receivedPing = true
