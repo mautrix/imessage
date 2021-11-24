@@ -446,6 +446,10 @@ func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool) erro
 	})
 }
 
+func (ios *iOSConnector) PreStartupSyncHook() error {
+	return ios.IPC.Request(context.Background(), ReqPreStartupSync, nil, nil)
+}
+
 func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:    true,

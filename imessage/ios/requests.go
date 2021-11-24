@@ -33,6 +33,7 @@ const (
 	ReqGetContact        ipc.Command = "get_contact"
 	ReqGetMessagesAfter  ipc.Command = "get_messages_after"
 	ReqGetRecentMessages ipc.Command = "get_recent_messages"
+	ReqPreStartupSync    ipc.Command = "pre_startup_sync"
 )
 
 type SendMessageRequest struct {

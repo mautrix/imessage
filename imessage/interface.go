@@ -55,6 +55,8 @@ type API interface {
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
 
+	PreStartupSyncHook() error
+
 	Capabilities() ConnectorCapabilities
 }
 

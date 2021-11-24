@@ -515,6 +515,14 @@ func (bridge *Bridge) Start() {
 }
 
 func (bridge *Bridge) StartupSync() {
+	// Hacky way to make sure preinitialization is done
+	time.Sleep(3 * time.Second)
+
+	err := bridge.IM.PreStartupSyncHook()
+	if err != nil {
+		bridge.Log.Errorln("iMessage connector returned error in startup sync hook:", err)
+	}
+
 	alreadySynced := make(map[string]bool)
 	for _, portal := range bridge.GetAllPortals() {
 		removed := portal.CleanupIfEmpty(true)

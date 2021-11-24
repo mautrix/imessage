@@ -84,6 +84,10 @@ func init() {
 	imessage.Implementations["mac"] = NewChatDatabase
 }
 
+func (mac *macOSDatabase) PreStartupSyncHook() error {
+	return nil
+}
+
 func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:    false,
