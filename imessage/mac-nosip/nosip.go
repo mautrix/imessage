@@ -28,8 +28,6 @@ import (
 	"syscall"
 	"time"
 
-	"context"
-
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -38,8 +36,7 @@ import (
 )
 
 const IncomingLog ipc.Command = "log"
-const OutgoingPing ipc.Command = "ping"
-const IncomingPong ipc.Command = "pong"
+const ReqPing ipc.Command = "ping"
 
 type MacNoSIPConnector struct {
 	ios.APIWithIPC
@@ -94,27 +91,37 @@ func (mac *MacNoSIPConnector) Start() error {
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
 	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
 
-	go func() {
-		for {
-			select {
-			case <-mac.stopPinger:
-				return
-			default:
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				err := ipcProc.Request(ctx, OutgoingPing, nil, nil)
-
-				if err != nil {
-					mac.log.Fatalln("Failed to ping Barcelona within 15s. Terminating process")
-					os.Exit(255)
-				}
-
-				cancel()
-				time.Sleep(15 * time.Second)
-			}
-		}
-	}()
+	go mac.pingLoop(ipcProc)
 
 	return mac.APIWithIPC.Start()
+}
+
+func (mac *MacNoSIPConnector) pingLoop(ipcProc *ipc.Processor) {
+	for {
+		resp, err := ipcProc.RequestAsync(ReqPing, nil)
+		if err != nil {
+			mac.log.Fatalln("Failed to send ping to Barcelona")
+			os.Exit(254)
+		}
+		timeout := time.After(15 * time.Second)
+		select {
+		case <-mac.stopPinger:
+			return
+		case <-timeout:
+			mac.log.Fatalln("Didn't receive pong from Barcelona within 15 seconds")
+			os.Exit(255)
+		case rawData := <-resp:
+			if rawData.Command == "error" {
+				mac.log.Fatalfln("Barcelona returned error response to pong: %s", rawData.Data)
+				os.Exit(253)
+			}
+		}
+		select {
+		case <-timeout:
+		case <-mac.stopPinger:
+			return
+		}
+	}
 }
 
 type LogLine struct {
