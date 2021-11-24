@@ -78,7 +78,7 @@ func (mac *MacNoSIPConnector) Start() error {
 	go func() {
 		ipcProc.Loop()
 		if mac.proc.ProcessState.Exited() {
-			mac.log.Errorf("nosip proc died with exit code %d – goodbye", mac.proc.ProcessState.ExitCode())
+			mac.log.Errorfln("Barcelona died with exit code %d, exiting bridge...", mac.proc.ProcessState.ExitCode())
 			os.Exit(mac.proc.ProcessState.ExitCode())
 		}
 	}()
@@ -162,23 +162,23 @@ func (mac *MacNoSIPConnector) handleIncomingLog(data json.RawMessage) interface{
 
 func (mac *MacNoSIPConnector) Stop() {
 	if mac.proc == nil || mac.proc.ProcessState == nil || mac.proc.ProcessState.Exited() {
-		mac.log.Debugln("imessage-rest subprocess not running when Stop was called")
+		mac.log.Debugln("Barcelona subprocess not running when Stop was called")
 		return
 	}
 	mac.stopPinger <- true
 	err := mac.proc.Process.Signal(syscall.SIGTERM)
 	if err != nil && !errors.Is(err, os.ErrProcessDone) {
-		mac.log.Warnln("Failed to send SIGTERM to imessage-rest process:", err)
+		mac.log.Warnln("Failed to send SIGTERM to Barcelona process:", err)
 	}
 	time.AfterFunc(3*time.Second, func() {
 		err = mac.proc.Process.Kill()
 		if err != nil && !errors.Is(err, os.ErrProcessDone) {
-			mac.log.Warnln("Failed to kill imessage-rest process:", err)
+			mac.log.Warnln("Failed to kill Barcelona process:", err)
 		}
 	})
 	err = mac.proc.Wait()
 	if err != nil {
-		mac.log.Warnln("Error waiting for imessage-rest process:", err)
+		mac.log.Warnln("Error waiting for Barcelona process:", err)
 	}
 }
 
