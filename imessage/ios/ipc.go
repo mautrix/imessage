@@ -385,6 +385,9 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 		ReplyTo:     replyTo,
 		ReplyToPart: replyToPart,
 	}, &resp)
+	if err == nil {
+		resp.Time = floatToTime(resp.UnixTime)
+	}
 	return &resp, err
 }
 
@@ -412,6 +415,9 @@ func (ios *iOSConnector) SendFile(chatID, filename string, data []byte, replyTo 
 		ReplyTo:     replyTo,
 		ReplyToPart: replyToPart,
 	}, &resp)
+	if err == nil {
+		resp.Time = floatToTime(resp.UnixTime)
+	}
 	return &resp, err
 }
 
