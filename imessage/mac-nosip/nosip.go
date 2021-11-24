@@ -28,6 +28,8 @@ import (
 	"syscall"
 	"time"
 
+	"context"
+
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -36,6 +38,8 @@ import (
 )
 
 const IncomingLog ipc.Command = "log"
+const OutgoingPing ipc.Command = "ping"
+const IncomingPong ipc.Command = "pong"
 
 type MacNoSIPConnector struct {
 	ios.APIWithIPC
@@ -44,6 +48,7 @@ type MacNoSIPConnector struct {
 	log                 log.Logger
 	procLog             log.Logger
 	printPayloadContent bool
+	stopPinger          chan bool
 }
 
 func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -55,6 +60,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		log:                 logger,
 		procLog:             processLogger,
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
+		stopPinger:          make(chan bool, 8),
 	}, nil
 }
 
@@ -87,6 +93,27 @@ func (mac *MacNoSIPConnector) Start() error {
 	}
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
 	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
+
+	go func() {
+		for {
+			select {
+			case <-mac.stopPinger:
+				return
+			default:
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				err := ipcProc.Request(ctx, OutgoingPing, nil, nil)
+
+				if err != nil {
+					mac.log.Fatalln("Failed to ping Barcelona within 15s. Terminating process")
+					os.Exit(255)
+				}
+
+				cancel()
+				time.Sleep(15 * time.Second)
+			}
+		}
+	}()
+
 	return mac.APIWithIPC.Start()
 }
 
@@ -131,6 +158,7 @@ func (mac *MacNoSIPConnector) Stop() {
 		mac.log.Debugln("imessage-rest subprocess not running when Stop was called")
 		return
 	}
+	mac.stopPinger <- true
 	err := mac.proc.Process.Signal(syscall.SIGTERM)
 	if err != nil && !errors.Is(err, os.ErrProcessDone) {
 		mac.log.Warnln("Failed to send SIGTERM to imessage-rest process:", err)
