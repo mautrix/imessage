@@ -719,7 +719,7 @@ func (portal *Portal) sendErrorMessage(message string, isCertain bool) id.EventI
 	return resp.EventID
 }
 
-func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
+func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint bool) {
 	if portal.bridge.Config.Bridge.DeliveryReceipts {
 		err := portal.bridge.Bot.MarkRead(portal.MXID, eventID)
 		if err != nil {
@@ -727,18 +727,20 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID) {
 		}
 	}
 
-	// We don't have access to the entire event, so we are omitting some
-	// metadata here. However, that metadata can be inferred from previous
-	// checkpoints.
-	checkpoint := appservice.MessageSendCheckpoint{
-		EventID:    eventID,
-		RoomID:     portal.MXID,
-		Step:       appservice.StepRemote,
-		Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
-		Status:     appservice.StatusSuccesss,
-		ReportedBy: appservice.ReportedByBridge,
+	if sendCheckpoint {
+		// We don't have access to the entire event, so we are omitting some
+		// metadata here. However, that metadata can be inferred from previous
+		// checkpoints.
+		checkpoint := appservice.MessageSendCheckpoint{
+			EventID:    eventID,
+			RoomID:     portal.MXID,
+			Step:       appservice.StepRemote,
+			Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
+			Status:     appservice.StatusSuccesss,
+			ReportedBy: appservice.ReportedByBridge,
+		}
+		go checkpoint.Send(portal.bridge.AS)
 	}
-	go checkpoint.Send(portal.bridge.AS)
 }
 
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
@@ -812,7 +814,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
 		dbMessage.Timestamp = resp.Time.UnixNano() / 1e6
-		portal.sendDeliveryReceipt(evt.ID)
+		portal.sendDeliveryReceipt(evt.ID, true)
 		dbMessage.Insert()
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
@@ -877,7 +879,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		}
 	}
-	portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, fmt.Errorf("Event %s is not a reaction. Cannot redact.", evt.ID), true)
+	portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, fmt.Errorf("can't redact non-reaction event %s", evt.ID), true)
 }
 
 func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
@@ -937,7 +939,7 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 		}
 		dbMessage.MXID = dedup.EventID
 		dbMessage.Insert()
-		portal.sendDeliveryReceipt(dbMessage.MXID)
+		portal.sendDeliveryReceipt(dbMessage.MXID, true)
 		return true
 	}
 	portal.messageDedupLock.Unlock()
@@ -1182,7 +1184,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	}
 
 	if len(dbMessage.MXID) > 0 {
-		portal.sendDeliveryReceipt(dbMessage.MXID)
+		portal.sendDeliveryReceipt(dbMessage.MXID, false)
 		if !isBackfill && !msg.IsFromMe && msg.IsRead && portal.bridge.user.DoublePuppetIntent != nil {
 			err := portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, dbMessage.MXID)
 			if err != nil {
