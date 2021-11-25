@@ -135,6 +135,9 @@ type Bridge struct {
 	latestState   *imessage.BridgeStatus
 	pushKey       *imessage.PushKeyRequest
 
+	shortCircuitReconnectBackoff chan struct{}
+	websocketStarted             chan struct{}
+
 	suppressSyncStart bool
 }
 
@@ -158,6 +161,9 @@ func NewBridge() *Bridge {
 		portalsByGUID: make(map[string]*Portal),
 		puppets:       make(map[string]*Puppet),
 		stop:          make(chan struct{}, 1),
+
+		shortCircuitReconnectBackoff: make(chan struct{}),
+		websocketStarted:             make(chan struct{}),
 	}
 
 	var err error
@@ -270,16 +276,36 @@ type PingData struct {
 }
 
 func (bridge *Bridge) PingServer() (start, serverTs, end time.Time) {
+	if !bridge.AS.HasWebsocket() {
+		bridge.Log.Debugln("Received server ping request, but no websocket connected. Trying to short-circuit backoff sleep")
+		select {
+		case bridge.shortCircuitReconnectBackoff <- struct{}{}:
+		default:
+			bridge.Log.Warnfln("Failed to ping websocket: not connected and no backoff?")
+			return
+		}
+		select {
+		case <-bridge.websocketStarted:
+		case <-time.After(15 * time.Second):
+			if !bridge.AS.HasWebsocket() {
+				bridge.Log.Warnfln("Failed to ping websocket: didn't connect after 15 seconds of waiting")
+				return
+			}
+		}
+	}
 	start = time.Now()
 	var resp PingData
 	bridge.Log.Debugln("Pinging appservice websocket")
-	err := bridge.AS.RequestWebsocket(context.Background(), &appservice.WebsocketRequest{
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := bridge.AS.RequestWebsocket(ctx, &appservice.WebsocketRequest{
 		Command: "ping",
 		Data:    &PingData{Timestamp: start.UnixNano() / int64(time.Millisecond)},
 	}, &resp)
 	end = time.Now()
 	if err != nil {
 		bridge.Log.Warnfln("Websocket ping returned error in %s: %v", end.Sub(start), err)
+		bridge.AS.StopWebsocket(fmt.Errorf("websocket ping returned error in %s: %w", end.Sub(start), err))
 	} else {
 		serverTs = time.Unix(0, resp.Timestamp*int64(time.Millisecond))
 		bridge.Log.Debugfln("Websocket ping returned success: request took %s, response took %s", serverTs.Sub(start), end.Sub(serverTs))
@@ -411,6 +437,10 @@ func (bridge *Bridge) startWebsocket() {
 		if !bridge.suppressSyncStart {
 			bridge.requestStartSync()
 		}
+		select {
+		case bridge.websocketStarted <- struct{}{}:
+		default:
+		}
 	}
 	reconnectBackoff := defaultReconnectBackoff
 	lastDisconnect := time.Now().UnixNano()
@@ -439,7 +469,11 @@ func (bridge *Bridge) startWebsocket() {
 		}
 		lastDisconnect = now
 		bridge.Log.Infofln("Websocket disconnected, reconnecting in %d seconds...", int(reconnectBackoff.Seconds()))
-		time.Sleep(reconnectBackoff)
+		select {
+		case <-bridge.shortCircuitReconnectBackoff:
+			bridge.Log.Debugln("Reconnect backoff was short-circuited")
+		case <-time.After(reconnectBackoff):
+		}
 	}
 }
 
