@@ -385,7 +385,7 @@ func (bridge *Bridge) sendPushKey() {
 	}, nil)
 	if err != nil {
 		// Don't care about websocket not connected errors, we'll retry automatically when reconnecting
-		if !errors.Is(err, appservice.WebsocketNotConnected) {
+		if !errors.Is(err, appservice.ErrWebsocketNotConnected) {
 			bridge.Log.Warnln("Error sending push key to asmux:", err)
 		}
 	} else {
@@ -446,7 +446,7 @@ func (bridge *Bridge) startWebsocket() {
 	lastDisconnect := time.Now().UnixNano()
 	for {
 		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy, onConnect)
-		if err == appservice.WebsocketManualStop {
+		if err == appservice.ErrWebsocketManualStop {
 			return
 		} else if closeCommand := (&appservice.CloseCommand{}); errors.As(err, &closeCommand) && closeCommand.Status == appservice.MeowConnectionReplaced {
 			bridge.Log.Infoln("Appservice websocket closed by another instance of the bridge, shutting down...")
@@ -646,7 +646,7 @@ func (bridge *Bridge) internalStop() {
 		bridge.Crypto.Stop()
 	}
 	bridge.Log.Debugln("Stopping transaction websocket")
-	bridge.AS.StopWebsocket(appservice.WebsocketManualStop)
+	bridge.AS.StopWebsocket(appservice.ErrWebsocketManualStop)
 	bridge.Log.Debugln("Stopping event processor")
 	bridge.EventProcessor.Stop()
 	bridge.Log.Debugln("Stopping iMessage connector")
