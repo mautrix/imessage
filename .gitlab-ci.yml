@@ -22,6 +22,7 @@ build amd64:
   artifacts:
     paths:
     - mautrix-imessage-amd64
+    expire_in: 1 day
 
 build arm64:
   tags:
@@ -47,6 +48,7 @@ build arm64:
   artifacts:
     paths:
     - mautrix-imessage-arm64
+    expire_in: 1 day
 
 build ios armv7:
   tags:
@@ -80,6 +82,7 @@ build ios armv7:
   artifacts:
     paths:
     - mautrix-imessage-ios-armv7
+    expire_in: 1 day
 
 build ios arm64:
   tags:
@@ -112,6 +115,7 @@ build ios arm64:
   artifacts:
     paths:
     - mautrix-imessage-ios-arm64
+    expire_in: 1 day
 
 build universal:
   stage: combine
@@ -136,6 +140,7 @@ build universal:
     - libolm.3.dylib
     - mautrix-imessage
     - example-config.yaml
+    expire_in: 30 days
 
 build ios universal:
   stage: combine
@@ -161,3 +166,4 @@ build ios universal:
     - libolm.3.dylib
     - mautrix-imessage
     - example-config.yaml
+    expire_in: 30 days
