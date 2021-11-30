@@ -879,7 +879,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote)
 		}
 	}
-	portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, fmt.Errorf("can't redact non-reaction event %s", evt.ID), true)
+	portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, fmt.Errorf("Can't redact non-reaction event"), true)
 }
 
 func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
