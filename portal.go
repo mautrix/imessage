@@ -703,14 +703,15 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 	return file.Encrypt(data), "application/octet-stream", file
 }
 
-func (portal *Portal) sendErrorMessage(message string, isCertain bool) id.EventID {
+func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bool) id.EventID {
+	go portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true)
 	possibility := "may not have been"
 	if isCertain {
 		possibility = "was not"
 	}
 	resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
 		MsgType: event.MsgNotice,
-		Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", possibility, message),
+		Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", possibility, err),
 	})
 	if err != nil {
 		portal.log.Warnfln("Failed to send bridging error message:", err)
@@ -785,20 +786,20 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			url, err = msg.URL.Parse()
 		}
 		if err != nil {
-			portal.sendErrorMessage(fmt.Sprintf("malformed attachment URL: %v", err), true)
+			portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true)
 			portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
 			return
 		}
 		data, err = portal.MainIntent().DownloadBytes(url)
 		if err != nil {
-			portal.sendErrorMessage(fmt.Sprintf("failed to download attachment: %v", err), true)
+			portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true)
 			portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
 			return
 		}
 		if msg.File != nil {
 			data, err = msg.File.Decrypt(data)
 			if err != nil {
-				portal.sendErrorMessage(fmt.Sprintf("failed to decrypt attachment: %v", err), true)
+				portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true)
 				portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
 				return
 			}
@@ -807,7 +808,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
-		portal.sendErrorMessage(err.Error(), false)
+		portal.sendErrorMessage(evt, err, false)
 	} else if resp != nil {
 		dbMessage := portal.bridge.DB.Message.New()
 		dbMessage.ChatGUID = portal.GUID
