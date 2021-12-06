@@ -268,7 +268,7 @@ func (bridge *Bridge) GetLog() log.Logger {
 }
 
 func (bridge *Bridge) GetConnectorConfig() *imessage.PlatformConfig {
-	return bridge.Config.IMessage
+	return &bridge.Config.IMessage
 }
 
 type PingData struct {

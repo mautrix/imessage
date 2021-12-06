@@ -48,7 +48,7 @@ type Config struct {
 		HSToken string `yaml:"hs_token"`
 	} `yaml:"appservice"`
 
-	IMessage *imessage.PlatformConfig `yaml:"imessage"`
+	IMessage imessage.PlatformConfig `yaml:"imessage"`
 
 	Bridge BridgeConfig `yaml:"bridge"`
 
