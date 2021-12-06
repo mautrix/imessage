@@ -37,6 +37,8 @@ imessage:
     platform: mac
     # imessage-rest executable for mac-nosip connector
     #imessage_rest_path: ...
+    # override the seconds barcelona has to ping before terminating
+    #ping_interval_seconds: ...
 
 # Bridge config
 bridge:

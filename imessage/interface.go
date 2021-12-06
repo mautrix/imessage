@@ -91,6 +91,8 @@ type PlatformConfig struct {
 
 	IMRestPath     string `yaml:"imessage_rest_path"`
 	LogIPCPayloads bool   `yaml:"log_ipc_payloads"`
+
+	PingInterval int64 `yaml:"ping_interval_seconds"`
 }
 
 func (pc *PlatformConfig) BridgeName() string {
