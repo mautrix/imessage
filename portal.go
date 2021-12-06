@@ -1234,7 +1234,22 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 
-	resp, err := intent.SendReaction(portal.MXID, target.MXID, msg.Tapback.Type.Emoji())
+	content := event.Content{Parsed: event.ReactionEventContent{
+		RelatesTo: event.RelatesTo{
+			EventID: target.MXID,
+			Type:    event.RelAnnotation,
+			Key:     msg.Tapback.Type.Emoji(),
+		},
+	}}
+
+	if intent.IsCustomPuppet {
+		content.Raw = map[string]interface{}{
+			"net.maunium.imessage.puppet": intent.IsCustomPuppet,
+		}
+	}
+
+	resp, err := intent.Client.SendMessageEvent(portal.MXID, event.EventReaction, &content)
+
 	if err != nil {
 		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.SenderText(), err)
 		return
