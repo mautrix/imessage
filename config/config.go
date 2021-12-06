@@ -56,6 +56,7 @@ type Config struct {
 }
 
 func (config *Config) setDefaults() {
+	config.IMessage.PingInterval = 15
 	config.Bridge.setDefaults()
 }
 

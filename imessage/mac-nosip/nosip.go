@@ -45,6 +45,7 @@ type MacNoSIPConnector struct {
 	log                 log.Logger
 	procLog             log.Logger
 	printPayloadContent bool
+	pingInterval        time.Duration
 	stopPinger          chan bool
 }
 
@@ -57,6 +58,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		log:                 logger,
 		procLog:             processLogger,
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
+		pingInterval:        time.Duration(bridge.GetConnectorConfig().PingInterval),
 		stopPinger:          make(chan bool, 8),
 	}, nil
 }
@@ -103,12 +105,12 @@ func (mac *MacNoSIPConnector) pingLoop(ipcProc *ipc.Processor) {
 			mac.log.Fatalln("Failed to send ping to Barcelona")
 			os.Exit(254)
 		}
-		timeout := time.After(15 * time.Second)
+		timeout := time.After(mac.pingInterval * time.Second)
 		select {
 		case <-mac.stopPinger:
 			return
 		case <-timeout:
-			mac.log.Fatalln("Didn't receive pong from Barcelona within 15 seconds")
+			mac.log.Fatalfln("Didn't receive pong from Barcelona within %s", mac.pingInterval)
 			os.Exit(255)
 		case rawData := <-resp:
 			if rawData.Command == "error" {
