@@ -1215,6 +1215,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	} else {
 		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
 		intent = puppet.Intent
+		intent.IsCustomPuppet = true
 	}
 	senderGUID := msg.Sender.String()
 
