@@ -8,24 +8,24 @@
 |----------------------|-------|-----|----------------|
 | Plain text           | ✔️    | ✔️  | ✔️             |
 | Media/files          | ✔️    | ✔️  | ✔️             |
-| Replies              | 🛑    | ❌  | ✔️             |
-| Reactions            | 🛑    | ❌  | ✔️             |
-| Read receipts        | 🛑    | ❌  | ❌             |
-| Typing notifications | 🛑    | ❌  | ❌             |
+| Replies              | 🛑    | ?   | ✔️             |
+| Reactions            | 🛑    | ?   | ✔️             |
+| Read receipts        | 🛑    | ?   | ✔️             |
+| Typing notifications | 🛑    | ?   | ✔️             |
 
 ## iMessage → Matrix
-| Feature              | macOS | iOS |
-|----------------------|-------|-----|
-| Plain text           | ✔️    | ✔️  |
-| Media/files          | ✔️    | ✔️  |
-| Replies              | ✔️    | ❌  |
-| Tapbacks             | ✔️    | ❌  |
-| Own read receipts    | ✔️    | ❌  |
-| Other read receipts  | ✔️    | ❌  |
-| Typing notifications | 🛑    | ✔️  |
-| User metadata        | ✔️    | ✔️  |
-| Group metadata       | ✔️    | ✔️  |
-| Backfilling history  | ✔️    | ✔️  |
+| Feature              | macOS | iOS | macOS (no SIP) |
+|----------------------|-------|-----|----------------|
+| Plain text           | ✔️    | ✔️  | ✔️             |
+| Media/files          | ✔️    | ✔️  | ✔️             |
+| Replies              | ✔️    | ❌  | ✔️             |
+| Tapbacks             | ✔️    | ❌  | ✔️             |
+| Own read receipts    | ✔️    | ❌  | ✔️             |
+| Other read receipts  | ✔️    | ❌  | ✔️             |
+| Typing notifications | 🛑    | ✔️  | ✔️             |
+| User metadata        | ✔️    | ✔️  | ✔️             |
+| Group metadata       | ✔️    | ✔️  | ✔️             |
+| Backfilling history  | ✔️    | ✔️  | ✔️             |
 
 ## Android SMS
 #### Supported
