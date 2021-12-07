@@ -243,27 +243,30 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 	}
 
 	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
+	decryptionRetryCount := 0
 	if errors.Is(err, NoSessionFound) {
 		content := evt.Content.AsEncrypted()
 		mx.log.Debugfln("Couldn't find session %s trying to decrypt %s, waiting %d seconds...", content.SessionID, evt.ID, int(sessionWaitTimeout.Seconds()))
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, false, decryptionRetryCount)
+		decryptionRetryCount++
 		if mx.bridge.Crypto.WaitForSession(evt.RoomID, content.SenderKey, content.SessionID, sessionWaitTimeout) {
 			mx.log.Debugfln("Got session %s after waiting, trying to decrypt %s again", content.SessionID, evt.ID)
 			decrypted, err = mx.bridge.Crypto.Decrypt(evt)
 		} else {
-			mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, false)
+			mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, false, decryptionRetryCount)
 			go mx.waitLongerForSession(evt)
 			return
 		}
 	}
 	if err != nil {
-		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true, decryptionRetryCount)
 
 		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
 		_, _ = mx.bridge.Bot.SendNotice(evt.RoomID, fmt.Sprintf(
 			"\u26a0 Your message was not bridged: %v", err))
 		return
 	}
-	mx.as.SendMessageSendCheckpoint(evt, appservice.StepDecrypted)
+	mx.as.SendMessageSendCheckpoint(evt, appservice.StepDecrypted, decryptionRetryCount)
 	mx.bridge.EventProcessor.Dispatch(decrypted)
 }
 
@@ -288,18 +291,18 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 		var decrypted *event.Event
 		decrypted, err = mx.bridge.Crypto.Decrypt(evt)
 		if err == nil {
-			mx.as.SendMessageSendCheckpoint(evt, appservice.StepDecrypted)
+			mx.as.SendMessageSendCheckpoint(evt, appservice.StepDecrypted, 2)
 			mx.bridge.EventProcessor.Dispatch(decrypted)
 			_, _ = mx.bridge.Bot.RedactEvent(evt.RoomID, resp.EventID)
 			return
 		}
 		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
-		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true, 2)
 		update.Body = fmt.Sprintf("\u26a0 Your message was not bridged: %v", err)
 	} else {
 		errMsg := fmt.Sprintf("Didn't get %s, giving up on %s", content.SessionID, evt.ID)
 		mx.log.Debugfln(errMsg)
-		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf(errMsg), true)
+		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, fmt.Errorf(errMsg), true, 2)
 		update.Body = "\u26a0 Your message was not bridged: the bridge hasn't received the decryption keys. " +
 			"If this keeps happening, try restarting your client."
 	}
