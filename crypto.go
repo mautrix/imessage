@@ -307,6 +307,17 @@ func (helper *CryptoHelper) WaitForSession(roomID id.RoomID, senderKey id.Sender
 	return helper.mach.WaitForSession(roomID, senderKey, sessionID, timeout)
 }
 
+func (helper *CryptoHelper) RequestSession(roomID id.RoomID, senderKey id.SenderKey, sessionID id.SessionID, userID id.UserID, deviceID id.DeviceID) {
+	helper.lock.RLock()
+	defer helper.lock.RUnlock()
+	err := helper.mach.SendRoomKeyRequest(roomID, senderKey, sessionID, "", map[id.UserID][]id.DeviceID{userID: {deviceID}})
+	if err != nil {
+		helper.log.Warnfln("Failed to send key request to %s/%s for %s in %s: %v", userID, deviceID, sessionID, roomID, err)
+	} else {
+		helper.log.Debugfln("Sent key request to %s/%s for %s in %s", userID, deviceID, sessionID, roomID)
+	}
+}
+
 func (helper *CryptoHelper) ResetSession(roomID id.RoomID) {
 	helper.lock.RLock()
 	defer helper.lock.RUnlock()

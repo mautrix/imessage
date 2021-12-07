@@ -146,6 +146,7 @@ type Crypto interface {
 	Decrypt(*event.Event) (*event.Event, error)
 	Encrypt(id.RoomID, event.Type, event.Content) (*event.EncryptedEventContent, error)
 	WaitForSession(id.RoomID, id.SenderKey, id.SessionID, time.Duration) bool
+	RequestSession(id.RoomID, id.SenderKey, id.SessionID, id.UserID, id.DeviceID)
 	ResetSession(id.RoomID)
 	Reset()
 	RegisterAppserviceListener()
