@@ -1234,7 +1234,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 
-	content := event.Content{Parsed: event.ReactionEventContent{
+	content := event.Content{Parsed: &event.ReactionEventContent{
 		RelatesTo: event.RelatesTo{
 			EventID: target.MXID,
 			Type:    event.RelAnnotation,
