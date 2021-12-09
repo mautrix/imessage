@@ -206,7 +206,7 @@ func (helper *CryptoHelper) Start() {
 	ctx, helper.cancelSync = context.WithCancel(context.Background())
 	err := helper.client.SyncWithContext(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
-		helper.log.Errorln("Fatal error syncing:", err)
+		helper.log.Fatalln("Fatal error syncing:", err)
 		os.Exit(51)
 	} else {
 		helper.log.Infoln("Bridge bot to-device syncer stopped without error")
