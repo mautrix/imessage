@@ -403,7 +403,7 @@ func (bridge *Bridge) SetPushKey(req *imessage.PushKeyRequest) {
 }
 
 func (bridge *Bridge) requestStartSync() {
-	if !bridge.Config.Bridge.Encryption.Appservice || bridge.Crypto == nil {
+	if !bridge.Config.Bridge.Encryption.Appservice || bridge.Crypto == nil || !bridge.AS.HasWebsocket() {
 		return
 	}
 	resp := map[string]interface{}{}
@@ -521,6 +521,7 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 
+	cryptoReset := false
 	if needsPortalFinding {
 		bridge.Log.Infoln("Portal database is empty, finding portals from Matrix room state")
 		err = bridge.FindPortalsFromMatrix()
@@ -531,6 +532,7 @@ func (bridge *Bridge) Start() {
 		// The database was probably reset, so log out of all bridge bot devices to keep the list clean
 		if bridge.Crypto != nil {
 			bridge.Crypto.Reset()
+			cryptoReset = true
 		}
 		bridge.suppressSyncStart = false
 	}
@@ -540,7 +542,7 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Starting IPC loop")
 	go bridge.IPC.Loop()
 	go bridge.UpdateBotProfile()
-	if bridge.Crypto != nil {
+	if bridge.Crypto != nil && !cryptoReset {
 		go bridge.Crypto.Start()
 	}
 
