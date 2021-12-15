@@ -668,12 +668,13 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
 }
 
+const doublePuppetKey = "fi.mau.double_puppet_source"
+const doublePuppetValue = "mautrix-imessage"
+
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content}
 	if timestamp != 0 && intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{
-			"net.maunium.imessage.puppet": intent.IsCustomPuppet,
-		}
+		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: intent.IsCustomPuppet}
 	}
 	if portal.Encrypted && portal.bridge.Crypto != nil {
 		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
@@ -1206,8 +1207,10 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 	var intent *appservice.IntentAPI
+	redactionReq := mautrix.ReqRedact{Extra: map[string]interface{}{}}
 	if msg.IsFromMe {
 		intent = portal.bridge.user.DoublePuppetIntent
+		redactionReq.Extra[doublePuppetKey] = doublePuppetValue
 		if intent == nil {
 			portal.log.Debugfln("Dropping own tapback in %s as double puppeting is not initialized", msg.ChatGUID)
 			return
@@ -1223,7 +1226,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		if existing == nil {
 			return
 		}
-		_, err := intent.RedactEvent(portal.MXID, existing.MXID)
+		_, err := intent.RedactEvent(portal.MXID, existing.MXID, redactionReq)
 		if err != nil {
 			portal.log.Warnfln("Failed to remove tapback from %s: %v", msg.SenderText(), err)
 		}
@@ -1243,9 +1246,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 	}}
 
 	if intent.IsCustomPuppet {
-		content.Raw = map[string]interface{}{
-			"net.maunium.imessage.puppet": intent.IsCustomPuppet,
-		}
+		content.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
 	}
 
 	resp, err := intent.Client.SendMessageEvent(portal.MXID, event.EventReaction, &content)
@@ -1265,7 +1266,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		tapback.MXID = resp.EventID
 		tapback.Insert()
 	} else {
-		_, err = intent.RedactEvent(portal.MXID, existing.MXID)
+		_, err = intent.RedactEvent(portal.MXID, existing.MXID, redactionReq)
 		if err != nil {
 			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
 		}
