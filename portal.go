@@ -704,15 +704,13 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 }
 
 func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bool, unsupported bool) id.EventID {
-	go (func() {
-		status := appservice.StatusPermFailure
-		if unsupported {
-			status = appservice.StatusUnsupported
-		}
-		checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
-		checkpoint.Info = err.Error()
-		checkpoint.Send(portal.bridge.AS)
-	})()
+	status := appservice.StatusPermFailure
+	if unsupported {
+		status = appservice.StatusUnsupported
+	}
+	checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
+	checkpoint.Info = err.Error()
+	go checkpoint.Send(portal.bridge.AS)
 
 	possibility := "may not have been"
 	if isCertain {
