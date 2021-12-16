@@ -710,6 +710,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bo
 			status = appservice.StatusUnsupported
 		}
 		checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
+		checkpoint.Info = err.Error()
 		checkpoint.Send(portal.bridge.AS)
 	})()
 
