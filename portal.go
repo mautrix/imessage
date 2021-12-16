@@ -36,6 +36,7 @@ import (
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
+	"go.mau.fi/mautrix-imessage/ipc"
 )
 
 func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
@@ -817,7 +818,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		portal.log.Errorln("Error sending to iMessage:", err)
 		unsupported := false
 		certain := false
-		if strings.HasPrefix(err.Error(), "size_limit_exceeded") {
+		if errors.Is(err, ipc.ErrSizeLimitExceeded) {
 			certain = true
 			unsupported = true
 		}
