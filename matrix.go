@@ -228,8 +228,7 @@ func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 	if evt.Sender != mx.bridge.user.MXID {
 		return true
 	}
-	isCustomPuppet, ok := evt.Content.Raw["net.maunium.imessage.puppet"].(bool)
-	if ok && isCustomPuppet {
+	if val, ok := evt.Content.Raw[doublePuppetKey].(string); ok && val == doublePuppetValue {
 		return true
 	}
 	return false
