@@ -675,7 +675,7 @@ const doublePuppetValue = "mautrix-imessage"
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content}
 	if timestamp != 0 && intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: intent.IsCustomPuppet}
+		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
 	}
 	if portal.Encrypted && portal.bridge.Crypto != nil {
 		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
