@@ -36,6 +36,7 @@ import (
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
+	"go.mau.fi/mautrix-imessage/ipc"
 )
 
 func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
@@ -703,8 +704,15 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 	return file.Encrypt(data), "application/octet-stream", file
 }
 
-func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bool) id.EventID {
-	go portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true, 0)
+func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bool, unsupported bool) id.EventID {
+	status := appservice.StatusPermFailure
+	if unsupported {
+		status = appservice.StatusUnsupported
+	}
+	checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
+	checkpoint.Info = err.Error()
+	go checkpoint.Send(portal.bridge.AS)
+
 	possibility := "may not have been"
 	if isCertain {
 		possibility = "was not"
@@ -786,20 +794,20 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			url, err = msg.URL.Parse()
 		}
 		if err != nil {
-			portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true)
+			portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true, false)
 			portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
 			return
 		}
 		data, err = portal.MainIntent().DownloadBytes(url)
 		if err != nil {
-			portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true)
+			portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true, false)
 			portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
 			return
 		}
 		if msg.File != nil {
 			data, err = msg.File.Decrypt(data)
 			if err != nil {
-				portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true)
+				portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true, false)
 				portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
 				return
 			}
@@ -808,7 +816,13 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
-		portal.sendErrorMessage(evt, err, false)
+		unsupported := false
+		certain := false
+		if errors.Is(err, ipc.ErrSizeLimitExceeded) {
+			certain = true
+			unsupported = true
+		}
+		portal.sendErrorMessage(evt, err, certain, unsupported)
 	} else if resp != nil {
 		dbMessage := portal.bridge.DB.Message.New()
 		dbMessage.ChatGUID = portal.GUID
