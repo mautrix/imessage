@@ -820,18 +820,14 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			status = appservice.StatusUnsupported
 		}
 		var ipcErr ipc.Error
-		if errors.As(err, &ipcErr) && ipcErr.Code == ipc.ErrNetworkError.Code {
+		if errors.As(err, &ipcErr) {
 			certain = true
-			network_error_statuses := map[string]appservice.MessageSendCheckpointStatus{
-				"ERROR_NO_SERVICE":               appservice.StatusTimeout,
-				"ERROR_RADIO_OFF":                appservice.StatusTimeout,
-				"RIL_NETWORK_NOT_READY":          appservice.StatusTimeout,
-				"RIL_RADIO_NOT_AVAILABLE":        appservice.StatusTimeout,
-				"ERROR_SHORT_CODE_NOT_ALLOWED":   appservice.StatusUnsupported,
-				"ERROR_SHORT_CODE_NEVER_ALLOWED": appservice.StatusUnsupported,
-			}
-			if s, found := network_error_statuses[ipcErr.Message]; found {
-				status = s
+			err = errors.New(ipcErr.Message)
+			switch ipcErr.Code {
+			case ipc.ErrUnsupportedError.Code:
+				status = appservice.StatusUnsupported
+			case ipc.ErrTimeoutError.Code:
+				status = appservice.StatusTimeout
 			}
 		}
 		portal.sendErrorMessage(evt, err, certain, status)

@@ -37,7 +37,8 @@ const (
 var (
 	ErrUnknownCommand    = Error{"unknown-command", "Unknown command"}
 	ErrSizeLimitExceeded = Error{Code: "size_limit_exceeded"}
-	ErrNetworkError      = Error{Code: "network_error"}
+	ErrTimeoutError      = Error{Code: "timeout"}
+	ErrUnsupportedError  = Error{Code: "unsupported"}
 )
 
 type Command string
