@@ -859,7 +859,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	}
 	portal.log.Debugln("Starting handling of Matrix reaction", evt.ID)
 
-	errorMsg := ""
+	var errorMsg string
 
 	if reaction, ok := evt.Content.Parsed.(*event.ReactionEventContent); !ok || reaction.RelatesTo.Type != event.RelAnnotation {
 		errorMsg = fmt.Sprintf("Ignoring reaction %s due to unknown m.relates_to data", evt.ID)
@@ -895,13 +895,14 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	}
 
 	if errorMsg != "" {
+		portal.log.Errorfln(errorMsg)
 		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New(errorMsg), true, 0)
 	}
 }
 
 func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("Reaction is not supported in portal"))
+		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("Bridge does not support any kinds of redactions"))
 		return
 	}
 
@@ -918,7 +919,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
 		}
 	}
-	portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, fmt.Errorf("Can't redact non-redaction event"))
+	portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, fmt.Errorf("Can't redact non-reaction event"))
 }
 
 func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
