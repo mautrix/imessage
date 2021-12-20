@@ -819,7 +819,8 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			certain = true
 			status = appservice.StatusUnsupported
 		}
-		if errors.Is(err, ipc.ErrNetworkError) {
+		var ipcErr ipc.Error
+		if errors.As(err, &ipcErr) && ipcErr.Code == ipc.ErrNetworkError.Code {
 			certain = true
 			network_error_statuses := map[string]appservice.MessageSendCheckpointStatus{
 				"ERROR_NO_SERVICE":               appservice.StatusTimeout,
@@ -829,7 +830,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 				"ERROR_SHORT_CODE_NOT_ALLOWED":   appservice.StatusUnsupported,
 				"ERROR_SHORT_CODE_NEVER_ALLOWED": appservice.StatusUnsupported,
 			}
-			if s, found := network_error_statuses[err.Error()]; found {
+			if s, found := network_error_statuses[ipcErr.Message]; found {
 				status = s
 			}
 		}
