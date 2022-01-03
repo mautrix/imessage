@@ -5,11 +5,11 @@ go 1.14
 require (
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/gabriel-vasile/mimetype v1.4.0
-	github.com/mattn/go-sqlite3 v1.14.9
+	github.com/mattn/go-sqlite3 v1.14.10
 	gopkg.in/yaml.v2 v2.4.0
 	maunium.net/go/mauflag v1.0.0
-	maunium.net/go/maulogger/v2 v2.3.1
-	maunium.net/go/mautrix v0.10.8-0.20211222205631-95662fc3f0f3
+	maunium.net/go/maulogger/v2 v2.3.2
+	maunium.net/go/mautrix v0.10.9-0.20220103141407-cfcd66113e11
 )
 
 // Newer golang.org/x/sys versions break darwin/arm32
