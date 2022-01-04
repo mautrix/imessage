@@ -48,6 +48,7 @@ type SendMediaRequest struct {
 	imessage.Attachment
 	ReplyTo     string `json:"reply_to"`
 	ReplyToPart int    `json:"reply_to_part"`
+	VoiceMemo   bool   `json:"voice_memo"`
 }
 
 type SendTapbackRequest struct {

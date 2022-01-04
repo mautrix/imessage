@@ -21,10 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -182,25 +180,21 @@ func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, reply
 	return nil, mac.sendMessageWithRetry(sendMessage, sendMessageWithService, sendMessageBuddy, imessage.ParseIdentifier(chatID), text)
 }
 
-func (mac *macOSDatabase) SendFile(chatID, filename string, data []byte, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
-	dir, err := imessage.TempDir("mautrix-imessage-upload")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
+func (mac *macOSDatabase) SendFile(chatID, filename string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
+	if voiceMemo {
+		return nil, fmt.Errorf("Voice memos are not supported")
 	}
-	filePath := filepath.Join(dir, filename)
-	err = ioutil.WriteFile(filePath, data, 0640)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write data to temp file: %w", err)
-	}
-	err = mac.sendMessageWithRetry(sendFile, sendFileWithService, sendFileBuddy, imessage.ParseIdentifier(chatID), filePath)
+	return nil, mac.sendMessageWithRetry(sendFile, sendFileWithService, sendFileBuddy, imessage.ParseIdentifier(chatID), filename)
+}
+
+func (mac *macOSDatabase) SendFileCleanup(sendFileDir string) error {
 	go func() {
 		// TODO maybe log when the file gets removed
 		// Random sleep to make sure the message has time to get sent
 		time.Sleep(60 * time.Second)
-		_ = os.Remove(filePath)
-		_ = os.Remove(dir)
+		_ = os.RemoveAll(sendFileDir)
 	}()
-	return nil, err
+	return nil
 }
 
 func (mac *macOSDatabase) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
