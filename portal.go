@@ -668,16 +668,17 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, msg *imessage
 }
 
 func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
-	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
+	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, map[string]interface{}{}, 0)
 }
 
 const doublePuppetKey = "fi.mau.double_puppet_source"
 const doublePuppetValue = "mautrix-imessage"
 
-func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
+func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content}
+	wrappedContent.Raw = extraContent
 	if timestamp != 0 && intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
+		wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
 	}
 	if portal.Encrypted && portal.bridge.Crypto != nil {
 		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
@@ -687,6 +688,13 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 		eventType = event.EventEncrypted
 		wrappedContent.Parsed = encrypted
 	}
+
+	if intent.IsCustomPuppet {
+		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
+	} else {
+		wrappedContent.Raw = nil
+	}
+
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	if timestamp == 0 {
 		return intent.SendMessageEvent(portal.MXID, eventType, &wrappedContent)
@@ -1070,17 +1078,27 @@ func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *dat
 	return nil
 }
 
-func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, error) {
+func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, map[string]interface{}, error) {
 	data, err := attach.Read()
 	if err != nil {
 		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
-		return nil, fmt.Errorf("failed to read attachment: %w", err)
+		return nil, nil, fmt.Errorf("failed to read attachment: %w", err)
 	}
+
+	extraContent := map[string]interface{}{}
+	if msg.IsAudioMessage {
+		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libvorbis"}, ".caf")
+		if err != nil {
+			return nil, nil, fmt.Errorf("Failed to convert audio message to OGG: %w", err)
+		}
+		extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
+	}
+
 	data, uploadMime, uploadInfo := portal.encryptFile(data, attach.GetMimeType())
 	uploadResp, err := intent.UploadBytes(data, uploadMime)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
-		return nil, fmt.Errorf("failed to re-upload attachment")
+		return nil, nil, fmt.Errorf("failed to re-upload attachment")
 	}
 	var content event.MessageEventContent
 	if uploadInfo != nil {
@@ -1105,7 +1123,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		content.MsgType = event.MsgFile
 	}
 	portal.SetReply(&content, msg)
-	return &content, nil
+	return &content, extraContent, nil
 }
 
 func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
@@ -1113,16 +1131,16 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 		return
 	}
 	for index, attach := range msg.Attachments {
-		mediaContent, err := portal.handleIMAttachment(msg, attach, intent)
+		mediaContent, extraContent, err := portal.handleIMAttachment(msg, attach, intent)
 		var resp *mautrix.RespSendEvent
 		if err != nil {
 			// Errors are already logged in handleIMAttachment so no need to log here, just send to Matrix room.
 			resp, err = portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
 				MsgType: event.MsgNotice,
 				Body:    err.Error(),
-			}, dbMessage.Timestamp)
+			}, extraContent, dbMessage.Timestamp)
 		} else {
-			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
+			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, extraContent, dbMessage.Timestamp)
 		}
 		if err != nil {
 			portal.log.Errorfln("Failed to send attachment %s.%d: %v", msg.GUID, index, err)
@@ -1146,7 +1164,7 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 			Body:    msg.Text,
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
@@ -1165,7 +1183,7 @@ func (portal *Portal) handleIMError(msg *imessage.Message, dbMessage *database.M
 			Body:    msg.ErrorNotice,
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send error notice %s: %v", msg.GUID, err)
 			return
