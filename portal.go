@@ -1085,6 +1085,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		return nil, nil, fmt.Errorf("failed to read attachment: %w", err)
 	}
 
+	mimeType := attach.GetMimeType()
 	extraContent := map[string]interface{}{}
 	if msg.IsAudioMessage {
 		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libvorbis"}, ".caf")
@@ -1092,9 +1093,10 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 			return nil, nil, fmt.Errorf("Failed to convert audio message to OGG: %w", err)
 		}
 		extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
+		mimeType = "audio/ogg"
 	}
 
-	data, uploadMime, uploadInfo := portal.encryptFile(data, attach.GetMimeType())
+	data, uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
 	uploadResp, err := intent.UploadBytes(data, uploadMime)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
@@ -1109,10 +1111,10 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	}
 	content.Body = attach.FileName
 	content.Info = &event.FileInfo{
-		MimeType: attach.GetMimeType(),
+		MimeType: mimeType,
 		Size:     len(data),
 	}
-	switch strings.Split(attach.GetMimeType(), "/")[0] {
+	switch strings.Split(mimeType, "/")[0] {
 	case "image":
 		content.MsgType = event.MsgImage
 	case "video":
