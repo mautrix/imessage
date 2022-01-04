@@ -180,11 +180,11 @@ func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, reply
 	return nil, mac.sendMessageWithRetry(sendMessage, sendMessageWithService, sendMessageBuddy, imessage.ParseIdentifier(chatID), text)
 }
 
-func (mac *macOSDatabase) SendFile(chatID, filename string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendFile(chatID, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
 	if voiceMemo {
 		return nil, fmt.Errorf("Voice memos are not supported")
 	}
-	return nil, mac.sendMessageWithRetry(sendFile, sendFileWithService, sendFileBuddy, imessage.ParseIdentifier(chatID), filename)
+	return nil, mac.sendMessageWithRetry(sendFile, sendFileWithService, sendFileBuddy, imessage.ParseIdentifier(chatID), pathOnDisk)
 }
 
 func (mac *macOSDatabase) SendFileCleanup(sendFileDir string) error {
