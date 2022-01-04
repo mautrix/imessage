@@ -46,9 +46,9 @@ type SendMessageRequest struct {
 type SendMediaRequest struct {
 	ChatGUID string `json:"chat_guid"`
 	imessage.Attachment
-	ReplyTo     string `json:"reply_to"`
-	ReplyToPart int    `json:"reply_to_part"`
-	VoiceMemo   bool   `json:"voice_memo"`
+	ReplyTo        string `json:"reply_to"`
+	ReplyToPart    int    `json:"reply_to_part"`
+	IsAudioMessage bool   `json:"is_audio_message"`
 }
 
 type SendTapbackRequest struct {

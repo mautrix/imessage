@@ -395,9 +395,9 @@ func (ios *iOSConnector) SendFile(chatID, filename string, replyTo string, reply
 			FileName: filename,
 			MimeType: mimeType,
 		},
-		ReplyTo:     replyTo,
-		ReplyToPart: replyToPart,
-		VoiceMemo:   voiceMemo,
+		ReplyTo:        replyTo,
+		ReplyToPart:    replyToPart,
+		IsAudioMessage: voiceMemo,
 	}, &resp)
 	if err == nil {
 		resp.Time = floatToTime(resp.UnixTime)
