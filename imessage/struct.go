@@ -49,7 +49,7 @@ type Message struct {
 	IsDelivered    bool
 	IsSent         bool
 	IsEmote        bool
-	IsAudioMessage bool
+	IsAudioMessage bool `json:"is_audio_message"`
 
 	ReplyToGUID string   `json:"thread_originator_guid,omitempty"`
 	ReplyToPart int      `json:"thread_originator_part,omitempty"`
