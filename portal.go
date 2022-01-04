@@ -1092,6 +1092,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		if err != nil {
 			return nil, nil, fmt.Errorf("Failed to convert audio message to OGG: %w", err)
 		}
+		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 		extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
 		mimeType = "audio/ogg"
 	}
