@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
@@ -50,7 +51,8 @@ type API interface {
 	GetGroupAvatar(chatID string) (*Attachment, error)
 
 	SendMessage(chatID, text string, replyTo string, replyToPart int) (*SendResponse, error)
-	SendFile(chatID, filename string, data []byte, replyTo string, replyToPart int) (*SendResponse, error)
+	SendFile(chatID, filename string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*SendResponse, error)
+	SendFileCleanup(sendFileDir string) error
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
@@ -58,6 +60,19 @@ type API interface {
 	PreStartupSyncHook() error
 
 	Capabilities() ConnectorCapabilities
+}
+
+func SendFilePrepare(filename string, data []byte) (string, string, error) {
+	dir, err := TempDir("mautrix-imessage-upload")
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create temp dir: %w", err)
+	}
+	filePath := filepath.Join(dir, filename)
+	err = ioutil.WriteFile(filePath, data, 0640)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to write data to temp file: %w", err)
+	}
+	return dir, filePath, err
 }
 
 type BridgeStatus struct {

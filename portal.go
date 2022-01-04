@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
@@ -33,6 +34,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/pushrules"
+	"maunium.net/go/mautrix/util/ffmpeg"
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -809,7 +811,33 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 				return
 			}
 		}
-		resp, err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data, messageReplyID, messageReplyPart)
+
+		dir, filePath, err := imessage.SendFilePrepare(msg.Body, data)
+		if err != nil {
+			portal.log.Errorfln("failed to prepare to send file: %w", err)
+			return
+		}
+		mimeType := mimetype.Detect(data).String()
+		isVoiceMemo := false
+
+		_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
+		_, isMSC2516Voice := evt.Content.Raw["org.matrix.msc2516.voice"]
+		if isMSC3245Voice || isMSC2516Voice {
+			filePath, err = ffmpeg.ConvertPath(filePath, ".aac", []string{}, []string{"-c:a", "aac"}, false)
+			mimeType = "audio/aac"
+			isVoiceMemo = true
+			if err != nil {
+				log.Errorfln("Failed to transcode voice message to AAC. Error: %w", err)
+				return
+			}
+		}
+
+		resp, err = portal.bridge.IM.SendFile(portal.GUID, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
+
+		err = portal.bridge.IM.SendFileCleanup(dir)
+		if err != nil {
+			portal.log.Warnfln("failed to cleanup send file: %w", err)
+		}
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
