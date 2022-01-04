@@ -1086,6 +1086,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	}
 
 	mimeType := attach.GetMimeType()
+	fileName := attach.GetFileName()
 	extraContent := map[string]interface{}{}
 	if msg.IsAudioMessage {
 		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{}, ".mp4")
@@ -1095,6 +1096,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 		extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
 		mimeType = "audio/ogg"
+		fileName = "Voice Message.ogg"
 	}
 
 	data, uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
@@ -1110,7 +1112,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	} else {
 		content.URL = uploadResp.ContentURI.CUString()
 	}
-	content.Body = attach.FileName
+	content.Body = fileName
 	content.Info = &event.FileInfo{
 		MimeType: mimeType,
 		Size:     len(data),
