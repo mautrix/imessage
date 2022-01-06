@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"html"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -1112,10 +1113,16 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 
 func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
 	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
+	msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
 	if len(msg.Text) > 0 {
 		content := &event.MessageEventContent{
 			MsgType: event.MsgText,
 			Body:    msg.Text,
+		}
+		if len(msg.Subject) > 0 {
+			content.Body = fmt.Sprintf("**%s**\n%s", msg.Subject, msg.Text)
+			content.Format = event.FormatHTML
+			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
 		}
 		portal.SetReply(content, msg)
 		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
