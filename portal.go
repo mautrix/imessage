@@ -1089,7 +1089,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	fileName := attach.GetFileName()
 	extraContent := map[string]interface{}{}
 	if msg.IsAudioMessage {
-		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{}, ".mp4")
+		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, ".mp4")
 		if err != nil {
 			return nil, nil, fmt.Errorf("Failed to convert audio message to OGG: %w", err)
 		}
