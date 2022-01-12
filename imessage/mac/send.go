@@ -182,7 +182,7 @@ func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, reply
 
 func (mac *macOSDatabase) SendFile(chatID, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
 	if voiceMemo {
-		return nil, fmt.Errorf("Voice memos are not supported")
+		mac.log.Warn("received a request to send a file as a voice memo, but mac does not support this. sending as regular attachment.")
 	}
 	return nil, mac.sendMessageWithRetry(sendFile, sendFileWithService, sendFileBuddy, imessage.ParseIdentifier(chatID), pathOnDisk)
 }
