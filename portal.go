@@ -1089,7 +1089,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	fileName := attach.GetFileName()
 	extraContent := map[string]interface{}{}
 	if msg.IsAudioMessage {
-		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, ".caf")
+		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
 		if err == nil {
 			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
