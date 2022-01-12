@@ -20,14 +20,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"math"
 	"os"
-	"path/filepath"
 	"time"
 
-	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -391,34 +387,27 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendFile(chatID, filename string, data []byte, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
-	dir, err := imessage.TempDir("mautrix-imessage-upload")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.Remove(dir)
-	filePath := filepath.Join(dir, filename)
-	err = ioutil.WriteFile(filePath, data, 0640)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write data to temp file: %w", err)
-	}
-	defer os.Remove(filePath)
-
+func (ios *iOSConnector) SendFile(chatID, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
-	err = ios.IPC.Request(context.Background(), ReqSendMedia, &SendMediaRequest{
+	err := ios.IPC.Request(context.Background(), ReqSendMedia, &SendMediaRequest{
 		ChatGUID: chatID,
 		Attachment: imessage.Attachment{
-			FileName:   filename,
-			PathOnDisk: filePath,
-			MimeType:   mimetype.Detect(data).String(),
+			FileName: filename,
+			PathOnDisk: pathOnDisk,
+			MimeType: mimeType,
 		},
-		ReplyTo:     replyTo,
-		ReplyToPart: replyToPart,
+		ReplyTo:        replyTo,
+		ReplyToPart:    replyToPart,
+		IsAudioMessage: voiceMemo,
 	}, &resp)
 	if err == nil {
 		resp.Time = floatToTime(resp.UnixTime)
 	}
 	return &resp, err
+}
+
+func (ios *iOSConnector) SendFileCleanup(sendFileDir string) error {
+	return os.RemoveAll(sendFileDir)
 }
 
 func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {

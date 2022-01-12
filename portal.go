@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
@@ -34,6 +35,7 @@ import (
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/pushrules"
+	"maunium.net/go/mautrix/util/ffmpeg"
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -667,16 +669,17 @@ func (portal *Portal) SetReply(content *event.MessageEventContent, msg *imessage
 }
 
 func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
-	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, 0)
+	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, map[string]interface{}{}, 0)
 }
 
 const doublePuppetKey = "fi.mau.double_puppet_source"
 const doublePuppetValue = "mautrix-imessage"
 
-func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
+func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := event.Content{Parsed: content}
+	wrappedContent.Raw = extraContent
 	if timestamp != 0 && intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
+		wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
 	}
 	if portal.Encrypted && portal.bridge.Crypto != nil {
 		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
@@ -686,6 +689,13 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 		eventType = event.EventEncrypted
 		wrappedContent.Parsed = encrypted
 	}
+
+	if intent.IsCustomPuppet {
+		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
+	} else {
+		wrappedContent.Raw = nil
+	}
+
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
 	if timestamp == 0 {
 		return intent.SendMessageEvent(portal.MXID, eventType, &wrappedContent)
@@ -810,7 +820,33 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 				return
 			}
 		}
-		resp, err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, data, messageReplyID, messageReplyPart)
+
+		dir, filePath, err := imessage.SendFilePrepare(msg.Body, data)
+		if err != nil {
+			portal.log.Errorfln("failed to prepare to send file: %w", err)
+			return
+		}
+		mimeType := mimetype.Detect(data).String()
+		isVoiceMemo := false
+
+		_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
+		_, isMSC2516Voice := evt.Content.Raw["org.matrix.msc2516.voice"]
+		if isMSC3245Voice || isMSC2516Voice {
+			filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
+			mimeType = "audio/x-caf"
+			isVoiceMemo = true
+			if err != nil {
+				log.Errorfln("Failed to transcode voice message to CAF. Error: %w", err)
+				return
+			}
+		}
+
+		resp, err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
+
+		err = portal.bridge.IM.SendFileCleanup(dir)
+		if err != nil {
+			portal.log.Warnfln("failed to cleanup send file: %w", err)
+		}
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
@@ -1043,17 +1079,33 @@ func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *dat
 	return nil
 }
 
-func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, error) {
+func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, map[string]interface{}, error) {
 	data, err := attach.Read()
 	if err != nil {
 		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
-		return nil, fmt.Errorf("failed to read attachment: %w", err)
+		return nil, nil, fmt.Errorf("failed to read attachment: %w", err)
 	}
-	data, uploadMime, uploadInfo := portal.encryptFile(data, attach.GetMimeType())
+
+	mimeType := attach.GetMimeType()
+	fileName := attach.GetFileName()
+	extraContent := map[string]interface{}{}
+	if msg.IsAudioMessage {
+		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
+		if err == nil {
+			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
+			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
+			mimeType = "audio/ogg"
+			fileName = "Voice Message.ogg"
+		} else {
+			portal.log.Errorf("Failed to convert audio message to OGG. Sending as normal attachment. error: %w", err)
+		}
+	}
+
+	data, uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
 	uploadResp, err := intent.UploadBytes(data, uploadMime)
 	if err != nil {
 		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
-		return nil, fmt.Errorf("failed to re-upload attachment")
+		return nil, nil, fmt.Errorf("failed to re-upload attachment")
 	}
 	var content event.MessageEventContent
 	if uploadInfo != nil {
@@ -1062,12 +1114,12 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	} else {
 		content.URL = uploadResp.ContentURI.CUString()
 	}
-	content.Body = attach.FileName
+	content.Body = fileName
 	content.Info = &event.FileInfo{
-		MimeType: attach.GetMimeType(),
+		MimeType: mimeType,
 		Size:     len(data),
 	}
-	switch strings.Split(attach.GetMimeType(), "/")[0] {
+	switch strings.Split(mimeType, "/")[0] {
 	case "image":
 		content.MsgType = event.MsgImage
 	case "video":
@@ -1078,7 +1130,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		content.MsgType = event.MsgFile
 	}
 	portal.SetReply(&content, msg)
-	return &content, nil
+	return &content, extraContent, nil
 }
 
 func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
@@ -1086,16 +1138,16 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 		return
 	}
 	for index, attach := range msg.Attachments {
-		mediaContent, err := portal.handleIMAttachment(msg, attach, intent)
+		mediaContent, extraContent, err := portal.handleIMAttachment(msg, attach, intent)
 		var resp *mautrix.RespSendEvent
 		if err != nil {
 			// Errors are already logged in handleIMAttachment so no need to log here, just send to Matrix room.
 			resp, err = portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
 				MsgType: event.MsgNotice,
 				Body:    err.Error(),
-			}, dbMessage.Timestamp)
+			}, extraContent, dbMessage.Timestamp)
 		} else {
-			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, dbMessage.Timestamp)
+			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, extraContent, dbMessage.Timestamp)
 		}
 		if err != nil {
 			portal.log.Errorfln("Failed to send attachment %s.%d: %v", msg.GUID, index, err)
@@ -1125,7 +1177,7 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
@@ -1144,7 +1196,7 @@ func (portal *Portal) handleIMError(msg *imessage.Message, dbMessage *database.M
 			Body:    msg.ErrorNotice,
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, dbMessage.Timestamp)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send error notice %s: %v", msg.GUID, err)
 			return
