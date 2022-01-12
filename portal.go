@@ -831,7 +831,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
 		_, isMSC2516Voice := evt.Content.Raw["org.matrix.msc2516.voice"]
 		if isMSC3245Voice || isMSC2516Voice {
-			filePath, err = ffmpeg.ConvertPath(filePath, ".mp4", []string{}, []string{}, false)
+			filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
 			mimeType = "audio/aac"
 			isVoiceMemo = true
 			if err != nil {
@@ -1089,7 +1089,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	fileName := attach.GetFileName()
 	extraContent := map[string]interface{}{}
 	if msg.IsAudioMessage {
-		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, ".mp4")
+		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, ".caf")
 		if err != nil {
 			return nil, nil, fmt.Errorf("Failed to convert audio message to OGG: %w", err)
 		}
