@@ -832,10 +832,10 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		_, isMSC2516Voice := evt.Content.Raw["org.matrix.msc2516.voice"]
 		if isMSC3245Voice || isMSC2516Voice {
 			filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
-			mimeType = "audio/aac"
+			mimeType = "audio/x-caf"
 			isVoiceMemo = true
 			if err != nil {
-				log.Errorfln("Failed to transcode voice message to AAC. Error: %w", err)
+				log.Errorfln("Failed to transcode voice message to CAF. Error: %w", err)
 				return
 			}
 		}
