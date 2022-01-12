@@ -1090,13 +1090,14 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	extraContent := map[string]interface{}{}
 	if msg.IsAudioMessage {
 		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, ".caf")
-		if err != nil {
-			return nil, nil, fmt.Errorf("Failed to convert audio message to OGG: %w", err)
+		if err == nil {
+			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
+			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
+			mimeType = "audio/ogg"
+			fileName = "Voice Message.ogg"
+		} else {
+			portal.log.Errorf("Failed to convert audio message to OGG. Sending as normal attachment. error: %w", err)
 		}
-		extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
-		extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
-		mimeType = "audio/ogg"
-		fileName = "Voice Message.ogg"
 	}
 
 	data, uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
