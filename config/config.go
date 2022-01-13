@@ -46,6 +46,8 @@ type Config struct {
 
 		ASToken string `yaml:"as_token"`
 		HSToken string `yaml:"hs_token"`
+
+		EphemeralEvents bool `yaml:"ephemeral_events"`
 	} `yaml:"appservice"`
 
 	IMessage imessage.PlatformConfig `yaml:"imessage"`

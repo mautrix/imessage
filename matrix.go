@@ -65,6 +65,8 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	bridge.EventProcessor.On(event.EventRedaction, handler.HandleRedaction)
 	bridge.EventProcessor.On(event.StateMember, handler.HandleMembership)
 	bridge.EventProcessor.On(event.StateEncryption, handler.HandleEncryption)
+	bridge.EventProcessor.On(event.EphemeralEventReceipt, handler.HandleReceipt)
+	bridge.EventProcessor.On(event.EphemeralEventTyping, handler.HandleTyping)
 	bridge.AS.SetWebsocketCommandHandler("ping", handler.handleWSPing)
 	bridge.AS.SetWebsocketCommandHandler("syncproxy_error", handler.handleWSSyncProxyError)
 	return handler
@@ -366,4 +368,22 @@ func (mx *MatrixHandler) HandleRedaction(evt *event.Event) {
 	if portal != nil {
 		portal.HandleMatrixRedaction(evt)
 	}
+}
+
+func (mx *MatrixHandler) HandleReceipt(evt *event.Event) {
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	if portal == nil {
+		return
+	}
+
+	mx.bridge.user.handleReceiptEvent(portal, evt)
+}
+
+func (mx *MatrixHandler) HandleTyping(evt *event.Event) {
+	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
+	if portal == nil {
+		return
+	}
+
+	mx.bridge.user.handleTypingEvent(portal, evt)
 }

@@ -164,8 +164,10 @@ func (user *User) tryRelogin(cause error, action string) bool {
 
 func (user *User) handleReceiptEvent(portal *Portal, event *event.Event) {
 	for eventID, receipts := range *event.Content.AsReceipt() {
-		if _, ok := receipts.Read[user.MXID]; !ok {
+		if receipt, ok := receipts.Read[user.MXID]; !ok {
 			// Ignore receipt events where this user isn't present.
+		} else if val, ok := receipt.Extra[doublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == doublePuppetValue {
+			// Ignore double puppeted read receipts.
 		} else if message := user.bridge.DB.Message.GetByMXID(eventID); message != nil {
 			user.log.Debugfln("Marking %s/%s in %s/%s as read", message.GUID, message.MXID, portal.GUID, portal.MXID)
 			err := user.bridge.IM.SendReadReceipt(portal.GUID, message.GUID)
