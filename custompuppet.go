@@ -70,8 +70,8 @@ func (user *User) loginWithSharedSecret() error {
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(user.MXID)},
 		Password:                 hex.EncodeToString(mac.Sum(nil)),
-		DeviceID:                 "iMessage Bridge",
-		InitialDeviceDisplayName: "iMessage Bridge",
+		DeviceID:                 id.DeviceID(user.bridge.Config.IMessage.BridgeName()),
+		InitialDeviceDisplayName: user.bridge.Config.IMessage.BridgeName(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to log in with shared secret: %w", err)
