@@ -152,6 +152,7 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 
 		Identifier:    imessage.ParseIdentifier(dbPortal.GUID),
 		Messages:      make(chan *imessage.Message, 100),
+		ReadReceipts:  make(chan *imessage.ReadReceipt, 100),
 		backfillStart: make(chan struct{}),
 	}
 	if !bridge.IM.Capabilities().MessageSendResponses {
@@ -173,6 +174,7 @@ type Portal struct {
 	log    log.Logger
 
 	Messages         chan *imessage.Message
+	ReadReceipts     chan *imessage.ReadReceipt
 	backfillStart    chan struct{}
 	backfillWait     sync.WaitGroup
 	backfillLock     sync.Mutex
@@ -296,12 +298,41 @@ func (portal *Portal) Sync(backfill bool) {
 	}
 }
 
+func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
+	if len(portal.MXID) == 0 {
+		return
+	}
+	var intent *appservice.IntentAPI
+	if rr.IsFromMe {
+		intent = portal.bridge.user.DoublePuppetIntent
+	} else if rr.SenderGUID == rr.ChatGUID {
+		intent = portal.MainIntent()
+	} else {
+		portal.log.Debugfln("Dropping unexpected read receipt %+v", *rr)
+		return
+	}
+	if intent == nil {
+		return
+	}
+	message := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, rr.ReadUpTo)
+	if message == nil {
+		portal.log.Debugfln("Dropping read receipt for %s: message not found in db", rr.ReadUpTo)
+		return
+	}
+	err := intent.MarkRead(portal.MXID, message.MXID)
+	if err != nil {
+		portal.log.Warnln("Failed to send read receipt for %s from %s: %v", message.MXID, intent.UserID)
+	}
+}
+
 func (portal *Portal) handleMessageLoop() {
 	portal.log.Debugln("Starting message processing loop")
 	for {
 		select {
 		case msg := <-portal.Messages:
 			portal.HandleiMessage(msg, false)
+		case read_receipt := <-portal.ReadReceipts:
+			portal.HandleiMessageReadReceipt(read_receipt)
 		case <-portal.backfillStart:
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
