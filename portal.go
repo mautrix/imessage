@@ -316,7 +316,15 @@ func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 	}
 	message := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, rr.ReadUpTo)
 	if message == nil {
-		portal.log.Debugfln("Dropping read receipt for %s: message not found in db", rr.ReadUpTo)
+		tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, rr.ReadUpTo)
+		if tapback == nil {
+			portal.log.Debugfln("Dropping read receipt for %s: not found in db messages or tapbacks", rr.ReadUpTo)
+			return
+		}
+		err := intent.MarkRead(portal.MXID, tapback.MXID)
+		if err != nil {
+			portal.log.Warnln("Failed to send read receipt for %s from %s: %v", tapback.MXID, intent.UserID)
+		}
 		return
 	}
 	err := intent.MarkRead(portal.MXID, message.MXID)
@@ -940,11 +948,12 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	} else if resp, err := portal.bridge.IM.SendTapback(portal.GUID, target.GUID, target.Part, tapbackType, false); err != nil {
 		errorMsg = fmt.Sprintf("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
 	} else if existing == nil {
-		// TODO should tapback GUID and timestamp be stored?
+		// TODO should timestamp be stored?
 		portal.log.Debugfln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
 		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
+		tapback.GUID = resp.GUID
 		tapback.MessageGUID = target.GUID
 		tapback.MessagePart = target.Part
 		tapback.Type = tapbackType
@@ -957,6 +966,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		if err != nil {
 			portal.log.Warnfln("Failed to redact old tapback %s to %s: %v", existing.MXID, target.MXID, err)
 		}
+		existing.GUID = resp.GUID
 		existing.Type = tapbackType
 		existing.MXID = evt.ID
 		existing.Update()
@@ -1377,6 +1387,13 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		content.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
 	}
 
+	if existing != nil {
+		if _, err := intent.RedactEvent(portal.MXID, existing.MXID, redactionReq); err != nil {
+			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
+		}
+		existing.Delete()
+	}
+
 	resp, err := intent.Client.SendMessageEvent(portal.MXID, event.EventReaction, &content)
 
 	if err != nil {
@@ -1384,24 +1401,15 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 
-	if existing == nil {
-		tapback := portal.bridge.DB.Tapback.New()
-		tapback.ChatGUID = portal.GUID
-		tapback.MessageGUID = target.GUID
-		tapback.MessagePart = target.Part
-		tapback.SenderGUID = senderGUID
-		tapback.Type = msg.Tapback.Type
-		tapback.MXID = resp.EventID
-		tapback.Insert()
-	} else {
-		_, err = intent.RedactEvent(portal.MXID, existing.MXID, redactionReq)
-		if err != nil {
-			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
-		}
-		existing.Type = msg.Tapback.Type
-		existing.MXID = resp.EventID
-		existing.Update()
-	}
+	tapback := portal.bridge.DB.Tapback.New()
+	tapback.ChatGUID = portal.GUID
+	tapback.GUID = msg.GUID
+	tapback.MessageGUID = target.GUID
+	tapback.MessagePart = target.Part
+	tapback.SenderGUID = senderGUID
+	tapback.Type = msg.Tapback.Type
+	tapback.MXID = resp.EventID
+	tapback.Insert()
 }
 
 func (portal *Portal) Delete() {
