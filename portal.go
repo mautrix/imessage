@@ -1391,7 +1391,6 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		if _, err := intent.RedactEvent(portal.MXID, existing.MXID, redactionReq); err != nil {
 			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
 		}
-		existing.Delete()
 	}
 
 	resp, err := intent.Client.SendMessageEvent(portal.MXID, event.EventReaction, &content)
@@ -1401,15 +1400,25 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 
-	tapback := portal.bridge.DB.Tapback.New()
-	tapback.ChatGUID = portal.GUID
-	tapback.GUID = msg.GUID
-	tapback.MessageGUID = target.GUID
-	tapback.MessagePart = target.Part
-	tapback.SenderGUID = senderGUID
-	tapback.Type = msg.Tapback.Type
-	tapback.MXID = resp.EventID
-	tapback.Insert()
+	if existing == nil {
+		tapback := portal.bridge.DB.Tapback.New()
+		tapback.ChatGUID = portal.GUID
+		tapback.MessageGUID = target.GUID
+		tapback.MessagePart = target.Part
+		tapback.SenderGUID = senderGUID
+		tapback.Type = msg.Tapback.Type
+		tapback.MXID = resp.EventID
+		tapback.Insert()
+	} else {
+		_, err = intent.RedactEvent(portal.MXID, existing.MXID, redactionReq)
+		if err != nil {
+			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
+		}
+		existing.GUID = msg.GUID
+		existing.Type = msg.Tapback.Type
+		existing.MXID = resp.EventID
+		existing.Update()
+	}
 }
 
 func (portal *Portal) Delete() {

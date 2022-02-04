@@ -105,7 +105,7 @@ func (tapback *Tapback) Update() {
 }
 
 func (tapback *Tapback) Delete() {
-	_, err := tapback.db.Exec("DELETE FROM tapback WHERE chat_guid=$1 AND guid=$2 AND message_guid=$3 AND message_part=$4 AND sender_guid=$5", tapback.ChatGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID)
+	_, err := tapback.db.Exec("DELETE FROM tapback WHERE chat_guid=$1 AND message_guid=$2 AND message_part=$3 AND sender_guid=$4", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to delete tapback %s/%s.%d/%s: %v", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
 	}
