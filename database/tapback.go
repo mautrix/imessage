@@ -97,7 +97,7 @@ func (tapback *Tapback) Insert() {
 }
 
 func (tapback *Tapback) Update() {
-	_, err := tapback.db.Exec("UPDATE tapback SET guid=$5, type=$6, mxid=$7 WHERE chat_guid=$1 AND message_guid=$2 AND message_part=$3 AND sender_guid=$4",
+	_, err := tapback.db.Exec("UPDATE tapback SET guid=?5, type=?6, mxid=?7 WHERE chat_guid=?1 AND message_guid=?2 AND message_part=?3 AND sender_guid=?4",
 		tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.GUID, tapback.Type, tapback.MXID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to update tapback %s/%s.%d/%s: %v", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
