@@ -1406,14 +1406,11 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		tapback.MessageGUID = target.GUID
 		tapback.MessagePart = target.Part
 		tapback.SenderGUID = senderGUID
+		tapback.GUID = msg.GUID
 		tapback.Type = msg.Tapback.Type
 		tapback.MXID = resp.EventID
 		tapback.Insert()
 	} else {
-		_, err = intent.RedactEvent(portal.MXID, existing.MXID, redactionReq)
-		if err != nil {
-			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
-		}
 		existing.GUID = msg.GUID
 		existing.Type = msg.Tapback.Type
 		existing.MXID = resp.EventID
