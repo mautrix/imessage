@@ -174,6 +174,12 @@ func (user *User) handleReceiptEvent(portal *Portal, event *event.Event) {
 			if err != nil {
 				user.log.Warnln("Error marking read:", err)
 			}
+		} else if tapback := user.bridge.DB.Tapback.GetByMXID(eventID); tapback != nil {
+			user.log.Debugfln("Marking %s/%s in %s/%s as read", tapback.GUID, tapback.MXID, portal.GUID, portal.MXID)
+			err := user.bridge.IM.SendReadReceipt(portal.GUID, tapback.GUID)
+			if err != nil {
+				user.log.Warnln("Error marking read:", err)
+			}
 		}
 	}
 }

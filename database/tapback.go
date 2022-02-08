@@ -38,13 +38,19 @@ func (mq *TapbackQuery) New() *Tapback {
 }
 
 func (mq *TapbackQuery) GetByGUID(chat, message string, part int, sender string) *Tapback {
-	return mq.get("SELECT chat_guid, message_guid, message_part, sender_guid, type, mxid "+
+	return mq.get("SELECT chat_guid, guid, message_guid, message_part, sender_guid, type, mxid "+
 		"FROM tapback WHERE chat_guid=$1 AND message_guid=$2 AND message_part=$3 AND sender_guid=$4",
 		chat, message, part, sender)
 }
 
+func (mq *TapbackQuery) GetByTapbackGUID(chat, tapback string) *Tapback {
+	return mq.get("SELECT chat_guid, guid, message_guid, message_part, sender_guid, type, mxid "+
+		"FROM tapback WHERE chat_guid=$1 AND guid=$2",
+		chat, tapback)
+}
+
 func (mq *TapbackQuery) GetByMXID(mxid id.EventID) *Tapback {
-	return mq.get("SELECT chat_guid, message_guid, message_part, sender_guid, type, mxid "+
+	return mq.get("SELECT chat_guid, guid, message_guid, message_part, sender_guid, type, mxid "+
 		"FROM tapback WHERE mxid=$1", mxid)
 }
 
@@ -61,6 +67,7 @@ type Tapback struct {
 	log log.Logger
 
 	ChatGUID    string
+	GUID        string
 	MessageGUID string
 	MessagePart int
 	SenderGUID  string
@@ -69,27 +76,29 @@ type Tapback struct {
 }
 
 func (tapback *Tapback) Scan(row Scannable) *Tapback {
-	err := row.Scan(&tapback.ChatGUID, &tapback.MessageGUID, &tapback.MessagePart, &tapback.SenderGUID, &tapback.Type, &tapback.MXID)
+	var nullishGUID sql.NullString
+	err := row.Scan(&tapback.ChatGUID, &nullishGUID, &tapback.MessageGUID, &tapback.MessagePart, &tapback.SenderGUID, &tapback.Type, &tapback.MXID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			tapback.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
+	tapback.GUID = nullishGUID.String
 	return tapback
 }
 
 func (tapback *Tapback) Insert() {
-	_, err := tapback.db.Exec("INSERT INTO tapback (chat_guid, message_guid, message_part, sender_guid, type, mxid) VALUES ($1, $2, $3, $4, $5, $6)",
-		tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.Type, tapback.MXID)
+	_, err := tapback.db.Exec("INSERT INTO tapback (chat_guid, guid, message_guid, message_part, sender_guid, type, mxid) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		tapback.ChatGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.Type, tapback.MXID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to insert tapback %s/%s.%d/%s: %v", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
 	}
 }
 
 func (tapback *Tapback) Update() {
-	_, err := tapback.db.Exec("UPDATE tapback SET type=$5, mxid=$6 WHERE chat_guid=$1 AND message_guid=$2 AND message_part=$3 AND sender_guid=$4",
-		tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.Type, tapback.MXID)
+	_, err := tapback.db.Exec("UPDATE tapback SET guid=?5, type=?6, mxid=?7 WHERE chat_guid=?1 AND message_guid=?2 AND message_part=?3 AND sender_guid=?4",
+		tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.GUID, tapback.Type, tapback.MXID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to update tapback %s/%s.%d/%s: %v", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
 	}
