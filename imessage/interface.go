@@ -123,7 +123,7 @@ func NewAPI(bridge Bridge) (API, error) {
 	cfg := bridge.GetConnectorConfig()
 	impl, ok := Implementations[cfg.Platform]
 	if !ok {
-		return nil, fmt.Errorf("no such platform \"%s\"", cfg.Platform)
+		return nil, fmt.Errorf("no such platform \"%s\", available platforms: %+v", cfg.Platform, Implementations)
 	}
 	return impl(bridge)
 }
