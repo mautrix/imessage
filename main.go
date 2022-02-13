@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -66,11 +67,11 @@ func init() {
 		Version += "+dev"
 	}
 	if Tag == Version {
-		VersionString = fmt.Sprintf("%s %s (%s)", Name, Tag, BuildTime)
+		VersionString = fmt.Sprintf("%s %s (%s with %s)", Name, Tag, BuildTime, runtime.Version())
 	} else if len(Commit) > 8 {
-		VersionString = fmt.Sprintf("%s %s.%s (%s)", Name, Version, Commit[:8], BuildTime)
+		VersionString = fmt.Sprintf("%s %s.%s (%s with %s)", Name, Version, Commit[:8], BuildTime, runtime.Version())
 	} else {
-		VersionString = fmt.Sprintf("%s %s.unknown", Name, Version)
+		VersionString = fmt.Sprintf("%s %s.unknown (%s)", Name, Version, runtime.Version())
 	}
 
 	mautrix.DefaultUserAgent = fmt.Sprintf("mautrix-imessage/%s %s", Version, mautrix.DefaultUserAgent)
