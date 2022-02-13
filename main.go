@@ -42,6 +42,7 @@ import (
 	"go.mau.fi/mautrix-imessage/database/upgrades"
 	"go.mau.fi/mautrix-imessage/imessage"
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
+	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 

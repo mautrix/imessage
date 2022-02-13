@@ -27,7 +27,6 @@ import (
 
 	"go.mau.fi/mautrix-imessage/imessage"
 	"go.mau.fi/mautrix-imessage/imessage/mac"
-	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 )
 
 func checkMacPermissions() {
