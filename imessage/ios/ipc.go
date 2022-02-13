@@ -392,9 +392,9 @@ func (ios *iOSConnector) SendFile(chatID, filename string, pathOnDisk string, re
 	err := ios.IPC.Request(context.Background(), ReqSendMedia, &SendMediaRequest{
 		ChatGUID: chatID,
 		Attachment: imessage.Attachment{
-			FileName: filename,
+			FileName:   filename,
 			PathOnDisk: pathOnDisk,
-			MimeType: mimeType,
+			MimeType:   mimeType,
 		},
 		ReplyTo:        replyTo,
 		ReplyToPart:    replyToPart,
