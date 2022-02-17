@@ -410,7 +410,7 @@ func (ios *iOSConnector) SendFileCleanup(sendFileDir string) error {
 	go func() {
 		// Random sleep to make sure the message has time to get sent
 		time.Sleep(60 * time.Second)
-		ios.log.Warnln("Deleted temporary file from file transfer, hoping file upload succeeded by now.")
+		ios.log.Debugln("Deleted temporary file from file transfer, hoping file upload succeeded by now.")
 		_ = os.RemoveAll(sendFileDir)
 	}()
 	return nil
