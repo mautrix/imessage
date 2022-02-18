@@ -68,7 +68,7 @@ func SendFilePrepare(filename string, data []byte) (string, string, error) {
 		return "", "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	filePath := filepath.Join(dir, filename)
-	err = ioutil.WriteFile(filePath, data, 0640)
+	err = ioutil.WriteFile(filePath, data, 0644)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to write data to temp file: %w", err)
 	}
@@ -130,9 +130,14 @@ func NewAPI(bridge Bridge) (API, error) {
 
 func TempDir(name string) (string, error) {
 	dir := os.TempDir()
-	err := os.MkdirAll(dir, 0700)
+	err := os.MkdirAll(dir, 0755)
 	if err != nil {
 		return "", err
 	}
-	return ioutil.TempDir(dir, name)
+	tempDir, dirCreationErr := ioutil.TempDir(dir, name)
+	if dirCreationErr != nil {
+		return "", dirCreationErr
+	}
+	chmodErr := os.Chmod(tempDir, 0755)
+	return tempDir, chmodErr
 }
