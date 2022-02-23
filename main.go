@@ -41,6 +41,7 @@ import (
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/database/upgrades"
 	"go.mau.fi/mautrix-imessage/imessage"
+	"go.mau.fi/mautrix-imessage/imessage/permissions"
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
 	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 	"go.mau.fi/mautrix-imessage/ipc"
@@ -701,7 +702,7 @@ func main() {
 		fmt.Println(VersionString)
 		return
 	} else if *checkPermissions {
-		checkMacPermissions()
+		permissions.CheckMacPermissions()
 		return
 	}
 

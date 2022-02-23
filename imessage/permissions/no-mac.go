@@ -14,35 +14,25 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-//+build darwin,!ios
+//+build !darwin ios
 
-package main
+package permissions
 
 import (
-	"errors"
 	"fmt"
 	"os"
-
-	"github.com/mattn/go-sqlite3"
-
-	"go.mau.fi/mautrix-imessage/imessage"
-	"go.mau.fi/mautrix-imessage/imessage/mac"
+	"io/fs"
 )
 
-func checkMacPermissions() {
-	err := mac.CheckPermissions()
-	if err != nil {
-		fmt.Println(err)
-	}
-	if errors.Is(err, imessage.ErrNotLoggedIn) {
-		os.Exit(41)
-	} else if sqliteError := (sqlite3.Error{}); errors.As(err, &sqliteError) {
-		if errors.Is(sqliteError.SystemErrno, os.ErrNotExist) {
-			os.Exit(42)
-		} else if errors.Is(sqliteError.SystemErrno, os.ErrPermission) {
-			os.Exit(43)
-		}
-	} else if err != nil {
-		os.Exit(49)
-	}
+func CheckMacPermissions() {
+	fmt.Println("--check-permissions is only supported on macOS")
+	os.Exit(2)
+}
+
+func TempFilePermissions() fs.FileMode {
+	return 0644
+}
+
+func TempFolderPermissions() fs.FileMode {
+	return 0755
 }

@@ -29,6 +29,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/ipc"
+	"go.mau.fi/mautrix-imessage/imessage/permissions"
 )
 
 var (
@@ -68,7 +69,7 @@ func SendFilePrepare(filename string, data []byte) (string, string, error) {
 		return "", "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	filePath := filepath.Join(dir, filename)
-	err = ioutil.WriteFile(filePath, data, 0644)
+	err = ioutil.WriteFile(filePath, data, permissions.TempFilePermissions())
 	if err != nil {
 		return "", "", fmt.Errorf("failed to write data to temp file: %w", err)
 	}
@@ -130,7 +131,7 @@ func NewAPI(bridge Bridge) (API, error) {
 
 func TempDir(name string) (string, error) {
 	dir := os.TempDir()
-	err := os.MkdirAll(dir, 0755)
+	err := os.MkdirAll(dir, permissions.TempFolderPermissions())
 	if err != nil {
 		return "", err
 	}
@@ -138,6 +139,6 @@ func TempDir(name string) (string, error) {
 	if dirCreationErr != nil {
 		return "", dirCreationErr
 	}
-	chmodErr := os.Chmod(tempDir, 0755)
+	chmodErr := os.Chmod(tempDir, permissions.TempFolderPermissions())
 	return tempDir, chmodErr
 }
