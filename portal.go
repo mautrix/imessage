@@ -869,8 +869,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		isVoiceMemo := false
 
 		_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
-		_, isMSC2516Voice := evt.Content.Raw["org.matrix.msc2516.voice"]
-		if isMSC3245Voice || isMSC2516Voice {
+		if isMSC3245Voice {
 			filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
 			mimeType = "audio/x-caf"
 			isVoiceMemo = true
