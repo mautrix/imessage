@@ -61,13 +61,16 @@ type API interface {
 	Capabilities() ConnectorCapabilities
 }
 
+var TempFilePermissions os.FileMode = 0640
+var TempDirPermissions os.FileMode = 0700
+
 func SendFilePrepare(filename string, data []byte) (string, string, error) {
 	dir, err := TempDir("mautrix-imessage-upload")
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	filePath := filepath.Join(dir, filename)
-	err = os.WriteFile(filePath, data, 0640)
+	err = os.WriteFile(filePath, data, TempFilePermissions)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to write data to temp file: %w", err)
 	}
@@ -129,9 +132,13 @@ func NewAPI(bridge Bridge) (API, error) {
 
 func TempDir(name string) (string, error) {
 	dir := os.TempDir()
-	err := os.MkdirAll(dir, 0700)
+	err := os.MkdirAll(dir, TempDirPermissions)
 	if err != nil {
 		return "", err
 	}
-	return os.MkdirTemp(dir, name)
+	path, err := os.MkdirTemp(dir, name)
+	if err != nil {
+		return "", err
+	}
+	return path, os.Chmod(path, TempDirPermissions)
 }

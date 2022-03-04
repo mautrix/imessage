@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -64,6 +65,12 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 func (mac *MacNoSIPConnector) Start() error {
 	mac.log.Debugln("Preparing to execute", mac.path)
 	mac.proc = exec.Command(mac.path)
+
+	if runtime.GOOS == "ios" {
+		mac.log.Debugln("Running Barcelona connector on iOS, temp files will be world-readable")
+		imessage.TempFilePermissions = 0644
+		imessage.TempDirPermissions = 0755
+	}
 
 	stdout, err := mac.proc.StdoutPipe()
 	if err != nil {
