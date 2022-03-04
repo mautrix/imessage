@@ -45,6 +45,7 @@ type SendMessageRequest struct {
 
 type SendMediaRequest struct {
 	ChatGUID string `json:"chat_guid"`
+	Text     string `json:"text"`
 	imessage.Attachment
 	ReplyTo        string `json:"reply_to"`
 	ReplyToPart    int    `json:"reply_to_part"`

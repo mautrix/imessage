@@ -387,10 +387,11 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendFile(chatID, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
 	err := ios.IPC.Request(context.Background(), ReqSendMedia, &SendMediaRequest{
 		ChatGUID: chatID,
+		Text:     text,
 		Attachment: imessage.Attachment{
 			FileName:   filename,
 			PathOnDisk: pathOnDisk,

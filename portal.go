@@ -880,7 +880,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			}
 		}
 
-		resp, err = portal.bridge.IM.SendFile(portal.GUID, msg.Body, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
+		resp, err = portal.bridge.IM.SendFile(portal.GUID, "", msg.Body, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
 
 		err = portal.bridge.IM.SendFileCleanup(dir)
 		if err != nil {

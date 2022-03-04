@@ -101,6 +101,7 @@ Another error response:
   * Response should contain the sent message `guid` and `timestamp`
 * Send a media message (request type `send_media`)
   * `chat_guid` (str) - Chat identifier
+  * `text` (str) - An optional caption to send with the media
   * `path_on_disk` (str) - The path to the file on disk
   * `file_name` (str) - The user-facing name of the file
   * `mime_type` (str) - The mime type of the file
