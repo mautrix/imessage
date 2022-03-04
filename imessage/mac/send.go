@@ -187,14 +187,13 @@ func (mac *macOSDatabase) SendFile(chatID, text, filename string, pathOnDisk str
 	return nil, mac.sendMessageWithRetry(sendFile, sendFileWithService, sendFileBuddy, imessage.ParseIdentifier(chatID), pathOnDisk)
 }
 
-func (mac *macOSDatabase) SendFileCleanup(sendFileDir string) error {
+func (mac *macOSDatabase) SendFileCleanup(sendFileDir string) {
 	go func() {
 		// TODO maybe log when the file gets removed
 		// Random sleep to make sure the message has time to get sent
 		time.Sleep(60 * time.Second)
 		_ = os.RemoveAll(sendFileDir)
 	}()
-	return nil
 }
 
 func (mac *macOSDatabase) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {

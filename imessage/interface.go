@@ -52,7 +52,7 @@ type API interface {
 
 	SendMessage(chatID, text string, replyTo string, replyToPart int) (*SendResponse, error)
 	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*SendResponse, error)
-	SendFileCleanup(sendFileDir string) error
+	SendFileCleanup(sendFileDir string)
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error

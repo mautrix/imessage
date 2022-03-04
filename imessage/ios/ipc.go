@@ -407,8 +407,8 @@ func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk stri
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendFileCleanup(sendFileDir string) error {
-	return os.RemoveAll(sendFileDir)
+func (ios *iOSConnector) SendFileCleanup(sendFileDir string) {
+	_ = os.RemoveAll(sendFileDir)
 }
 
 func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
@@ -452,6 +452,7 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTapbacks:            !ios.isAndroid,
 		SendReadReceipts:        !ios.isAndroid,
 		SendTypingNotifications: !ios.isAndroid,
+		SendCaptions:            ios.isAndroid,
 		BridgeState:             false,
 	}
 }

@@ -799,6 +799,18 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint boo
 	}
 }
 
+func (portal *Portal) addDedup(eventID id.EventID, body string) {
+	if portal.messageDedup != nil {
+		portal.messageDedupLock.Lock()
+		portal.messageDedup[strings.TrimSpace(body)] = SentMessage{
+			EventID: eventID,
+			// Set the timestamp to a bit before now to make sure the deduplication catches it properly
+			Timestamp: time.Now().Add(-10 * time.Second),
+		}
+		portal.messageDedupLock.Unlock()
+	}
+}
+
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	msg, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -806,15 +818,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 	portal.log.Debugln("Starting handling Matrix message", evt.ID)
-	if portal.messageDedup != nil {
-		portal.messageDedupLock.Lock()
-		portal.messageDedup[strings.TrimSpace(msg.Body)] = SentMessage{
-			EventID: evt.ID,
-			// Set the timestamp to a bit before now to make sure the deduplication catches it properly
-			Timestamp: time.Now().Add(-10 * time.Second),
-		}
-		portal.messageDedupLock.Unlock()
-	}
+	portal.addDedup(evt.ID, msg.Body)
 
 	var messageReplyID string
 	var messageReplyPart int
@@ -833,58 +837,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	if msg.MsgType == event.MsgText {
 		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart)
 	} else if len(msg.URL) > 0 || msg.File != nil {
-		var data []byte
-		var url id.ContentURI
-		if msg.File != nil {
-			url, err = msg.File.URL.Parse()
-		} else {
-			url, err = msg.URL.Parse()
-		}
-		if err != nil {
-			portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true, appservice.StatusPermFailure)
-			portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
-			return
-		}
-		data, err = portal.MainIntent().DownloadBytes(url)
-		if err != nil {
-			portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true, appservice.StatusPermFailure)
-			portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
-			return
-		}
-		if msg.File != nil {
-			data, err = msg.File.Decrypt(data)
-			if err != nil {
-				portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true, appservice.StatusPermFailure)
-				portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
-				return
-			}
-		}
-
-		dir, filePath, err := imessage.SendFilePrepare(msg.Body, data)
-		if err != nil {
-			portal.log.Errorfln("failed to prepare to send file: %w", err)
-			return
-		}
-		mimeType := mimetype.Detect(data).String()
-		isVoiceMemo := false
-
-		_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
-		if isMSC3245Voice {
-			filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
-			mimeType = "audio/x-caf"
-			isVoiceMemo = true
-			if err != nil {
-				log.Errorfln("Failed to transcode voice message to CAF. Error: %w", err)
-				return
-			}
-		}
-
-		resp, err = portal.bridge.IM.SendFile(portal.GUID, "", msg.Body, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
-
-		err = portal.bridge.IM.SendFileCleanup(dir)
-		if err != nil {
-			portal.log.Warnfln("failed to cleanup send file: %w", err)
-		}
+		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart)
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
@@ -918,6 +871,93 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	} else {
 		portal.log.Debugln("Handled Matrix message", evt.ID, "(waiting for echo)")
 	}
+}
+
+func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *event.Event, messageReplyID string, messageReplyPart int) (*imessage.SendResponse, error) {
+	var url id.ContentURI
+	var file *event.EncryptedFileInfo
+	var err error
+	if msg.File != nil {
+		file = msg.File
+		url, err = msg.File.URL.Parse()
+	} else {
+		url, err = msg.URL.Parse()
+	}
+	if err != nil {
+		portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true, appservice.StatusPermFailure)
+		portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
+		return nil, nil
+	}
+	var caption string
+
+	if len(portal.bridge.Config.Bridge.MediaViewerURL) > 0 && portal.Identifier.Service == "SMS" && msg.Info != nil && msg.Info.Size >= portal.bridge.Config.Bridge.MediaViewerMinSize {
+		// SMS chat and the file is too big, make a media viewer URL
+		caption, err = portal.bridge.createMediaViewerURL(&evt.Content)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create media viewer URL: %w", err)
+		}
+
+		// Check if there's a thumbnail we can bridge.
+		// If not, just send the link. If yes, send the thumbnail and the link as a caption.
+		// TODO: we could try to compress images to fit even if the provided thumbnail is too big.
+		var hasUsableThumbnail bool
+		if msg.Info.ThumbnailInfo != nil && msg.Info.ThumbnailInfo.Size < portal.bridge.Config.Bridge.MediaViewerMinSize {
+			file = msg.Info.ThumbnailFile
+			if file != nil {
+				url, err = file.URL.Parse()
+			} else {
+				url, err = msg.Info.ThumbnailURL.Parse()
+			}
+			hasUsableThumbnail = err == nil && !url.IsEmpty() && portal.bridge.IM.Capabilities().SendCaptions
+		}
+		if !hasUsableThumbnail {
+			portal.addDedup(evt.ID, caption)
+			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart)
+		}
+	}
+
+	return portal.handleMatrixMediaDirect(url, file, msg.Body, caption, evt, messageReplyID, messageReplyPart)
+}
+
+func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.EncryptedFileInfo, filename, caption string, evt *event.Event, messageReplyID string, messageReplyPart int) (resp *imessage.SendResponse, err error) {
+	var data []byte
+	data, err = portal.MainIntent().DownloadBytes(url)
+	if err != nil {
+		portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true, appservice.StatusPermFailure)
+		portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
+		return
+	}
+	if file != nil {
+		data, err = file.Decrypt(data)
+		if err != nil {
+			portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true, appservice.StatusPermFailure)
+			portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
+			return
+		}
+	}
+
+	var dir, filePath string
+	dir, filePath, err = imessage.SendFilePrepare(filename, data)
+	if err != nil {
+		portal.log.Errorfln("failed to prepare to send file: %w", err)
+		return
+	}
+	mimeType := mimetype.Detect(data).String()
+	isVoiceMemo := false
+	_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
+	if isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
+		filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
+		mimeType = "audio/x-caf"
+		isVoiceMemo = true
+		if err != nil {
+			log.Errorfln("Failed to transcode voice message to CAF. Error: %w", err)
+			return
+		}
+	}
+
+	resp, err = portal.bridge.IM.SendFile(portal.GUID, caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
+	portal.bridge.IM.SendFileCleanup(dir)
+	return
 }
 
 func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservice.MessageSendCheckpointStep, err error) {

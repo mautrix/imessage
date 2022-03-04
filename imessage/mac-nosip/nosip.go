@@ -188,6 +188,7 @@ func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTapbacks:            true,
 		SendReadReceipts:        true,
 		SendTypingNotifications: true,
+		SendCaptions:            true,
 		BridgeState:             true,
 	}
 }

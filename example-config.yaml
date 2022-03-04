@@ -85,6 +85,12 @@ bridge:
     # Should the bridge look through joined rooms to find existing portals if the database has none?
     # This can be used to recover from bridge database loss.
     find_portals_if_db_empty: false
+    # The address to an instance of https://gitlab.com/beeper/media-viewer
+    # Used to send media viewer links instead of full files for attachments that are too big for MMS.
+    media_viewer_url: null
+    # The minimum number of bytes in a file before the bridge switches to using the media viewer.
+    # Note that for unencrypted files, this will use a direct link to the homeserver rather than the media viewer.
+    media_viewer_min_size: 409600
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"
