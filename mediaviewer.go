@@ -41,7 +41,7 @@ type mediaViewerCreateRequest struct {
 }
 
 type mediaViewerCreateResponse struct {
-	Error  string `json:"error"`
+	Error  string `json:"message"`
 	FileID string `json:"file_id"`
 }
 
@@ -113,7 +113,7 @@ func (bridge *Bridge) createMediaViewerURL(content *event.Content) (string, erro
 			return "", fmt.Errorf("server returned non-JSON error with status code %d", resp.StatusCode)
 		}
 		return "", fmt.Errorf("failed to decode response: %w", err)
-	} else if len(respData.Error) > 0 {
+	} else if resp.StatusCode >= 400 {
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, respData.Error)
 	} else {
 		parsedURL.Path = path.Join(origPath, respData.FileID)
