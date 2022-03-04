@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -18,7 +18,6 @@ package imessage
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -174,7 +173,7 @@ func (attachment *Attachment) Read() ([]byte, error) {
 		}
 		attachment.PathOnDisk = filepath.Join(home, attachment.PathOnDisk[2:])
 	}
-	return ioutil.ReadFile(attachment.PathOnDisk)
+	return os.ReadFile(attachment.PathOnDisk)
 }
 
 type ChatInfo struct {

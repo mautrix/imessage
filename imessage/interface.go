@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -19,7 +19,6 @@ package imessage
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -68,7 +67,7 @@ func SendFilePrepare(filename string, data []byte) (string, string, error) {
 		return "", "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	filePath := filepath.Join(dir, filename)
-	err = ioutil.WriteFile(filePath, data, 0640)
+	err = os.WriteFile(filePath, data, 0640)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to write data to temp file: %w", err)
 	}
@@ -134,5 +133,5 @@ func TempDir(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return ioutil.TempDir(dir, name)
+	return os.MkdirTemp(dir, name)
 }
