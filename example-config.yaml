@@ -91,6 +91,9 @@ bridge:
     # The minimum number of bytes in a file before the bridge switches to using the media viewer.
     # Note that for unencrypted files, this will use a direct link to the homeserver rather than the media viewer.
     media_viewer_min_size: 409600
+    # Should we convert heif images to jpeg before re-uploading? This increases
+    # compatability, but adds generation loss (reduces quality).
+    convert_heif: true
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"

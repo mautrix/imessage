@@ -1175,22 +1175,24 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	extraContent := map[string]interface{}{}
 
 	if msg.IsAudioMessage {
-		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
+		ogg, err := ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
 		if err == nil {
 			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
 			mimeType = "audio/ogg"
 			fileName = "Voice Message.ogg"
+			data = ogg
 		} else {
 			portal.log.Errorf("Failed to convert audio message to OGG. Sending as normal attachment. error: %w", err)
 		}
 	}
 
-	if mimeType == "image/heic" || mimeType == "image/heif" {
-		data, err = convertHeif(data)
+	if portal.bridge.Config.Bridge.ConvertHeif && (mimeType == "image/heic" || mimeType == "image/heif") {
+		heif, err := convertHeif(data)
 		if err == nil {
 			mimeType = "image/jpeg"
 			fileName = "image.jpg"
+			data = heif
 		} else {
 			portal.log.Errorf("Failed to convert HEIC image. Sending without conversion. error: %w", err)
 		}
