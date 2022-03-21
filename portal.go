@@ -783,6 +783,16 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bo
 
 	var resp *mautrix.RespSendEvent
 	if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+		reason := "m.event_not_handled"
+		canRetry := true
+		switch status {
+		case appservice.StatusUnsupported:
+			reason = "com.beeper.unsupported_event"
+			canRetry = false
+		case appservice.StatusTimeout:
+			reason = "m.event_too_old"
+		}
+
 		content := MessageSendStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
 			Relationship: event.RelatesTo{
@@ -790,10 +800,10 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bo
 				EventID: evt.ID,
 			},
 			Success:   false,
-			Reason:    "m.event_not_handled", // TODO make this more specific eventually
+			Reason:    reason,
 			Error:     err.Error(),
 			Message:   fmt.Sprintf("Your message %s bridged.", possibility),
-			CanRetry:  false, // TODO change this in the future
+			CanRetry:  canRetry,
 			IsCertain: isCertain,
 		}
 
