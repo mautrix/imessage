@@ -898,6 +898,11 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		}
 	}
 
+	if time.Now().Sub(time.Unix(evt.Timestamp, 0)).Seconds() > 10 {
+		portal.log.Debug("It's been over 10 seconds since the message arrived at the homeserver. Will not handle the event.")
+		return
+	}
+
 	var err error
 	var resp *imessage.SendResponse
 	if msg.MsgType == event.MsgText {
@@ -1061,6 +1066,11 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	}
 	portal.log.Debugln("Starting handling of Matrix reaction", evt.ID)
 
+	if time.Now().Sub(time.Unix(evt.Timestamp, 0)).Seconds() > 10 {
+		portal.log.Debug("It's been over 10 seconds since the reaction arrived at the homeserver. Will not handle the event.")
+		return
+	}
+
 	var errorMsg string
 
 	if reaction, ok := evt.Content.Parsed.(*event.ReactionEventContent); !ok || reaction.RelatesTo.Type != event.RelAnnotation {
@@ -1107,6 +1117,11 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
 		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("Bridge does not support any kinds of redactions"))
+		return
+	}
+
+	if time.Now().Sub(time.Unix(evt.Timestamp, 0)).Seconds() > 10 {
+		portal.log.Debug("It's been over 10 seconds since the redaction arrived at the homeserver. Will not handle the event.")
 		return
 	}
 
