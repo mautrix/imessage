@@ -761,14 +761,14 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 var EventMessageSendStatus = event.Type{Type: "com.beeper.message_send_status", Class: event.MessageEventType}
 
 type MessageSendStatusEventContent struct {
-	Network      string          `json:"network"`
-	Relationship event.RelatesTo `json:"m.relates_to"`
-	Success      bool            `json:"success"`
-	Reason       string          `json:"reason,omitempty"`
-	Error        string          `json:"error,omitempty"`
-	Message      string          `json:"message,omitempty"`
-	CanRetry     bool            `json:"can_retry,omitempty"`
-	IsCertain    bool            `json:"is_certain,omitempty"`
+	Network   string           `json:"network"`
+	RelatesTo *event.RelatesTo `json:"m.relates_to"`
+	Success   bool             `json:"success"`
+	Reason    string           `json:"reason,omitempty"`
+	Error     string           `json:"error,omitempty"`
+	Message   string           `json:"message,omitempty"`
+	CanRetry  bool             `json:"can_retry,omitempty"`
+	IsCertain bool             `json:"is_certain,omitempty"`
 }
 
 func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bool, status appservice.MessageSendCheckpointStatus) id.EventID {
@@ -795,7 +795,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bo
 
 		content := MessageSendStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			Relationship: event.RelatesTo{
+			RelatesTo: &event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
@@ -850,7 +850,7 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint boo
 		if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
 			content := MessageSendStatusEventContent{
 				Network: portal.getBridgeInfoStateKey(),
-				Relationship: event.RelatesTo{
+				RelatesTo: &event.RelatesTo{
 					Type:    event.RelReference,
 					EventID: eventID,
 				},
@@ -1040,7 +1040,7 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 	if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
 		content := MessageSendStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			Relationship: event.RelatesTo{
+			RelatesTo: &event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
