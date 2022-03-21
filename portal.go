@@ -762,7 +762,7 @@ var EventMessageSendStatus = event.Type{Type: "com.beeper.message_send_status", 
 
 type MessageSendStatusEventContent struct {
 	Network      string          `json:"network"`
-	Relationship event.RelatesTo `json:"relates_to"`
+	Relationship event.RelatesTo `json:"m.relates_to"`
 	Success      bool            `json:"success"`
 	Reason       string          `json:"reason"`
 	Error        string          `json:"error"`
