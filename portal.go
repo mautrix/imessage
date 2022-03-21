@@ -812,7 +812,8 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bo
 			portal.log.Warnfln("Failed to send message send status event:", err)
 			return ""
 		}
-	} else if portal.bridge.Config.Bridge.SendErrorNotices {
+	}
+	if portal.bridge.Config.Bridge.SendErrorNotices {
 		resp, err = portal.sendMainIntentMessage(event.MessageEventContent{
 			MsgType: event.MsgNotice,
 			Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", possibility, err),

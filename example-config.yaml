@@ -60,12 +60,11 @@ bridge:
     # Whether or not the bridge should send a read receipt from the bridge bot when a message has been
     # sent to iMessage.
     delivery_receipts: false
-
     # Whether or not the bridge should send the message status as a custom
     # com.beeper.message_send_status event.
     send_message_send_status_events: true
-    # Whether or not the bridge should send error notices when a message fails
-    # to bridge.
+    # Whether or not the bridge should send error notices via m.notice events
+    # when a message fails to bridge.
     send_error_notices: true
 
     # Whether or not to sync with custom puppets to receive EDUs that are not normally sent to appservices.
