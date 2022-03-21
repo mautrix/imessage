@@ -461,6 +461,11 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	}
 }
 
+func (portal *Portal) getBridgeInfoStateKey() string {
+	return fmt.Sprintf("%s://%s/%s",
+		bridgeInfoProto, strings.ToLower(portal.Identifier.Service), portal.GUID)
+}
+
 func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	bridgeInfo := CustomBridgeInfoContent{
 		BridgeEventContent: event.BridgeEventContent{
@@ -499,9 +504,7 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
 		bridgeInfo.Protocol.ID = "imessage-nosip"
 	}
-	bridgeInfoStateKey := fmt.Sprintf("%s://%s/%s",
-		bridgeInfoProto, strings.ToLower(portal.Identifier.Service), portal.GUID)
-	return bridgeInfoStateKey, bridgeInfo
+	return portal.getBridgeInfoStateKey(), bridgeInfo
 }
 
 func (portal *Portal) UpdateBridgeInfo() {
@@ -755,6 +758,19 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string,
 	return file.Encrypt(data), "application/octet-stream", file
 }
 
+var EventMessageSendStatus = event.Type{Type: "com.beeper.message_send_status", Class: event.MessageEventType}
+
+type MessageSendStatusEventContent struct {
+	Network      string          `json:"network"`
+	Relationship event.RelatesTo `json:"relates_to"`
+	Success      bool            `json:"success"`
+	Reason       string          `json:"reason"`
+	Error        string          `json:"error"`
+	Message      string          `json:"message"`
+	CanRetry     bool            `json:"can_retry"`
+	IsCertain    bool            `json:"is_certain"`
+}
+
 func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bool, status appservice.MessageSendCheckpointStatus) id.EventID {
 	checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
 	checkpoint.Info = err.Error()
@@ -764,13 +780,37 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bo
 	if isCertain {
 		possibility = "was not"
 	}
-	resp, err := portal.sendMainIntentMessage(event.MessageEventContent{
-		MsgType: event.MsgNotice,
-		Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", possibility, err),
-	})
-	if err != nil {
-		portal.log.Warnfln("Failed to send bridging error message:", err)
-		return ""
+
+	var resp *mautrix.RespSendEvent
+	if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+		content := MessageSendStatusEventContent{
+			Network: portal.getBridgeInfoStateKey(),
+			Relationship: event.RelatesTo{
+				Type:    event.RelReference,
+				EventID: evt.ID,
+			},
+			Success:   false,
+			Reason:    "m.event_not_handled", // TODO make this more specific eventually
+			Error:     err.Error(),
+			Message:   fmt.Sprintf("Your message %s bridged.", possibility),
+			CanRetry:  false, // TODO change this in the future
+			IsCertain: isCertain,
+		}
+
+		resp, err = portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		if err != nil {
+			portal.log.Warnfln("Failed to send message send status event:", err)
+			return ""
+		}
+	} else if portal.bridge.Config.Bridge.SendErrorNotices {
+		resp, err = portal.sendMainIntentMessage(event.MessageEventContent{
+			MsgType: event.MsgNotice,
+			Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", possibility, err),
+		})
+		if err != nil {
+			portal.log.Warnfln("Failed to send bridging error message:", err)
+			return ""
+		}
 	}
 	return resp.EventID
 }
@@ -796,6 +836,22 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint boo
 			ReportedBy: appservice.ReportedByBridge,
 		}
 		go checkpoint.Send(portal.bridge.AS)
+
+		if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+			content := MessageSendStatusEventContent{
+				Network: portal.getBridgeInfoStateKey(),
+				Relationship: event.RelatesTo{
+					Type:    event.RelReference,
+					EventID: eventID,
+				},
+				Success: true,
+			}
+
+			_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
+			if err != nil {
+				portal.log.Warnfln("Failed to send message send status event:", err)
+			}
+		}
 	}
 }
 
@@ -965,6 +1021,27 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 	checkpoint := appservice.NewMessageSendCheckpoint(evt, step, appservice.StatusUnsupported, 0)
 	checkpoint.Info = err.Error()
 	checkpoint.Send(portal.bridge.AS)
+
+	if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+		content := MessageSendStatusEventContent{
+			Network: portal.getBridgeInfoStateKey(),
+			Relationship: event.RelatesTo{
+				Type:    event.RelReference,
+				EventID: evt.ID,
+			},
+			Success:   false,
+			Reason:    "com.beeper.unsupported_event",
+			Error:     err.Error(),
+			Message:   "Message type is not supported",
+			CanRetry:  false, // There is no point in retrying a message that is unsupported.
+			IsCertain: true,
+		}
+
+		_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		if err != nil {
+			portal.log.Warnfln("Failed to send message send status event:", err)
+		}
+	}
 }
 
 func (portal *Portal) HandleMatrixReaction(evt *event.Event) {

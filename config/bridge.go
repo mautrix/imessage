@@ -31,7 +31,9 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	DeliveryReceipts bool `yaml:"delivery_receipts"`
+	DeliveryReceipts            bool `yaml:"delivery_receipts"`
+	SendMessageSendStatusEvents bool `yaml:"send_message_send_status_events"`
+	SendErrorNotices            bool `yaml:"send_error_notices"`
 
 	SyncWithCustomPuppets bool    `yaml:"sync_with_custom_puppets"`
 	SyncDirectChatList    bool    `yaml:"sync_direct_chat_list"`
