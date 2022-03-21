@@ -764,11 +764,11 @@ type MessageSendStatusEventContent struct {
 	Network      string          `json:"network"`
 	Relationship event.RelatesTo `json:"m.relates_to"`
 	Success      bool            `json:"success"`
-	Reason       string          `json:"reason"`
-	Error        string          `json:"error"`
-	Message      string          `json:"message"`
-	CanRetry     bool            `json:"can_retry"`
-	IsCertain    bool            `json:"is_certain"`
+	Reason       string          `json:"reason,omitempty"`
+	Error        string          `json:"error,omitempty"`
+	Message      string          `json:"message,omitempty"`
+	CanRetry     bool            `json:"can_retry,omitempty"`
+	IsCertain    bool            `json:"is_certain,omitempty"`
 }
 
 func (portal *Portal) sendErrorMessage(evt *event.Event, err error, isCertain bool, status appservice.MessageSendCheckpointStatus) id.EventID {
