@@ -87,6 +87,8 @@ type BridgeStatus struct {
 	UserID     id.UserID `json:"user_id,omitempty"`
 	RemoteID   string    `json:"remote_id,omitempty"`
 	RemoteName string    `json:"remote_name,omitempty"`
+
+	Info map[string]interface{} `json:"info,omitempty"`
 }
 
 type Bridge interface {
