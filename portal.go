@@ -900,7 +900,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		}
 	}
 
-	if time.Now().Sub(time.Unix(evt.Timestamp, 0)).Seconds() > 10 {
+	if time.Since(time.UnixMilli(evt.Timestamp)) > 10 * time.Second {
 		portal.log.Debug("It's been over 10 seconds since the message arrived at the homeserver. Will not handle the event.")
 		return
 	}
@@ -1068,7 +1068,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	}
 	portal.log.Debugln("Starting handling of Matrix reaction", evt.ID)
 
-	if time.Now().Sub(time.Unix(evt.Timestamp, 0)).Seconds() > 10 {
+	if time.Since(time.UnixMilli(evt.Timestamp)) > 10 * time.Second {
 		portal.log.Debug("It's been over 10 seconds since the reaction arrived at the homeserver. Will not handle the event.")
 		return
 	}
@@ -1122,7 +1122,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 		return
 	}
 
-	if time.Now().Sub(time.Unix(evt.Timestamp, 0)).Seconds() > 10 {
+	if time.Since(time.UnixMilli(evt.Timestamp)) > 10 * time.Second {
 		portal.log.Debug("It's been over 10 seconds since the redaction arrived at the homeserver. Will not handle the event.")
 		return
 	}
