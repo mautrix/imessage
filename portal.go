@@ -879,6 +879,17 @@ func (portal *Portal) addDedup(eventID id.EventID, body string) {
 	}
 }
 
+func (portal *Portal) shouldHandleMessage(evt *event.Event) error {
+	if portal.bridge.Config.Bridge.MaxHandleSeconds == 0 {
+		return nil
+	}
+	if time.Since(time.UnixMilli(evt.Timestamp)) < time.Duration(portal.bridge.Config.Bridge.MaxHandleSeconds)*time.Second {
+		return nil
+	}
+
+	return errors.New(fmt.Sprintf("It's been over %d seconds since the message arrived at the homeserver. Will not handle the event.", portal.bridge.Config.Bridge.MaxHandleSeconds))
+}
+
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	msg, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -900,8 +911,9 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		}
 	}
 
-	if time.Since(time.UnixMilli(evt.Timestamp)) > 10 * time.Second {
-		portal.log.Debug("It's been over 10 seconds since the message arrived at the homeserver. Will not handle the event.")
+	if err := portal.shouldHandleMessage(evt); err != nil {
+		portal.log.Debug(err)
+		portal.sendErrorMessage(evt, err, true, appservice.StatusTimeout)
 		return
 	}
 
@@ -1068,8 +1080,9 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	}
 	portal.log.Debugln("Starting handling of Matrix reaction", evt.ID)
 
-	if time.Since(time.UnixMilli(evt.Timestamp)) > 10 * time.Second {
-		portal.log.Debug("It's been over 10 seconds since the reaction arrived at the homeserver. Will not handle the event.")
+	if err := portal.shouldHandleMessage(evt); err != nil {
+		portal.log.Debug(err)
+		portal.sendErrorMessage(evt, err, true, appservice.StatusTimeout)
 		return
 	}
 
@@ -1122,8 +1135,9 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 		return
 	}
 
-	if time.Since(time.UnixMilli(evt.Timestamp)) > 10 * time.Second {
-		portal.log.Debug("It's been over 10 seconds since the redaction arrived at the homeserver. Will not handle the event.")
+	if err := portal.shouldHandleMessage(evt); err != nil {
+		portal.log.Debug(err)
+		portal.sendErrorMessage(evt, err, true, appservice.StatusTimeout)
 		return
 	}
 

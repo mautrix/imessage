@@ -67,6 +67,13 @@ bridge:
     # when a message fails to bridge.
     send_error_notices: true
 
+    # The maximum number of seconds between the message arriving at the
+    # homeserver and the bridge attempting to send the message. This can help
+    # prevent messages from being bridged a long time after arriving at the
+    # homeserver which could cause confusion in the chat history on the remote
+    # network. Set to 0 to disable.
+    max_handle_seconds: 10
+
     # Whether or not to sync with custom puppets to receive EDUs that are not normally sent to appservices.
     sync_with_custom_puppets: false
     # Whether or not to update the m.direct account data event when double puppeting is enabled.
