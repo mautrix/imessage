@@ -47,7 +47,7 @@ type BridgeConfig struct {
 	FindPortalsIfEmpty    bool    `yaml:"find_portals_if_db_empty"`
 	MediaViewerURL        string  `yaml:"media_viewer_url"`
 	MediaViewerMinSize    int     `yaml:"media_viewer_min_size"`
-	ConvertHeif           bool    `yaml:"convert_heif"`
+	ConvertHEIF           bool    `yaml:"convert_heif"`
 
 	FederateRooms bool `yaml:"federate_rooms"`
 
