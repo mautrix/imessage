@@ -17,16 +17,20 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
 	"html"
+	"image/jpeg"
 	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
+	"github.com/strukturag/libheif/go/heif"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
@@ -1287,15 +1291,28 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	mimeType := attach.GetMimeType()
 	fileName := attach.GetFileName()
 	extraContent := map[string]interface{}{}
+
 	if msg.IsAudioMessage {
-		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
+		ogg, err := ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
 		if err == nil {
 			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
 			mimeType = "audio/ogg"
 			fileName = "Voice Message.ogg"
+			data = ogg
 		} else {
 			portal.log.Errorf("Failed to convert audio message to OGG. Sending as normal attachment. error: %w", err)
+		}
+	}
+
+	if portal.bridge.Config.Bridge.ConvertHeif && (mimeType == "image/heic" || mimeType == "image/heif") {
+		heif, err := convertHeif(data)
+		if err == nil {
+			mimeType = "image/jpeg"
+			fileName = "image.jpg"
+			data = heif
+		} else {
+			portal.log.Errorf("Failed to convert HEIC image. Sending without conversion. error: %w", err)
 		}
 	}
 
@@ -1329,6 +1346,41 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	}
 	portal.SetReply(&content, msg)
 	return &content, extraContent, nil
+}
+
+func convertHeif(data []byte) ([]byte, error) {
+	ctx, err := heif.NewContext()
+	if err != nil {
+		return nil, fmt.Errorf("can't create context: %s", err)
+	}
+
+	if err := ctx.ReadFromMemory(data); err != nil {
+		return nil, fmt.Errorf("can't read from memory: %s", err)
+	}
+
+	handle, err := ctx.GetPrimaryImageHandle()
+	if err != nil {
+		return nil, fmt.Errorf("can't read primary image: %s", err)
+	}
+
+	heifImg, err := handle.DecodeImage(heif.ColorspaceUndefined, heif.ChromaUndefined, nil)
+	if err != nil {
+		return nil, fmt.Errorf("can't decode image: %s", err)
+	}
+
+	img, err := heifImg.GetImage()
+	if err != nil {
+		return nil, fmt.Errorf("can't convert image: %s", err)
+	}
+
+	var output bytes.Buffer
+
+	err = jpeg.Encode(bufio.NewWriter(&output), img, nil)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to encode: %v", err)
+	}
+
+	return output.Bytes(), nil
 }
 
 func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
