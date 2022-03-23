@@ -44,6 +44,8 @@ import (
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
 	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 	"go.mau.fi/mautrix-imessage/ipc"
+
+	"github.com/mattn/go-sqlite3"
 )
 
 var (
@@ -493,6 +495,10 @@ func (bridge *Bridge) Start() {
 	err := bridge.DB.Init()
 	if err != nil && (err != upgrades.UnsupportedDatabaseVersion || !*ignoreUnsupportedDatabase) {
 		bridge.Log.Fatalln("Failed to initialize database:", err)
+		sqlError := &sqlite3.Error{}
+		if errors.As(err, sqlError) && sqlError.Code == sqlite3.ErrCorrupt {
+			os.Exit(18)
+		}
 		os.Exit(15)
 	}
 
