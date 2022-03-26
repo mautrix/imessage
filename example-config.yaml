@@ -80,6 +80,7 @@ bridge:
     # Note that updating the m.direct event is not atomic (except with mautrix-asmux)
     # and is therefore prone to race conditions.
     sync_direct_chat_list: false
+    
     # Shared secret for https://github.com/devture/matrix-synapse-shared-secret-auth
     #
     # If set, custom puppets will be enabled automatically for local users
@@ -104,6 +105,10 @@ bridge:
     # The minimum number of bytes in a file before the bridge switches to using the media viewer.
     # Note that for unencrypted files, this will use a direct link to the homeserver rather than the media viewer.
     media_viewer_min_size: 409600
+
+    # Allow invite permission for user. User can invite any bots to room with whatsapp 
+    # users (private chat and groups)
+    allow_user_invite: false
 
     # The prefix for commands. Only required in non-management rooms.
     command_prefix: "!im"

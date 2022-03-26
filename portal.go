@@ -443,6 +443,9 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	anyone := 0
 	nope := 99
 	invite := 50
+	if portal.bridge.Config.Bridge.AllowUserInvite {
+		invite = 0
+	}
 	return &event.PowerLevelsEventContent{
 		UsersDefault:    anyone,
 		EventsDefault:   anyone,
