@@ -38,10 +38,10 @@ const DefaultSyncProxyBackoff = 1 * time.Second
 const MaxSyncProxyBackoff = 60 * time.Second
 
 type MatrixHandler struct {
-	bridge *Bridge
-	as     *appservice.AppService
-	log    maulogger.Logger
-	//cmd    *CommandHandler
+	bridge      *Bridge
+	as          *appservice.AppService
+	log         maulogger.Logger
+	cmd         *CommandHandler
 	errorTxnIDC *appservice.TransactionIDCache
 
 	lastSyncProxyError time.Time
@@ -51,10 +51,10 @@ type MatrixHandler struct {
 
 func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	handler := &MatrixHandler{
-		bridge: bridge,
-		as:     bridge.AS,
-		log:    bridge.Log.Sub("Matrix"),
-		//cmd:    NewCommandHandler(bridge),
+		bridge:           bridge,
+		as:               bridge.AS,
+		log:              bridge.Log.Sub("Matrix"),
+		cmd:              NewCommandHandler(bridge),
 		errorTxnIDC:      appservice.NewTransactionIDCache(8),
 		syncProxyBackoff: DefaultSyncProxyBackoff,
 	}
@@ -329,6 +329,7 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 	}
 
 	content := evt.Content.AsMessage()
+	content.RemoveReplyFallback()
 	if content.MsgType == event.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
 		hasCommandPrefix := strings.HasPrefix(content.Body, commandPrefix)
@@ -337,7 +338,7 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 		}
 		if hasCommandPrefix || evt.RoomID == mx.bridge.user.ManagementRoom {
 			// TODO uncomment after commands exist
-			//mx.cmd.Handle(evt.RoomID, mx.bridge.user, content.Body)
+			mx.cmd.Handle(evt.RoomID, evt.ID, mx.bridge.user, content.Body, content.GetReplyTo())
 			return
 		}
 	}
