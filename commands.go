@@ -24,7 +24,7 @@ import (
 	// "html"
 	// "math"
 	// "sort"
-	// "strconv"
+	"strconv"
 	"strings"
 
 	"maunium.net/go/maulogger/v2"
@@ -113,8 +113,8 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 	// 	handler.CommandDiscardMegolmSession(ce)
 	// case "dev-test":
 	// 	handler.CommandDevTest(ce)
-	// case "set-pl":
-	// 	handler.CommandSetPowerLevel(ce)
+	case "set-pl":
+		handler.CommandSetPowerLevel(ce)
 	// case "set-relay":
 	// 	handler.CommandSetRelay(ce)
 	// case "unset-relay":
@@ -183,48 +183,48 @@ func (handler *CommandHandler) CommandVersion(ce *CommandEvent) {
 	ce.Reply(fmt.Sprintf("[%s](%s) %s (%s)", Name, URL, linkifiedVersion, BuildTime))
 }
 
-// const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
+const cmdSetPowerLevelHelp = `set-pl [user ID] <power level> - Change the power level in a portal room. Only for bridge admins.`
 
-// func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
-// 	if !ce.User.Admin {
-// 		ce.Reply("Only bridge admins can use `set-pl`")
-// 		return
-// 	} else if ce.Portal == nil {
-// 		ce.Reply("This is not a portal room")
-// 		return
-// 	}
-// 	var level int
-// 	var userID id.UserID
-// 	var err error
-// 	if len(ce.Args) == 1 {
-// 		level, err = strconv.Atoi(ce.Args[0])
-// 		if err != nil {
-// 			ce.Reply("Invalid power level \"%s\"", ce.Args[0])
-// 			return
-// 		}
-// 		userID = ce.User.MXID
-// 	} else if len(ce.Args) == 2 {
-// 		userID = id.UserID(ce.Args[0])
-// 		_, _, err := userID.Parse()
-// 		if err != nil {
-// 			ce.Reply("Invalid user ID \"%s\"", ce.Args[0])
-// 			return
-// 		}
-// 		level, err = strconv.Atoi(ce.Args[1])
-// 		if err != nil {
-// 			ce.Reply("Invalid power level \"%s\"", ce.Args[1])
-// 			return
-// 		}
-// 	} else {
-// 		ce.Reply("**Usage:** `set-pl [user] <level>`")
-// 		return
-// 	}
-// 	intent := ce.Portal.MainIntent()
-// 	_, err = intent.SetPowerLevel(ce.RoomID, userID, level)
-// 	if err != nil {
-// 		ce.Reply("Failed to set power levels: %v", err)
-// 	}
-// }
+func (handler *CommandHandler) CommandSetPowerLevel(ce *CommandEvent) {
+	if !ce.User.Admin {
+		ce.Reply("Only bridge admins can use `set-pl`")
+		return
+	} else if ce.Portal == nil {
+		ce.Reply("This is not a portal room")
+		return
+	}
+	var level int
+	var userID id.UserID
+	var err error
+	if len(ce.Args) == 1 {
+		level, err = strconv.Atoi(ce.Args[0])
+		if err != nil {
+			ce.Reply("Invalid power level \"%s\"", ce.Args[0])
+			return
+		}
+		userID = ce.User.MXID
+	} else if len(ce.Args) == 2 {
+		userID = id.UserID(ce.Args[0])
+		_, _, err := userID.Parse()
+		if err != nil {
+			ce.Reply("Invalid user ID \"%s\"", ce.Args[0])
+			return
+		}
+		level, err = strconv.Atoi(ce.Args[1])
+		if err != nil {
+			ce.Reply("Invalid power level \"%s\"", ce.Args[1])
+			return
+		}
+	} else {
+		ce.Reply("**Usage:** `set-pl [user] <level>`")
+		return
+	}
+	intent := ce.Portal.MainIntent()
+	_, err = intent.SetPowerLevel(ce.RoomID, userID, level)
+	if err != nil {
+		ce.Reply("Failed to set power levels: %v", err)
+	}
+}
 
 const cmdHelpHelp = `help - Prints this help`
 
@@ -240,7 +240,7 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 		cmdPrefix + cmdVersionHelp,
 		// cmdPrefix + cmdSetRelayHelp,
 		// cmdPrefix + cmdUnsetRelayHelp,
-		// cmdPrefix + cmdSetPowerLevelHelp,
+		cmdPrefix + cmdSetPowerLevelHelp,
 		// cmdPrefix + cmdDeletePortalHelp,
 		// cmdPrefix + cmdDeleteAllPortalsHelp,
 	}, "\n* "))
