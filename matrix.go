@@ -262,7 +262,7 @@ const sessionWaitTimeout = 5 * time.Second
 func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 	//delete debug
 	mx.log.Debugln("Came in on Crypto")
-	mx.log.Debugln("Ignored on Encryption", mx.shouldIgnoreEvent(evt))
+	mx.log.Debugln("Ignored on Encryption", mx.bridge)
 	if mx.shouldIgnoreEvent(evt) || mx.bridge.Crypto == nil {
 
 		return
