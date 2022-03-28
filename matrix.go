@@ -244,9 +244,13 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 
 func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 	if evt.Sender != mx.bridge.user.MXID {
+		//remove debug
+		mx.log.Debugln("Ignoring 1")
 		return true
 	}
 	if val, ok := evt.Content.Raw[doublePuppetKey].(string); ok && val == doublePuppetValue {
+		//remove debug
+		mx.log.Debugln("Ignoring 2")
 		return true
 	}
 	return false
@@ -340,6 +344,7 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
+	mx.log.Debugln("should be ignoring", mx.shouldIgnoreEvent(evt))
 	if mx.shouldIgnoreEvent(evt) {
 		return
 	}
