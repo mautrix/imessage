@@ -209,9 +209,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		_, _ = intent.SendNotice(mx.bridge.user.ManagementRoom, "This room has been registered as your bridge management/status room.")
 		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
 	}
-	mx.log.Debugln("Checking managament Room ", mx.bridge.user.ManagementRoom)
 	if evt.RoomID == mx.bridge.user.ManagementRoom {
-
 		additionalHelp := mx.bridge.Config.Bridge.ManagementRoomText.AdditionalHelp
 		mx.log.Debugln("Additional Help is ", additionalHelp)
 		if len(additionalHelp) > 0 {
@@ -348,6 +346,7 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 
 	content := evt.Content.AsMessage()
 	content.RemoveReplyFallback()
+	mx.log.Debugln("message is ", content.Body)
 	if content.MsgType == event.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
 		hasCommandPrefix := strings.HasPrefix(content.Body, commandPrefix)
@@ -355,7 +354,6 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 			content.Body = strings.TrimLeft(content.Body[len(commandPrefix):], " ")
 		}
 		if hasCommandPrefix || evt.RoomID == mx.bridge.user.ManagementRoom {
-			// TODO uncomment after commands exist
 			mx.cmd.Handle(evt.RoomID, evt.ID, mx.bridge.user, content.Body, content.GetReplyTo())
 			return
 		}
