@@ -208,8 +208,11 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		_, _ = intent.SendNotice(mx.bridge.user.ManagementRoom, "This room has been registered as your bridge management/status room.")
 		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
 	}
+	mx.log.Debugln("Checking managament Room ", mx.bridge.user.ManagementRoom)
 	if evt.RoomID == mx.bridge.user.ManagementRoom {
+
 		additionalHelp := mx.bridge.Config.Bridge.ManagementRoomText.AdditionalHelp
+		mx.log.Debugln("Additional Help is ", additionalHelp)
 		if len(additionalHelp) > 0 {
 			_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, additionalHelp)
 		}
