@@ -140,6 +140,7 @@ func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {
 	if evt.Content.AsEncryption().Algorithm != id.AlgorithmMegolmV1 {
 		return
 	}
+
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil && !portal.Encrypted {
 		mx.log.Debugfln("%s enabled encryption in %s", evt.Sender, evt.RoomID)
@@ -259,10 +260,15 @@ func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 const sessionWaitTimeout = 5 * time.Second
 
 func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
+	//delete debug
+	mx.log.Debugln("Came in on Crypto")
+	mx.log.Debugln("Ignored on Encryption", mx.shouldIgnoreEvent(evt))
 	if mx.shouldIgnoreEvent(evt) || mx.bridge.Crypto == nil {
+
 		return
 	}
-
+	//delete debug
+	mx.log.Debugln("mx.bridge.Crypto ", mx.bridge.Crypto)
 	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 	decryptionRetryCount := 0
 	if errors.Is(err, NoSessionFound) {
