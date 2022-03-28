@@ -19,6 +19,7 @@ package config
 import (
 	"bytes"
 	"fmt"
+
 	"strconv"
 	"strings"
 	"text/template"
@@ -145,7 +146,6 @@ const (
 )
 
 func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	fmt.Println("Unmarshal")
 	rawPC := make(map[string]string)
 	err := unmarshal(&rawPC)
 	if err != nil {
