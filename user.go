@@ -69,7 +69,8 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 	user.RelayWhitelisted = user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID)
 	user.Admin = user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID)
 	//delete
-	user.log.Debugln("user is admin", user.Admin, " ", user.bridge.Config.Bridge.Permissions.IsAdmin(user.MXID))
+	user.log.Debugln("IS it whitelisted ", user.RelayWhitelisted, " ", user.bridge.Config.Bridge.Permissions.IsRelayWhitelisted(user.MXID))
+
 	return user
 }
 
