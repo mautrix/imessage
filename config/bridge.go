@@ -67,6 +67,13 @@ type BridgeConfig struct {
 		} `yaml:"key_sharing"`
 	} `yaml:"encryption"`
 
+	ManagementRoomText struct {
+		Welcome            string `yaml:"welcome"`
+		WelcomeConnected   string `yaml:"welcome_connected"`
+		WelcomeUnconnected string `yaml:"welcome_unconnected"`
+		AdditionalHelp     string `yaml:"additional_help"`
+	} `yaml:"management_room_text"`
+
 	Permissions PermissionConfig `yaml:"permissions"`
 
 	usernameTemplate    *template.Template `yaml:"-"`

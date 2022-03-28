@@ -29,6 +29,7 @@ import (
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -169,6 +170,13 @@ func (mx *MatrixHandler) joinAndCheckMembers(evt *event.Event, intent *appservic
 	return members
 }
 
+func (mx *MatrixHandler) sendNoticeWithMarkdown(roomID id.RoomID, message string) (*mautrix.RespSendEvent, error) {
+	intent := mx.as.BotIntent()
+	content := format.RenderMarkdown(message, true, false)
+	content.MsgType = event.MsgNotice
+	return intent.SendMessageEvent(roomID, event.EventMessage, content)
+}
+
 func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 	intent := mx.as.BotIntent()
 
@@ -197,8 +205,14 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 
 	if !hasPuppets && (len(mx.bridge.user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
 		mx.bridge.user.SetManagementRoom(evt.RoomID)
-		_, _ = intent.SendNotice(mx.bridge.user.ManagementRoom, "This room has been registered as your bridge management/status room. Don't send `help` to get a list of commands, because this bridge doesn't support commands yet.")
+		_, _ = intent.SendNotice(mx.bridge.user.ManagementRoom, "This room has been registered as your bridge management/status room.")
 		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
+	}
+	if evt.RoomID == mx.bridge.user.ManagementRoom {
+		additionalHelp := mx.bridge.Config.Bridge.ManagementRoomText.AdditionalHelp
+		if len(additionalHelp) > 0 {
+			_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, additionalHelp)
+		}
 	}
 }
 
