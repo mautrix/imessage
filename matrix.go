@@ -202,6 +202,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		_, _ = intent.LeaveRoom(evt.RoomID)
 		return
 	}
+	_, _ = mx.sendNoticeWithMarkdown(evt.RoomID, mx.bridge.Config.Bridge.ManagementRoomText.Welcome)
 
 	if !hasPuppets && (len(mx.bridge.user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
 		mx.bridge.user.SetManagementRoom(evt.RoomID)
