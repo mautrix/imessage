@@ -245,13 +245,9 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 
 func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 	if evt.Sender != mx.bridge.user.MXID {
-		//remove debug
-		mx.log.Debugln("Ignoring 1")
 		return true
 	}
 	if val, ok := evt.Content.Raw[doublePuppetKey].(string); ok && val == doublePuppetValue {
-		//remove debug
-		mx.log.Debugln("Ignoring 2")
 		return true
 	}
 	return false
@@ -260,15 +256,11 @@ func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
 const sessionWaitTimeout = 5 * time.Second
 
 func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
-	//delete debug
-	mx.log.Debugln("Came in on Crypto")
-	mx.log.Debugln("Ignored on Encryption", mx.bridge)
 	if mx.shouldIgnoreEvent(evt) || mx.bridge.Crypto == nil {
 
 		return
 	}
-	//delete debug
-	mx.log.Debugln("mx.bridge.Crypto ", mx.bridge.Crypto)
+
 	decrypted, err := mx.bridge.Crypto.Decrypt(evt)
 	decryptionRetryCount := 0
 	if errors.Is(err, NoSessionFound) {
@@ -350,7 +342,6 @@ func (mx *MatrixHandler) waitLongerForSession(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
-	mx.log.Debugln("should be ignoring", mx.shouldIgnoreEvent(evt))
 	if mx.shouldIgnoreEvent(evt) {
 		return
 	}
