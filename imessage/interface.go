@@ -108,8 +108,9 @@ var Implementations = make(map[string]func(Bridge) (API, error))
 type PlatformConfig struct {
 	Platform string `yaml:"platform"`
 
-	IMRestPath     string `yaml:"imessage_rest_path"`
-	LogIPCPayloads bool   `yaml:"log_ipc_payloads"`
+	IMRestPath     string   `yaml:"imessage_rest_path"`
+	IMRestArgs     []string `yaml:"imessage_rest_args"`
+	LogIPCPayloads bool     `yaml:"log_ipc_payloads"`
 
 	PingInterval int64 `yaml:"ping_interval_seconds"`
 }
