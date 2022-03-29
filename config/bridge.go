@@ -89,6 +89,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.BackfillDisableNotifs = true
 	bc.PeriodicSync = true
 	bc.FederateRooms = true
+	bc.AllowUserInvite = false
 }
 
 type umBridgeConfig BridgeConfig
@@ -146,6 +147,7 @@ const (
 )
 
 func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	fmt.Println("unmarshal")
 	rawPC := make(map[string]string)
 	err := unmarshal(&rawPC)
 	if err != nil {
