@@ -140,7 +140,6 @@ func (mx *MatrixHandler) HandleEncryption(evt *event.Event) {
 	if evt.Content.AsEncryption().Algorithm != id.AlgorithmMegolmV1 {
 		return
 	}
-
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil && !portal.Encrypted {
 		mx.log.Debugfln("%s enabled encryption in %s", evt.Sender, evt.RoomID)
