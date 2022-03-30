@@ -18,7 +18,6 @@ package config
 
 import (
 	"bytes"
-	"fmt"
 
 	"strconv"
 	"strings"
@@ -73,7 +72,10 @@ type BridgeConfig struct {
 		AdditionalHelp string `yaml:"additional_help"`
 	} `yaml:"management_room_text"`
 
-	Permissions PermissionConfig `yaml:"permissions"`
+	Permissions struct {
+		relay string `yaml:"relay"`
+		admin bool   `yaml:"admin"`
+	} `yaml:"permissions"`
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
@@ -90,6 +92,8 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.PeriodicSync = true
 	bc.FederateRooms = true
 	bc.AllowUserInvite = false
+	bc.Permissions.admin = false
+	bc.Permissions.relay = ""
 }
 
 type umBridgeConfig BridgeConfig
@@ -136,88 +140,19 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 	return buf.String()
 }
 
-type PermissionConfig map[string]PermissionLevel
-
-type PermissionLevel int
-
-const (
-	PermissionLevelDefault PermissionLevel = 0
-	PermissionLevelRelay   PermissionLevel = 5
-	PermissionLevelAdmin   PermissionLevel = 100
-)
-
-func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	fmt.Println("unmarshal")
-	rawPC := make(map[string]string)
-	err := unmarshal(&rawPC)
-	if err != nil {
-		return err
-	}
-
-	if *pc == nil {
-		*pc = make(map[string]PermissionLevel)
-	}
-	for key, value := range rawPC {
-		switch strings.ToLower(value) {
-		case "relaybot", "relay":
-			(*pc)[key] = PermissionLevelRelay
-		case "admin":
-			(*pc)[key] = PermissionLevelAdmin
-		default:
-			val, err := strconv.Atoi(value)
-			if err != nil {
-				(*pc)[key] = PermissionLevelDefault
-			} else {
-				(*pc)[key] = PermissionLevel(val)
-			}
-		}
-	}
-	return nil
+func (bc BridgeConfig) IsAdmin(userID id.UserID) bool {
+	return userID == bc.User && bc.Permissions.admin
 }
-
-func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
-	fmt.Println("marshal")
-	if *pc == nil {
-		return nil, nil
+func (bc BridgeConfig) IsRelayWhitelisted(userID id.UserID) bool {
+	if string(userID) == bc.Permissions.relay {
+		return true
 	}
-	rawPC := make(map[string]string)
-	for key, value := range *pc {
-		switch value {
-		case PermissionLevelRelay:
-			rawPC[key] = "relay"
-		case PermissionLevelAdmin:
-			rawPC[key] = "admin"
-		default:
-			rawPC[key] = strconv.Itoa(int(value))
-		}
-	}
-	return rawPC, nil
-}
-
-func (pc PermissionConfig) IsRelayWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelRelay
-}
-
-func (pc PermissionConfig) IsAdmin(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelAdmin
-}
-
-func (pc PermissionConfig) GetPermissionLevel(userID id.UserID) PermissionLevel {
-	permissions, ok := pc[string(userID)]
-	if ok {
-		return permissions
-	}
-
 	_, homeserver, _ := userID.Parse()
-	permissions, ok = pc[homeserver]
-	if len(homeserver) > 0 && ok {
-		return permissions
+	if bc.Permissions.relay == homeserver {
+		return true
 	}
-
-	permissions, ok = pc["*"]
-	if ok {
-		return permissions
+	if bc.Permissions.relay == "*" {
+		return true
 	}
-
-	return PermissionLevelDefault
+	return false
 }
