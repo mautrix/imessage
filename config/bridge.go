@@ -166,7 +166,6 @@ type PermissionLevel int
 const (
 	PermissionLevelDefault PermissionLevel = 0
 	PermissionLevelRelay   PermissionLevel = 5
-	PermissionLevelUser    PermissionLevel = 10
 	PermissionLevelAdmin   PermissionLevel = 100
 )
 
@@ -184,8 +183,6 @@ func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 		switch strings.ToLower(value) {
 		case "relaybot", "relay":
 			(*pc)[key] = PermissionLevelRelay
-		case "user":
-			(*pc)[key] = PermissionLevelUser
 		case "admin":
 			(*pc)[key] = PermissionLevelAdmin
 		default:
@@ -209,8 +206,6 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 		switch value {
 		case PermissionLevelRelay:
 			rawPC[key] = "relay"
-		case PermissionLevelUser:
-			rawPC[key] = "user"
 		case PermissionLevelAdmin:
 			rawPC[key] = "admin"
 		default:
@@ -222,10 +217,6 @@ func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
 
 func (pc PermissionConfig) IsRelayWhitelisted(userID id.UserID) bool {
 	return pc.GetPermissionLevel(userID) >= PermissionLevelRelay
-}
-
-func (pc PermissionConfig) IsWhitelisted(userID id.UserID) bool {
-	return pc.GetPermissionLevel(userID) >= PermissionLevelUser
 }
 
 func (pc PermissionConfig) IsAdmin(userID id.UserID) bool {
