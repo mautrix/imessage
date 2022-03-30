@@ -105,71 +105,26 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandHelp(ce)
 	case "version":
 		handler.CommandVersion(ce)
-	// case "delete-portal":
-	// 	handler.CommandDeletePortal(ce)
-	// case "delete-all-portals":
-	// 	handler.CommandDeleteAllPortals(ce)
-	// case "discard-megolm-session", "discard-session":
-	// 	handler.CommandDiscardMegolmSession(ce)
-	// case "dev-test":
-	// 	handler.CommandDevTest(ce)
 	case "set-pl":
 		handler.CommandSetPowerLevel(ce)
-	// case "set-relay":
-	// 	handler.CommandSetRelay(ce)
-	// case "unset-relay":
-	// 	handler.CommandUnsetRelay(ce)
+	case "discard-megolm-session", "discard-session":
+		handler.CommandDiscardMegolmSession(ce)
+
 	default:
 		ce.Reply("Unknown command, use the `help` command for help.")
 	}
 }
 
-// func (handler *CommandHandler) CommandDiscardMegolmSession(ce *CommandEvent) {
-// 	if handler.bridge.Crypto == nil {
-// 		ce.Reply("This bridge instance doesn't have end-to-bridge encryption enabled")
-// 	} else if !ce.User.Admin {
-// 		ce.Reply("Only the bridge admin can reset Megolm sessions")
-// 	} else {
-// 		handler.bridge.Crypto.ResetSession(ce.RoomID)
-// 		ce.Reply("Successfully reset Megolm session in this room. New decryption keys will be shared the next time a message is sent from WhatsApp.")
-// 	}
-// }
-
-// const cmdSetRelayHelp = `set-relay - Relay messages in this room through your WhatsApp account.`
-
-// func (handler *CommandHandler) CommandSetRelay(ce *CommandEvent) {
-// 	if !handler.bridge.Config.Bridge.Relay.Enabled {
-// 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
-// 	} else if ce.Portal == nil {
-// 		ce.Reply("This is not a portal room")
-// 	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-// 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
-// 	} else {
-// 		ce.Portal.RelayUserID = ce.User.MXID
-// 		ce.Portal.Update()
-// 		ce.Reply("Messages from non-logged-in users in this room will now be bridged through your WhatsApp account")
-// 	}
-// }
-
-// const cmdUnsetRelayHelp = `unset-relay - Stop relaying messages in this room.`
-
-// func (handler *CommandHandler) CommandUnsetRelay(ce *CommandEvent) {
-// 	if !handler.bridge.Config.Bridge.Relay.Enabled {
-// 		ce.Reply("Relay mode is not enabled on this instance of the bridge")
-// 	} else if ce.Portal == nil {
-// 		ce.Reply("This is not a portal room")
-// 	} else if handler.bridge.Config.Bridge.Relay.AdminOnly && !ce.User.Admin {
-// 		ce.Reply("Only admins are allowed to enable relay mode on this instance of the bridge")
-// 	} else {
-// 		ce.Portal.RelayUserID = ""
-// 		ce.Portal.Update()
-// 		ce.Reply("Messages from non-logged-in users will no longer be bridged in this room")
-// 	}
-// }
-
-// func (handler *CommandHandler) CommandDevTest(_ *CommandEvent) {
-
-// }
+func (handler *CommandHandler) CommandDiscardMegolmSession(ce *CommandEvent) {
+	if handler.bridge.Crypto == nil {
+		ce.Reply("This bridge instance doesn't have end-to-bridge encryption enabled")
+	} else if !ce.User.Admin {
+		ce.Reply("Only the bridge admin can reset Megolm sessions")
+	} else {
+		handler.bridge.Crypto.ResetSession(ce.RoomID)
+		ce.Reply("Successfully reset Megolm session in this room. New decryption keys will be shared the next time a message is sent from WhatsApp.")
+	}
+}
 
 const cmdVersionHelp = `version - View the bridge version`
 
@@ -238,97 +193,6 @@ func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
 	ce.Reply("* " + strings.Join([]string{
 		cmdPrefix + cmdHelpHelp,
 		cmdPrefix + cmdVersionHelp,
-		// cmdPrefix + cmdSetRelayHelp,
-		// cmdPrefix + cmdUnsetRelayHelp,
 		cmdPrefix + cmdSetPowerLevelHelp,
-		// cmdPrefix + cmdDeletePortalHelp,
-		// cmdPrefix + cmdDeleteAllPortalsHelp,
 	}, "\n* "))
 }
-
-// func canDeletePortal(portal *Portal, userID id.UserID) bool {
-// 	members, err := portal.MainIntent().JoinedMembers(portal.MXID)
-// 	if err != nil {
-// 		portal.log.Errorfln("Failed to get joined members to check if portal can be deleted by %s: %v", userID, err)
-// 		return false
-// 	}
-// 	for otherUser := range members.Joined {
-// 		_, isPuppet := portal.bridge.ParsePuppetMXID(otherUser)
-// 		if isPuppet || otherUser == portal.bridge.Bot.UserID || otherUser == userID {
-// 			continue
-// 		}
-// 		user := portal.bridge.GetUserByMXID(otherUser)
-// 		if user != nil && user.Session != nil {
-// 			return false
-// 		}
-// 	}
-// 	return true
-// }
-
-// const cmdDeletePortalHelp = `delete-portal - Delete the current portal. If the portal is used by other people, this is limited to bridge admins.`
-
-// func (handler *CommandHandler) CommandDeletePortal(ce *CommandEvent) {
-// 	if ce.Portal == nil {
-// 		ce.Reply("You must be in a portal room to use that command")
-// 		return
-// 	}
-
-// 	if !ce.User.Admin && !canDeletePortal(ce.Portal, ce.User.MXID) {
-// 		ce.Reply("Only bridge admins can delete portals with other Matrix users")
-// 		return
-// 	}
-
-// 	ce.Portal.log.Infoln(ce.User.MXID, "requested deletion of portal.")
-// 	ce.Portal.Delete()
-// 	ce.Portal.Cleanup(false)
-// }
-
-// const cmdDeleteAllPortalsHelp = `delete-all-portals - Delete all portals.`
-
-// func (handler *CommandHandler) CommandDeleteAllPortals(ce *CommandEvent) {
-// 	portals := handler.bridge.GetAllPortals()
-// 	var portalsToDelete []*Portal
-
-// 	if ce.User.Admin {
-// 		portalsToDelete = portals
-// 	} else {
-// 		portalsToDelete = portals[:0]
-// 		for _, portal := range portals {
-// 			if canDeletePortal(portal, ce.User.MXID) {
-// 				portalsToDelete = append(portalsToDelete, portal)
-// 			}
-// 		}
-// 	}
-
-// 	leave := func(portal *Portal) {
-// 		if len(portal.MXID) > 0 {
-// 			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
-// 				Reason: "Deleting portal",
-// 				UserID: ce.User.MXID,
-// 			})
-// 		}
-// 	}
-// 	customPuppet := handler.bridge.GetPuppetByCustomMXID(ce.User.MXID)
-// 	if customPuppet != nil && customPuppet.CustomIntent() != nil {
-// 		intent := customPuppet.CustomIntent()
-// 		leave = func(portal *Portal) {
-// 			if len(portal.MXID) > 0 {
-// 				_, _ = intent.LeaveRoom(portal.MXID)
-// 				_, _ = intent.ForgetRoom(portal.MXID)
-// 			}
-// 		}
-// 	}
-// 	ce.Reply("Found %d portals, deleting...", len(portalsToDelete))
-// 	for _, portal := range portalsToDelete {
-// 		portal.Delete()
-// 		leave(portal)
-// 	}
-// 	ce.Reply("Finished deleting portal info. Now cleaning up rooms in background.")
-
-// 	go func() {
-// 		for _, portal := range portalsToDelete {
-// 			portal.Cleanup(false)
-// 		}
-// 		ce.Reply("Finished background cleanup of deleted portal rooms.")
-// 	}()
-// }

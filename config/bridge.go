@@ -135,30 +135,6 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 	return buf.String()
 }
 
-// func (bc BridgeConfig) IsAdmin(userID id.UserID) bool {
-
-// 	if bc.Permissions.admin {
-// 		fmt.Println("The user ID is " + string(userID) + " The admin permmision True")
-// 	} else {
-// 		fmt.Println("The user ID is " + string(userID) + " The admin permmision False")
-// 	}
-// 	return userID == bc.User && bc.Permissions.admin
-// }
-// func (bc BridgeConfig) IsRelayWhitelisted(userID id.UserID) bool {
-// 	fmt.Println("The user ID is " + string(userID) + " The relay permmision " + bc.Permissions.relay)
-// 	if string(userID) == bc.Permissions.relay {
-// 		return true
-// 	}
-// 	_, homeserver, _ := userID.Parse()
-// 	if bc.Permissions.relay == homeserver {
-// 		return true
-// 	}
-// 	if bc.Permissions.relay == "*" {
-// 		return true
-// 	}
-// 	return false
-// }
-
 type PermissionConfig map[string]PermissionLevel
 
 type PermissionLevel int

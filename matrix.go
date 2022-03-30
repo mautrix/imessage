@@ -348,7 +348,6 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 
 	content := evt.Content.AsMessage()
 	content.RemoveReplyFallback()
-	mx.log.Debugln("message is ", content.Body)
 	if content.MsgType == event.MsgText {
 		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
 		hasCommandPrefix := strings.HasPrefix(content.Body, commandPrefix)
