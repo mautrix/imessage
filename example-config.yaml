@@ -162,7 +162,7 @@ bridge:
     #     mxid - Specific user
     permissions:
         "*": relay
-        admin: true
+        "@admin:example.com": admin
 
 # Logging config.
 logging:
