@@ -18,6 +18,7 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 
 	"strconv"
 	"strings"
@@ -141,9 +142,16 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 }
 
 func (bc BridgeConfig) IsAdmin(userID id.UserID) bool {
+
+	if bc.Permissions.admin {
+		fmt.Println("The user ID is " + string(userID) + " The admin permmision True")
+	} else {
+		fmt.Println("The user ID is " + string(userID) + " The admin permmision False")
+	}
 	return userID == bc.User && bc.Permissions.admin
 }
 func (bc BridgeConfig) IsRelayWhitelisted(userID id.UserID) bool {
+	fmt.Println("The user ID is " + string(userID) + " The relay permmision " + bc.Permissions.relay)
 	if string(userID) == bc.Permissions.relay {
 		return true
 	}
