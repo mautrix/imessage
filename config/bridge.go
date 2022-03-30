@@ -18,7 +18,6 @@ package config
 
 import (
 	"bytes"
-
 	"strconv"
 	"strings"
 	"text/template"
