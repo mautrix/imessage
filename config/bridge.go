@@ -18,7 +18,6 @@ package config
 
 import (
 	"bytes"
-	"fmt"
 
 	"strconv"
 	"strings"
@@ -73,10 +72,7 @@ type BridgeConfig struct {
 		AdditionalHelp string `yaml:"additional_help"`
 	} `yaml:"management_room_text"`
 
-	Permissions struct {
-		relay string `yaml:"relay"`
-		admin bool   `yaml:"admin"`
-	} `yaml:"permissions"`
+	Permissions PermissionConfig `yaml:"permissions"`
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
@@ -93,8 +89,6 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.PeriodicSync = true
 	bc.FederateRooms = true
 	bc.AllowUserInvite = false
-	bc.Permissions.admin = false
-	bc.Permissions.relay = ""
 }
 
 type umBridgeConfig BridgeConfig
@@ -141,26 +135,119 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 	return buf.String()
 }
 
-func (bc BridgeConfig) IsAdmin(userID id.UserID) bool {
+// func (bc BridgeConfig) IsAdmin(userID id.UserID) bool {
 
-	if bc.Permissions.admin {
-		fmt.Println("The user ID is " + string(userID) + " The admin permmision True")
-	} else {
-		fmt.Println("The user ID is " + string(userID) + " The admin permmision False")
+// 	if bc.Permissions.admin {
+// 		fmt.Println("The user ID is " + string(userID) + " The admin permmision True")
+// 	} else {
+// 		fmt.Println("The user ID is " + string(userID) + " The admin permmision False")
+// 	}
+// 	return userID == bc.User && bc.Permissions.admin
+// }
+// func (bc BridgeConfig) IsRelayWhitelisted(userID id.UserID) bool {
+// 	fmt.Println("The user ID is " + string(userID) + " The relay permmision " + bc.Permissions.relay)
+// 	if string(userID) == bc.Permissions.relay {
+// 		return true
+// 	}
+// 	_, homeserver, _ := userID.Parse()
+// 	if bc.Permissions.relay == homeserver {
+// 		return true
+// 	}
+// 	if bc.Permissions.relay == "*" {
+// 		return true
+// 	}
+// 	return false
+// }
+
+type PermissionConfig map[string]PermissionLevel
+
+type PermissionLevel int
+
+const (
+	PermissionLevelDefault PermissionLevel = 0
+	PermissionLevelRelay   PermissionLevel = 5
+	PermissionLevelUser    PermissionLevel = 10
+	PermissionLevelAdmin   PermissionLevel = 100
+)
+
+func (pc *PermissionConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	rawPC := make(map[string]string)
+	err := unmarshal(&rawPC)
+	if err != nil {
+		return err
 	}
-	return userID == bc.User && bc.Permissions.admin
+
+	if *pc == nil {
+		*pc = make(map[string]PermissionLevel)
+	}
+	for key, value := range rawPC {
+		switch strings.ToLower(value) {
+		case "relaybot", "relay":
+			(*pc)[key] = PermissionLevelRelay
+		case "user":
+			(*pc)[key] = PermissionLevelUser
+		case "admin":
+			(*pc)[key] = PermissionLevelAdmin
+		default:
+			val, err := strconv.Atoi(value)
+			if err != nil {
+				(*pc)[key] = PermissionLevelDefault
+			} else {
+				(*pc)[key] = PermissionLevel(val)
+			}
+		}
+	}
+	return nil
 }
-func (bc BridgeConfig) IsRelayWhitelisted(userID id.UserID) bool {
-	fmt.Println("The user ID is " + string(userID) + " The relay permmision " + bc.Permissions.relay)
-	if string(userID) == bc.Permissions.relay {
-		return true
+
+func (pc *PermissionConfig) MarshalYAML() (interface{}, error) {
+	if *pc == nil {
+		return nil, nil
 	}
+	rawPC := make(map[string]string)
+	for key, value := range *pc {
+		switch value {
+		case PermissionLevelRelay:
+			rawPC[key] = "relay"
+		case PermissionLevelUser:
+			rawPC[key] = "user"
+		case PermissionLevelAdmin:
+			rawPC[key] = "admin"
+		default:
+			rawPC[key] = strconv.Itoa(int(value))
+		}
+	}
+	return rawPC, nil
+}
+
+func (pc PermissionConfig) IsRelayWhitelisted(userID id.UserID) bool {
+	return pc.GetPermissionLevel(userID) >= PermissionLevelRelay
+}
+
+func (pc PermissionConfig) IsWhitelisted(userID id.UserID) bool {
+	return pc.GetPermissionLevel(userID) >= PermissionLevelUser
+}
+
+func (pc PermissionConfig) IsAdmin(userID id.UserID) bool {
+	return pc.GetPermissionLevel(userID) >= PermissionLevelAdmin
+}
+
+func (pc PermissionConfig) GetPermissionLevel(userID id.UserID) PermissionLevel {
+	permissions, ok := pc[string(userID)]
+	if ok {
+		return permissions
+	}
+
 	_, homeserver, _ := userID.Parse()
-	if bc.Permissions.relay == homeserver {
-		return true
+	permissions, ok = pc[homeserver]
+	if len(homeserver) > 0 && ok {
+		return permissions
 	}
-	if bc.Permissions.relay == "*" {
-		return true
+
+	permissions, ok = pc["*"]
+	if ok {
+		return permissions
 	}
-	return false
+
+	return PermissionLevelDefault
 }
