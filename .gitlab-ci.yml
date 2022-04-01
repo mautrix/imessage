@@ -15,11 +15,11 @@ build amd64:
   - mkdir mautrix-imessage-amd64
   - go build -tags libheif -ldflags "$GO_LDFLAGS" -o mautrix-imessage-amd64/mautrix-imessage
   - install_name_tool -change /usr/local/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3.dylib mautrix-imessage-amd64/mautrix-imessage
-  - install_name_tool -change /usr/local/opt/libheif/lib/libheif.1.dylib @rpath/libheif.1.dylib mautrix-imessage-arm64/mautrix-imessage
+  - install_name_tool -change /usr/local/opt/libheif/lib/libheif.1.dylib @rpath/libheif.1.dylib mautrix-imessage-amd64/mautrix-imessage
   - install_name_tool -add_rpath @executable_path mautrix-imessage-amd64/mautrix-imessage
   - install_name_tool -add_rpath /usr/local/opt/libolm/lib mautrix-imessage-amd64/mautrix-imessage
   - cp /usr/local/opt/libolm/lib/libolm.3.dylib mautrix-imessage-amd64/
-  - cp /usr/local/opt/libheif/lib/libheif.1.dylib mautrix-imessage-arm64/
+  - cp /usr/local/opt/libheif/lib/libheif.1.dylib mautrix-imessage-amd64/
   - cp example-config.yaml mautrix-imessage-amd64/
   artifacts:
     paths:
