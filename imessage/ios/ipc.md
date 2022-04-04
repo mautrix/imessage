@@ -148,6 +148,14 @@ Another error response:
 * Get X most recent messages (request type `get_recent_messages`)
   * Request includes `chat_guid` and `limit`
   * Same return type as with `get_messages_after`
+* Resolve an identifier into a private chat GUID (request type `resolve_identifier`)
+  * `identifier` (str) - International phone number or email
+  * Returns `guid` (str) with a GUID for the chat with the user.
+  * If the identifier isn't valid or messages can't be sent to it, return a
+    standard error response with an appropriate message.
+* Prepare a new private chat (request type `prepare_dm`)
+  * `guid` (str) - The GUID of the user to start a chat with
+  * Doesn't return anything (just acknowledge with an empty response).
 
 #### to mautrix-imessage
 * Incoming messages (request type `message`)
