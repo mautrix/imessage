@@ -46,7 +46,9 @@ type BridgeConfig struct {
 	PeriodicSync          bool    `yaml:"periodic_sync"`
 	FindPortalsIfEmpty    bool    `yaml:"find_portals_if_db_empty"`
 	MediaViewerURL        string  `yaml:"media_viewer_url"`
-	MediaViewerMinSize    int     `yaml:"media_viewer_min_size"`
+	MediaViewerSMSMinSize int     `yaml:"media_viewer_sms_min_size"`
+	MediaViewerIMMinSize  int     `yaml:"media_viewer_imessage_min_size"`
+	OldMediaViewerMinSize int     `yaml:"media_viewer_min_size"`
 	ConvertHEIF           bool    `yaml:"convert_heif"`
 
 	FederateRooms bool `yaml:"federate_rooms"`
@@ -80,6 +82,8 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.BackfillDisableNotifs = true
 	bc.PeriodicSync = true
 	bc.FederateRooms = true
+	bc.MediaViewerSMSMinSize = 400 * 1024
+	bc.MediaViewerIMMinSize = 50 * 1024 * 1024
 }
 
 type umBridgeConfig BridgeConfig
@@ -98,6 +102,10 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	bc.displaynameTemplate, err = template.New("displayname").Parse(bc.DisplaynameTemplate)
 	if err != nil {
 		return err
+	}
+
+	if bc.OldMediaViewerMinSize > 0 {
+		bc.MediaViewerSMSMinSize = bc.OldMediaViewerMinSize
 	}
 
 	return nil

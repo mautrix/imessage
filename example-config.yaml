@@ -101,9 +101,11 @@ bridge:
     # The address to an instance of https://gitlab.com/beeper/media-viewer
     # Used to send media viewer links instead of full files for attachments that are too big for MMS.
     media_viewer_url: null
-    # The minimum number of bytes in a file before the bridge switches to using the media viewer.
+    # The minimum number of bytes in a file before the bridge switches to using the media viewer when sending MMS.
     # Note that for unencrypted files, this will use a direct link to the homeserver rather than the media viewer.
-    media_viewer_min_size: 409600
+    media_viewer_sms_min_size: 409600
+    # Same as above, but for iMessages.
+    media_viewer_imessage_min_size: 52428800
     # Should we convert heif images to jpeg before re-uploading? This increases
     # compatibility, but adds generation loss (reduces quality).
     convert_heif: true

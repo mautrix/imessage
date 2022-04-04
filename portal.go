@@ -975,7 +975,11 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 	}
 	var caption string
 
-	if len(portal.bridge.Config.Bridge.MediaViewerURL) > 0 && portal.Identifier.Service == "SMS" && msg.Info != nil && msg.Info.Size >= portal.bridge.Config.Bridge.MediaViewerMinSize {
+	mediaViewerMinSize := portal.bridge.Config.Bridge.MediaViewerIMMinSize
+	if portal.Identifier.Service == "SMS" {
+		mediaViewerMinSize = portal.bridge.Config.Bridge.MediaViewerSMSMinSize
+	}
+	if len(portal.bridge.Config.Bridge.MediaViewerURL) > 0 && mediaViewerMinSize > 0 && msg.Info != nil && msg.Info.Size >= mediaViewerMinSize {
 		// SMS chat and the file is too big, make a media viewer URL
 		caption, err = portal.bridge.createMediaViewerURL(&evt.Content)
 		if err != nil {
@@ -986,7 +990,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		// If not, just send the link. If yes, send the thumbnail and the link as a caption.
 		// TODO: we could try to compress images to fit even if the provided thumbnail is too big.
 		var hasUsableThumbnail bool
-		if msg.Info.ThumbnailInfo != nil && msg.Info.ThumbnailInfo.Size < portal.bridge.Config.Bridge.MediaViewerMinSize {
+		if msg.Info.ThumbnailInfo != nil && msg.Info.ThumbnailInfo.Size < mediaViewerMinSize {
 			file = msg.Info.ThumbnailFile
 			if file != nil {
 				url, err = file.URL.Parse()
