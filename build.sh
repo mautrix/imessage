@@ -7,7 +7,7 @@ if [[ $(arch) == "arm64" && -z "$LIBRARY_PATH" && -d /opt/homebrew ]]; then
 	export CPATH=/opt/homebrew/include
 	HEIF_PATH="$LIBRARY_PATH"
 else
-	HEIF_PATH="/usr/local/homebrew/lib"
+	HEIF_PATH="/usr/local/lib"
 fi
 
 if [[ -f "$HEIF_PATH/libheif.1.dylib" ]]; then
