@@ -40,6 +40,7 @@ const ReqPing ipc.Command = "ping"
 type MacNoSIPConnector struct {
 	ios.APIWithIPC
 	path                string
+	args                []string
 	proc                *exec.Cmd
 	log                 log.Logger
 	procLog             log.Logger
@@ -54,6 +55,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	return &MacNoSIPConnector{
 		APIWithIPC:          ios.NewPlainiOSConnector(logger, bridge),
 		path:                bridge.GetConnectorConfig().IMRestPath,
+		args:                bridge.GetConnectorConfig().IMRestArgs,
 		log:                 logger,
 		procLog:             processLogger,
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
@@ -64,7 +66,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 
 func (mac *MacNoSIPConnector) Start() error {
 	mac.log.Debugln("Preparing to execute", mac.path)
-	mac.proc = exec.Command(mac.path)
+	mac.proc = exec.Command(mac.path, mac.args...)
 
 	if runtime.GOOS == "ios" {
 		mac.log.Debugln("Running Barcelona connector on iOS, temp files will be world-readable")

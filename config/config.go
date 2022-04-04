@@ -32,6 +32,8 @@ type Config struct {
 		WSProxy string `yaml:"websocket_proxy"`
 		Domain  string `yaml:"domain"`
 		Asmux   bool   `yaml:"asmux"`
+
+		PingInterval int `yaml:"ping_interval_seconds"`
 	} `yaml:"homeserver"`
 
 	AppService struct {

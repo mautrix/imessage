@@ -136,6 +136,7 @@ type Bridge struct {
 	puppetsLock   sync.Mutex
 	stopping      bool
 	stop          chan struct{}
+	stopPinger    chan struct{}
 	latestState   *imessage.BridgeStatus
 	pushKey       *imessage.PushKeyRequest
 
@@ -557,6 +558,32 @@ func (bridge *Bridge) Start() {
 	go bridge.StartupSync()
 	bridge.Log.Infoln("Initialization complete")
 	go bridge.PeriodicSync()
+
+	bridge.stopPinger = make(chan struct{})
+	if bridge.Config.Homeserver.PingInterval > 0 {
+		go bridge.serverPinger()
+	}
+}
+
+func (bridge *Bridge) serverPinger() {
+	interval := time.Duration(bridge.Config.Homeserver.PingInterval) * time.Second
+	clock := time.NewTicker(interval)
+	defer func() {
+		bridge.Log.Infofln("Websocket pinger stopped")
+		clock.Stop()
+	}()
+	bridge.Log.Infofln("Pinging websocket every %s", interval)
+	for {
+		select {
+		case <-clock.C:
+			bridge.PingServer()
+		case <-bridge.stopPinger:
+			return
+		}
+		if bridge.stopping {
+			return
+		}
+	}
 }
 
 func (bridge *Bridge) StartupSync() {
@@ -655,6 +682,10 @@ func (bridge *Bridge) internalStop() {
 	bridge.stopping = true
 	if bridge.Crypto != nil {
 		bridge.Crypto.Stop()
+	}
+	select {
+	case bridge.stopPinger <- struct{}{}:
+	default:
 	}
 	bridge.Log.Debugln("Stopping transaction websocket")
 	bridge.AS.StopWebsocket(appservice.ErrWebsocketManualStop)

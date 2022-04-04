@@ -1290,15 +1290,28 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	mimeType := attach.GetMimeType()
 	fileName := attach.GetFileName()
 	extraContent := map[string]interface{}{}
+
 	if msg.IsAudioMessage {
-		data, err = ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
+		ogg, err := ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
 		if err == nil {
 			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
 			mimeType = "audio/ogg"
 			fileName = "Voice Message.ogg"
+			data = ogg
 		} else {
-			portal.log.Errorf("Failed to convert audio message to OGG. Sending as normal attachment. error: %w", err)
+			portal.log.Errorf("Failed to convert audio message to ogg/opus: %v - sending without conversion", err)
+		}
+	}
+
+	if CanConvertHEIF && portal.bridge.Config.Bridge.ConvertHEIF && (mimeType == "image/heic" || mimeType == "image/heif") {
+		convertedData, err := ConvertHEIF(data)
+		if err == nil {
+			mimeType = "image/jpeg"
+			fileName += ".jpg"
+			data = convertedData
+		} else {
+			portal.log.Errorf("Failed to convert heif image to jpeg: %v - sending without conversion", err)
 		}
 	}
 
