@@ -95,6 +95,8 @@ type Portal struct {
 	Encrypted  bool
 
 	BackfillStartTS int64
+	SendStatusStartTS int64
+	TimeoutSeconds int
 }
 
 func (portal *Portal) avatarHashSlice() []byte {
@@ -107,7 +109,7 @@ func (portal *Portal) avatarHashSlice() []byte {
 func (portal *Portal) Scan(row Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS)
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.SendStatusStartTS, &portal.TimeoutSeconds)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -132,8 +134,8 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS)
+	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, send_status_start_ts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.SendStatusStartTS, portal.TimeoutSeconds)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
 	}
@@ -144,8 +146,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6 WHERE guid=$7",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.GUID)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, send_status_start_ts=$7, timeout_seconds=$8 WHERE guid=$9",
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.SendStatusStartTS, portal.TimeoutSeconds, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}

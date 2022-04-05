@@ -27,9 +27,11 @@ const bridgeInfoProto = "fi.mau.imessage"
 type CustomBridgeInfoSection struct {
 	event.BridgeInfoSection
 
-	GUID    string `json:"fi.mau.imessage.guid,omitempty"`
-	Service string `json:"fi.mau.imessage.service,omitempty"`
-	IsGroup bool   `json:"fi.mau.imessage.is_group,omitempty"`
+	GUID            string `json:"fi.mau.imessage.guid,omitempty"`
+	Service         string `json:"fi.mau.imessage.service,omitempty"`
+	IsGroup         bool   `json:"fi.mau.imessage.is_group,omitempty"`
+	SendStatusStart int64  `json:"com.beeper.send_status_start,omitempty"`
+	TimeoutSeconds  int    `json:"com.beeper.timeout_seconds,omitempty"`
 }
 
 type CustomBridgeInfoContent struct {

@@ -134,6 +134,10 @@ func (bridge *Bridge) loadDBPortal(dbPortal *database.Portal, guid string) *Port
 		}
 		dbPortal = bridge.DB.Portal.New()
 		dbPortal.GUID = guid
+		if bridge.Config.Bridge.SendMessageSendStatusEvents {
+			dbPortal.SendStatusStartTS = time.Now().Unix()
+			dbPortal.TimeoutSeconds = bridge.Config.Bridge.MaxHandleSeconds
+		}
 		dbPortal.Insert()
 	}
 	portal := bridge.NewPortal(dbPortal)
@@ -251,6 +255,22 @@ func (portal *Portal) ensureUserInvited(user *User) {
 		if err != nil {
 			portal.log.Warnfln("Failed to auto-join portal as %s: %v", user.MXID, err)
 		}
+	}
+}
+
+func (portal *Portal) UpdateSendMessageRoomState() {
+	if !portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+		return
+	}
+
+	maxHandleSeconds := portal.bridge.Config.Bridge.MaxHandleSeconds
+	if portal.SendStatusStartTS == 0 {
+		portal.SendStatusStartTS = time.Now().Unix()
+		portal.TimeoutSeconds = maxHandleSeconds
+		portal.UpdateBridgeInfo()
+	} else if maxHandleSeconds != portal.TimeoutSeconds {
+		portal.TimeoutSeconds = maxHandleSeconds
+		portal.UpdateBridgeInfo()
 	}
 }
 
@@ -485,9 +505,11 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 				AvatarURL:   portal.AvatarURL.CUString(),
 			},
 
-			GUID:    portal.GUID,
-			IsGroup: portal.Identifier.IsGroup,
-			Service: portal.Identifier.Service,
+			GUID:            portal.GUID,
+			IsGroup:         portal.Identifier.IsGroup,
+			Service:         portal.Identifier.Service,
+			SendStatusStart: portal.SendStatusStartTS,
+			TimeoutSeconds:  portal.bridge.Config.Bridge.MaxHandleSeconds,
 		},
 	}
 	if portal.Identifier.Service == "SMS" {
