@@ -73,6 +73,9 @@ func Load(path string) (*Config, error) {
 	var config = &Config{}
 	config.setDefaults()
 	err = yaml.Unmarshal(data, config)
+	if len(config.Bridge.DoublePuppetServerURL) == 0 {
+		config.Bridge.DoublePuppetServerURL = config.Homeserver.Address
+	}
 	return config, err
 }
 

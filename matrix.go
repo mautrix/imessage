@@ -38,10 +38,10 @@ const DefaultSyncProxyBackoff = 1 * time.Second
 const MaxSyncProxyBackoff = 60 * time.Second
 
 type MatrixHandler struct {
-	bridge *Bridge
-	as     *appservice.AppService
-	log    maulogger.Logger
-	//cmd    *CommandHandler
+	bridge      *Bridge
+	as          *appservice.AppService
+	log         maulogger.Logger
+	cmd         *CommandHandler
 	errorTxnIDC *appservice.TransactionIDCache
 
 	lastSyncProxyError time.Time
@@ -51,10 +51,10 @@ type MatrixHandler struct {
 
 func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	handler := &MatrixHandler{
-		bridge: bridge,
-		as:     bridge.AS,
-		log:    bridge.Log.Sub("Matrix"),
-		//cmd:    NewCommandHandler(bridge),
+		bridge:           bridge,
+		as:               bridge.AS,
+		log:              bridge.Log.Sub("Matrix"),
+		cmd:              NewCommandHandler(bridge),
 		errorTxnIDC:      appservice.NewTransactionIDCache(8),
 		syncProxyBackoff: DefaultSyncProxyBackoff,
 	}
@@ -176,30 +176,7 @@ func (mx *MatrixHandler) HandleBotInvite(evt *event.Event) {
 		return
 	}
 
-	members := mx.joinAndCheckMembers(evt, intent)
-	if members == nil {
-		return
-	}
-
-	hasPuppets := false
-	for mxid, _ := range members.Joined {
-		if mxid == intent.UserID || mxid == evt.Sender {
-			continue
-		} else if _, ok := mx.bridge.ParsePuppetMXID(mxid); ok {
-			hasPuppets = true
-			continue
-		}
-		mx.log.Debugln("Leaving multi-user room", evt.RoomID, "after accepting invite from", evt.Sender)
-		_, _ = intent.SendNotice(evt.RoomID, "This bridge is user-specific, please don't invite me into rooms with other users.")
-		_, _ = intent.LeaveRoom(evt.RoomID)
-		return
-	}
-
-	if !hasPuppets && (len(mx.bridge.user.ManagementRoom) == 0 || evt.Content.AsMember().IsDirect) {
-		mx.bridge.user.SetManagementRoom(evt.RoomID)
-		_, _ = intent.SendNotice(mx.bridge.user.ManagementRoom, "This room has been registered as your bridge management/status room. Don't send `help` to get a list of commands, because this bridge doesn't support commands yet.")
-		mx.log.Debugln(evt.RoomID, "registered as a management room with", evt.Sender)
-	}
+	mx.joinAndCheckMembers(evt, intent)
 }
 
 func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
@@ -227,10 +204,11 @@ func (mx *MatrixHandler) HandleMembership(evt *event.Event) {
 }
 
 func (mx *MatrixHandler) shouldIgnoreEvent(evt *event.Event) bool {
-	if evt.Sender != mx.bridge.user.MXID {
+	if mx.bridge.isBridgeOwnedMXID(evt.Sender) {
 		return true
-	}
-	if val, ok := evt.Content.Raw[doublePuppetKey].(string); ok && val == doublePuppetValue {
+	} else if evt.Sender != mx.bridge.user.MXID && !mx.bridge.Config.Bridge.Relay.IsWhitelisted(evt.Sender) {
+		return true
+	} else if val, ok := evt.Content.Raw[doublePuppetKey].(string); ok && evt.Sender == mx.bridge.user.MXID && val == doublePuppetValue {
 		return true
 	}
 	return false
@@ -263,8 +241,7 @@ func (mx *MatrixHandler) HandleEncrypted(evt *event.Event) {
 		mx.as.SendErrorMessageSendCheckpoint(evt, appservice.StepDecrypted, err, true, decryptionRetryCount)
 
 		mx.log.Warnfln("Failed to decrypt %s: %v", evt.ID, err)
-		_, _ = mx.bridge.Bot.SendNotice(evt.RoomID, fmt.Sprintf(
-			"\u26a0 Your message was not bridged: %v", err))
+		_, _ = mx.bridge.Bot.SendNotice(evt.RoomID, fmt.Sprintf("\u26a0 Your message was not bridged: %v", err))
 		return
 	}
 	mx.as.SendMessageSendCheckpoint(evt, appservice.StepDecrypted, decryptionRetryCount)
@@ -329,17 +306,12 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 	}
 
 	content := evt.Content.AsMessage()
-	if content.MsgType == event.MsgText {
-		commandPrefix := mx.bridge.Config.Bridge.CommandPrefix
-		hasCommandPrefix := strings.HasPrefix(content.Body, commandPrefix)
-		if hasCommandPrefix {
-			content.Body = strings.TrimLeft(content.Body[len(commandPrefix):], " ")
-		}
-		if hasCommandPrefix || evt.RoomID == mx.bridge.user.ManagementRoom {
-			// TODO uncomment after commands exist
-			//mx.cmd.Handle(evt.RoomID, mx.bridge.user, content.Body)
-			return
-		}
+	content.RemoveReplyFallback()
+	if evt.Sender == mx.bridge.user.MXID && content.MsgType == event.MsgText && strings.HasPrefix(content.Body, mx.bridge.Config.Bridge.CommandPrefix) {
+		content.Body = strings.TrimPrefix(content.Body, mx.bridge.Config.Bridge.CommandPrefix)
+		content.Body = strings.TrimLeft(content.Body, " ")
+		mx.cmd.Handle(evt.RoomID, evt.ID, content.Body, content.GetReplyTo())
+		return
 	}
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)

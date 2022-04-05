@@ -17,7 +17,6 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"sync"
 
@@ -26,7 +25,6 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
-	"maunium.net/go/mautrix/format"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/database"
@@ -62,54 +60,8 @@ func (bridge *Bridge) NewUser(dbUser *database.User) *User {
 		bridge: bridge,
 		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
 	}
+
 	return user
-}
-
-func (user *User) GetManagementRoom() id.RoomID {
-	if len(user.ManagementRoom) == 0 {
-		user.mgmtCreateLock.Lock()
-		defer user.mgmtCreateLock.Unlock()
-		if len(user.ManagementRoom) > 0 {
-			return user.ManagementRoom
-		}
-		creationContent := make(map[string]interface{})
-		if !user.bridge.Config.Bridge.FederateRooms {
-			creationContent["m.federate"] = false
-		}
-		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
-			Topic:           "iMessage bridge notices",
-			IsDirect:        true,
-			CreationContent: creationContent,
-		})
-		if err != nil {
-			user.log.Errorln("Failed to auto-create management room:", err)
-		} else {
-			user.SetManagementRoom(resp.RoomID)
-		}
-	}
-	return user.ManagementRoom
-}
-
-func (user *User) SetManagementRoom(roomID id.RoomID) {
-	user.ManagementRoom = roomID
-	user.Update()
-}
-
-func (user *User) sendBridgeNotice(formatString string, args ...interface{}) {
-	notice := fmt.Sprintf(formatString, args...)
-	_, err := user.bridge.Bot.SendNotice(user.GetManagementRoom(), notice)
-	if err != nil {
-		user.log.Warnf("Failed to send bridge notice \"%s\": %v", notice, err)
-	}
-}
-
-func (user *User) sendMarkdownBridgeAlert(formatString string, args ...interface{}) {
-	notice := fmt.Sprintf(formatString, args...)
-	content := format.RenderMarkdown(notice, true, false)
-	_, err := user.bridge.Bot.SendMessageEvent(user.GetManagementRoom(), event.EventMessage, content)
-	if err != nil {
-		user.log.Warnf("Failed to send bridge alert \"%s\": %v", notice, err)
-	}
 }
 
 func (user *User) getDirectChats() map[id.UserID][]id.RoomID {

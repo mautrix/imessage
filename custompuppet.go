@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -35,10 +35,6 @@ var (
 )
 
 func (user *User) initDoublePuppet() {
-	if _, homeserver, _ := user.MXID.Parse(); homeserver != user.bridge.Config.Homeserver.Domain {
-		// user is on another homeserver
-		return
-	}
 	var err error
 	if len(user.AccessToken) > 0 {
 		err = user.startCustomMXID()
@@ -66,7 +62,14 @@ func (user *User) loginWithSharedSecret() error {
 	user.log.Debugfln("Logging in with shared secret")
 	mac := hmac.New(sha512.New, []byte(user.bridge.Config.Bridge.LoginSharedSecret))
 	mac.Write([]byte(user.MXID))
-	resp, err := user.bridge.AS.BotClient().Login(&mautrix.ReqLogin{
+	client, err := mautrix.NewClient(user.bridge.Config.Bridge.DoublePuppetServerURL, "", "")
+	if err != nil {
+		return err
+	}
+	client.Logger = user.bridge.AS.Log.Sub(string(user.MXID))
+	client.Client = user.bridge.AS.HTTPClient
+	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
+	resp, err := client.Login(&mautrix.ReqLogin{
 		Type:                     mautrix.AuthTypePassword,
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(user.MXID)},
 		Password:                 hex.EncodeToString(mac.Sum(nil)),
@@ -81,7 +84,7 @@ func (user *User) loginWithSharedSecret() error {
 }
 
 func (user *User) newDoublePuppetIntent() (*appservice.IntentAPI, error) {
-	client, err := mautrix.NewClient(user.bridge.AS.HomeserverURL, user.MXID, user.AccessToken)
+	client, err := mautrix.NewClient(user.bridge.Config.Bridge.DoublePuppetServerURL, user.MXID, user.AccessToken)
 	if err != nil {
 		return nil, err
 	}

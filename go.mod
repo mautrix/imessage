@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/gabriel-vasile/mimetype v1.4.0
-	github.com/mattn/go-sqlite3 v1.14.11
+	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/strukturag/libheif v1.12.0
 	golang.org/x/crypto v0.0.0-20220213190939-1e6e3497d506
 	gopkg.in/yaml.v2 v2.4.0

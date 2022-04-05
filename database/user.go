@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -36,7 +36,7 @@ func (uq *UserQuery) New() *User {
 }
 
 func (uq *UserQuery) GetByMXID(userID id.UserID) *User {
-	row := uq.db.QueryRow(`SELECT mxid, management_room, access_token, next_batch FROM "user" WHERE mxid=$1`, userID)
+	row := uq.db.QueryRow(`SELECT mxid, access_token, next_batch FROM "user" WHERE mxid=$1`, userID)
 	if row == nil {
 		return nil
 	}
@@ -47,14 +47,13 @@ type User struct {
 	db  *Database
 	log log.Logger
 
-	MXID           id.UserID
-	ManagementRoom id.RoomID
-	AccessToken    string
-	NextBatch      string
+	MXID        id.UserID
+	AccessToken string
+	NextBatch   string
 }
 
 func (user *User) Scan(row Scannable) *User {
-	err := row.Scan(&user.MXID, &user.ManagementRoom, &user.AccessToken, &user.NextBatch)
+	err := row.Scan(&user.MXID, &user.AccessToken, &user.NextBatch)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
@@ -65,16 +64,16 @@ func (user *User) Scan(row Scannable) *User {
 }
 
 func (user *User) Insert() {
-	_, err := user.db.Exec(`INSERT INTO "user" (mxid, management_room, access_token, next_batch) VALUES ($1, $2, $3, $4)`,
-		user.MXID, user.ManagementRoom, user.AccessToken, user.NextBatch)
+	_, err := user.db.Exec(`INSERT INTO "user" (mxid, access_token, next_batch) VALUES ($1, $2, $3)`,
+		user.MXID, user.AccessToken, user.NextBatch)
 	if err != nil {
 		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
 	}
 }
 
 func (user *User) Update() {
-	_, err := user.db.Exec(`UPDATE "user" SET management_room=$1, access_token=$2, next_batch=$3 WHERE mxid=$4`,
-		user.ManagementRoom, user.AccessToken, user.NextBatch, user.MXID)
+	_, err := user.db.Exec(`UPDATE "user" SET access_token=$1, next_batch=$2 WHERE mxid=$3`,
+		user.AccessToken, user.NextBatch, user.MXID)
 	if err != nil {
 		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)
 	}

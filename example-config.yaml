@@ -82,10 +82,11 @@ bridge:
     sync_direct_chat_list: false
     # Shared secret for https://github.com/devture/matrix-synapse-shared-secret-auth
     #
-    # If set, custom puppets will be enabled automatically for local users
-    # instead of users having to find an access token and run `login-matrix`
-    # manually.
+    # If set, double puppeting will be enabled automatically instead of the user
+    # having to find an access token and run `login-matrix` manually.
     login_shared_secret: null
+    # Homeserver URL for the double puppet. If null, will use the URL set in homeserver -> address
+    double_puppet_server_url: null
     # Maximum age of chats to sync in days.
     chat_sync_max_age: 0.5
     # Maximum number of messages to backfill for new portal rooms.
@@ -139,6 +140,22 @@ bridge:
             # Require devices to be verified by the bridge?
             # Verification by the bridge is not yet implemented.
             require_verification: true
+
+    # Settings for relay mode
+    relay:
+        # Whether relay mode should be allowed.
+        enabled: false
+        # A list of user IDs and server names who are allowed to be relayed through this bridge. Use * to allow everyone.
+        whitelist: []
+        # The formats to use when relaying messages to iMessage.
+        message_formats:
+            m.text: "{{ .Sender.Displayname }}: {{ .Message }}"
+            m.notice: "{{ .Sender.Displayname }}: {{ .Message }}"
+            m.emote: "* {{ .Sender.Displayname }} {{ .Message }}"
+            m.file: "{{ .Sender.Displayname }} sent a file: {{ .FileName }}"
+            m.image: "{{ .Sender.Displayname }} sent an image: {{ .FileName }}"
+            m.audio: "{{ .Sender.Displayname }} sent an audio file: {{ .FileName }}"
+            m.video: "{{ .Sender.Displayname }} sent a video: {{ .FileName }}"
 
 # Logging config.
 logging:

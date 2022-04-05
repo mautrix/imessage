@@ -890,6 +890,20 @@ func (portal *Portal) shouldHandleMessage(evt *event.Event) error {
 	return errors.New(fmt.Sprintf("It's been over %d seconds since the message arrived at the homeserver. Will not handle the event.", portal.bridge.Config.Bridge.MaxHandleSeconds))
 }
 
+func (portal *Portal) addRelaybotFormat(sender id.UserID, content *event.MessageEventContent) bool {
+	member := portal.MainIntent().Member(portal.MXID, sender)
+	if member == nil {
+		member = &event.MemberEventContent{}
+	}
+
+	data, err := portal.bridge.Config.Bridge.Relay.FormatMessage(content, sender, *member)
+	if err != nil {
+		portal.log.Errorln("Failed to apply relaybot format:", err)
+	}
+	content.Body = data
+	return true
+}
+
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	msg, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
@@ -897,13 +911,11 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 	portal.log.Debugln("Starting handling Matrix message", evt.ID)
-	portal.addDedup(evt.ID, msg.Body)
 
 	var messageReplyID string
 	var messageReplyPart int
 	replyToID := msg.GetReplyTo()
 	if len(replyToID) > 0 {
-		msg.RemoveReplyFallback()
 		imsg := portal.bridge.DB.Message.GetByMXID(replyToID)
 		if imsg != nil {
 			messageReplyID = imsg.GUID
@@ -919,7 +931,16 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 
 	var err error
 	var resp *imessage.SendResponse
-	if msg.MsgType == event.MsgText {
+	if msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote {
+		if evt.Sender != portal.bridge.user.MXID {
+			portal.addRelaybotFormat(evt.Sender, msg)
+			if len(msg.Body) == 0 {
+				return
+			}
+		} else if msg.MsgType == event.MsgEmote {
+			msg.Body = "/me " + msg.Body
+		}
+		portal.addDedup(evt.ID, msg.Body)
 		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart)
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart)
@@ -974,6 +995,12 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		return nil, nil
 	}
 	var caption string
+	filename := msg.Body
+	portal.addDedup(evt.ID, filename)
+	if evt.Sender != portal.bridge.user.MXID {
+		portal.addRelaybotFormat(evt.Sender, msg)
+		caption = msg.Body
+	}
 
 	mediaViewerMinSize := portal.bridge.Config.Bridge.MediaViewerIMMinSize
 	if portal.Identifier.Service == "SMS" {
@@ -981,10 +1008,15 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 	}
 	if len(portal.bridge.Config.Bridge.MediaViewerURL) > 0 && mediaViewerMinSize > 0 && msg.Info != nil && msg.Info.Size >= mediaViewerMinSize {
 		// SMS chat and the file is too big, make a media viewer URL
-		caption, err = portal.bridge.createMediaViewerURL(&evt.Content)
+		var mediaURL string
+		mediaURL, err = portal.bridge.createMediaViewerURL(&evt.Content)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create media viewer URL: %w", err)
 		}
+		if len(caption) > 0 {
+			caption += ": "
+		}
+		caption += mediaURL
 
 		// Check if there's a thumbnail we can bridge.
 		// If not, just send the link. If yes, send the thumbnail and the link as a caption.
@@ -1005,7 +1037,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		}
 	}
 
-	return portal.handleMatrixMediaDirect(url, file, msg.Body, caption, evt, messageReplyID, messageReplyPart)
+	return portal.handleMatrixMediaDirect(url, file, filename, caption, evt, messageReplyID, messageReplyPart)
 }
 
 func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.EncryptedFileInfo, filename, caption string, evt *event.Event, messageReplyID string, messageReplyPart int) (resp *imessage.SendResponse, err error) {
