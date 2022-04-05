@@ -38,6 +38,7 @@ type macOSDatabase struct {
 	newReceiptsQuery     *sql.Stmt
 	attachmentsQuery     *sql.Stmt
 	chatQuery            *sql.Stmt
+	chatGUIDQuery        *sql.Stmt
 	groupActionQuery     *sql.Stmt
 	recentChatsQuery     *sql.Stmt
 	Messages             chan *imessage.Message
@@ -85,6 +86,11 @@ func init() {
 }
 
 func (mac *macOSDatabase) PreStartupSyncHook() error {
+	return nil
+}
+
+func (mac *macOSDatabase) PrepareDM(guid string) error {
+	// Nothing needed here
 	return nil
 }
 

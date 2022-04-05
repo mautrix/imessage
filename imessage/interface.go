@@ -49,6 +49,9 @@ type API interface {
 	GetChatInfo(chatID string) (*ChatInfo, error)
 	GetGroupAvatar(chatID string) (*Attachment, error)
 
+	ResolveIdentifier(identifier string) (string, error)
+	PrepareDM(guid string) error
+
 	SendMessage(chatID, text string, replyTo string, replyToPart int) (*SendResponse, error)
 	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*SendResponse, error)
 	SendFileCleanup(sendFileDir string)

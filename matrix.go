@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tidwall/gjson"
 	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
@@ -69,6 +70,7 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	bridge.EventProcessor.On(event.EphemeralEventTyping, handler.HandleTyping)
 	bridge.AS.SetWebsocketCommandHandler("ping", handler.handleWSPing)
 	bridge.AS.SetWebsocketCommandHandler("syncproxy_error", handler.handleWSSyncProxyError)
+	bridge.AS.SetWebsocketCommandHandler("start_dm", handler.handleWSStartDM)
 	return handler
 }
 
@@ -105,6 +107,42 @@ func (mx *MatrixHandler) handleWSSyncProxyError(cmd appservice.WebsocketCommand)
 	}
 
 	return true, &data
+}
+
+type StartDMResponse struct {
+	RoomID      id.RoomID `json:"room_id"`
+	GUID        string    `json:"guid"`
+	JustCreated bool      `json:"just_created"`
+}
+
+func (mx *MatrixHandler) handleWSStartDM(cmd appservice.WebsocketCommand) (bool, interface{}) {
+	if identifier := gjson.GetBytes(cmd.Data, "identifier").String(); len(identifier) == 0 {
+		return false, fmt.Errorf("missing or empty identifier")
+	} else if resp, err := mx.StartChat(identifier); err != nil {
+		return false, err
+	} else {
+		return true, resp
+	}
+}
+
+func (mx *MatrixHandler) StartChat(identifier string) (*StartDMResponse, error) {
+	var resp StartDMResponse
+	var err error
+
+	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(identifier); err != nil {
+		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
+	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 {
+		resp.RoomID = portal.MXID
+		return &resp, nil
+	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
+		return nil, fmt.Errorf("failed to prepare DM: %w", err)
+	} else if err = portal.CreateMatrixRoom(nil); err != nil {
+		return nil, fmt.Errorf("failed to create Matrix room: %w", err)
+	} else {
+		resp.JustCreated = true
+		resp.RoomID = portal.MXID
+		return &resp, nil
+	}
 }
 
 func (mx *MatrixHandler) HandleSyncProxyError(syncErr *mautrix.RespError, startErr error) {

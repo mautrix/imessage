@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -19,6 +19,7 @@ package mac
 import (
 	"bytes"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -84,6 +85,15 @@ ORDER BY message.date DESC LIMIT 1
 
 const chatQuery = `
 SELECT chat_identifier, service_name, COALESCE(display_name, '') FROM chat WHERE guid=$1
+`
+
+const chatGUIDQuery = `
+SELECT chat.guid FROM chat
+JOIN chat_message_join ON chat_message_join.chat_id = chat.ROWID
+JOIN message           ON chat_message_join.message_id = message.ROWID
+WHERE chat.guid LIKE $1
+ORDER BY message.date DESC
+LIMIT 1
 `
 
 const recentChatsQuery = `
@@ -175,6 +185,10 @@ func (mac *macOSDatabase) prepareMessages() error {
 	mac.chatQuery, err = mac.chatDB.Prepare(chatQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare chat query: %w", err)
+	}
+	mac.chatGUIDQuery, err = mac.chatDB.Prepare(chatGUIDQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare chat GUID query: %w", err)
 	}
 	mac.recentChatsQuery, err = mac.chatDB.Prepare(recentChatsQuery)
 	if err != nil {
@@ -400,6 +414,14 @@ func (mac *macOSDatabase) GetChatInfo(chatID string) (*imessage.ChatInfo, error)
 	}
 	info.Members, err = mac.GetGroupMembers(chatID)
 	return &info, err
+}
+
+func (mac *macOSDatabase) ResolveIdentifier(identifier string) (guid string, err error) {
+	err = mac.chatGUIDQuery.QueryRow("%;-;" + identifier).Scan(&guid)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("user not found")
+	}
+	return
 }
 
 func (mac *macOSDatabase) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {

@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -444,6 +444,27 @@ func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool) erro
 
 func (ios *iOSConnector) PreStartupSyncHook() error {
 	return ios.IPC.Request(context.Background(), ReqPreStartupSync, nil, nil)
+}
+
+func (ios *iOSConnector) ResolveIdentifier(identifier string) (string, error) {
+	if ios.isAndroid {
+		return imessage.Identifier{
+			LocalID: identifier,
+			Service: "SMS",
+			IsGroup: false,
+		}.String(), nil
+	}
+	req := ResolveIdentifierRequest{Identifier: identifier}
+	var resp ResolveIdentifierResponse
+	err := ios.IPC.Request(context.Background(), ReqResolveIdentifier, &req, &resp)
+	return resp.GUID, err
+}
+
+func (ios *iOSConnector) PrepareDM(guid string) error {
+	if ios.isAndroid {
+		return nil
+	}
+	return ios.IPC.Request(context.Background(), ReqPrepareDM, &PrepareDMRequest{GUID: guid}, nil)
 }
 
 func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {

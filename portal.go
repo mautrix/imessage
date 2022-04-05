@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -540,9 +540,8 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 	if chatInfo == nil {
 		portal.log.Debugln("Getting chat info to create Matrix room")
 		chatInfo, err = portal.bridge.IM.GetChatInfo(portal.GUID)
-		if err != nil {
-			// If there's no chat info, the chat probably doesn't exist and we shouldn't auto-create a Matrix room for it.
-			// TODO if we want a `pm` command or something, this check won't work
+		if err != nil && !portal.IsPrivateChat() {
+			// If there's no chat info for a group, it probably doesn't exist and we shouldn't auto-create a Matrix room for it.
 			return fmt.Errorf("failed to get chat info: %w", err)
 		}
 	}

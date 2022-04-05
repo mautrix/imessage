@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -34,6 +34,8 @@ const (
 	ReqGetMessagesAfter  ipc.Command = "get_messages_after"
 	ReqGetRecentMessages ipc.Command = "get_recent_messages"
 	ReqPreStartupSync    ipc.Command = "pre_startup_sync"
+	ReqResolveIdentifier ipc.Command = "resolve_identifier"
+	ReqPrepareDM         ipc.Command = "prepare_dm"
 )
 
 type SendMessageRequest struct {
@@ -95,4 +97,16 @@ type PingServerResponse struct {
 	Start  float64 `json:"start_ts"`
 	Server float64 `json:"server_ts"`
 	End    float64 `json:"end_ts"`
+}
+
+type ResolveIdentifierRequest struct {
+	Identifier string `json:"identifier"`
+}
+
+type ResolveIdentifierResponse struct {
+	GUID string `json:"guid"`
+}
+
+type PrepareDMRequest struct {
+	GUID string `json:"guid"`
 }
