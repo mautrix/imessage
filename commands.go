@@ -17,19 +17,12 @@
 package main
 
 import (
-	// "context"
-	// "encoding/json"
-	// "errors"
 	"fmt"
-	// "html"
-	// "math"
-	// "sort"
 	"strconv"
 	"strings"
 
 	"maunium.net/go/maulogger/v2"
 
-	// "maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/format"
