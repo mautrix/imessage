@@ -111,7 +111,7 @@ bridge:
     # compatibility, but adds generation loss (reduces quality).
     convert_heif: true
 
-    # The prefix for commands. Only required in non-management rooms.
+    # The prefix for commands.
     command_prefix: "!im"
 
     # Whether or not created rooms should have federation enabled.

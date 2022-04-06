@@ -18,7 +18,6 @@ package ios
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"math"
 	"os"
@@ -351,14 +350,13 @@ func (ios *iOSConnector) ContactChan() <-chan *imessage.Contact {
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
 	var resp imessage.Contact
 	err := ios.IPC.Request(context.Background(), ReqGetContact, &GetContactRequest{UserGUID: identifier}, &resp)
-	if len(resp.AvatarB64) > 0 {
-		var b64err error
-		resp.Avatar, b64err = base64.StdEncoding.DecodeString(resp.AvatarB64)
-		if b64err != nil {
-			ios.log.Warnfln("Failed to decode avatar of %s: %v", identifier, b64err)
-		}
-	}
 	return &resp, err
+}
+
+func (ios *iOSConnector) GetContactList() ([]*imessage.Contact, error) {
+	var resp GetContactListResponse
+	err := ios.IPC.Request(context.Background(), ReqGetContactList, nil, &resp)
+	return resp.Contacts, err
 }
 
 func (ios *iOSConnector) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {

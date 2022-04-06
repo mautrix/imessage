@@ -70,7 +70,7 @@ func (cs *ContactStore) RequestAccess() error {
 
 func gostring(s *C.NSString) string { return C.GoString(C.nsstring2cstring(s)) }
 
-func cncontactToContact(ns *C.CNContact) *imessage.Contact {
+func cncontactToContact(ns *C.CNContact, includeAvatar bool) *imessage.Contact {
 	if ns == nil {
 		return nil
 	}
@@ -93,15 +93,17 @@ func cncontactToContact(ns *C.CNContact) *imessage.Contact {
 		contact.Phones[i] = gostring(C.meowGetPhoneArrayItem(phones, C.ulong(i)))
 	}
 
-	if length := int(C.meowGetImageDataLengthFromContact(ns)); length > 0 {
-		avatarData := make([]byte, 0)
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&avatarData))
-		header.Len = length
-		header.Cap = length
-		header.Data = uintptr(C.meowGetImageDataFromContact(ns))
-		// The avatar data pointer comes from Objective-C, so we copy the data into a Go-managed array here.
-		contact.Avatar = make([]byte, len(avatarData))
-		copy(contact.Avatar, avatarData)
+	if includeAvatar {
+		if length := int(C.meowGetImageDataLengthFromContact(ns)); length > 0 {
+			avatarData := make([]byte, 0)
+			header := (*reflect.SliceHeader)(unsafe.Pointer(&avatarData))
+			header.Len = length
+			header.Cap = length
+			header.Data = uintptr(C.meowGetImageDataFromContact(ns))
+			// The avatar data pointer comes from Objective-C, so we copy the data into a Go-managed array here.
+			contact.Avatar = make([]byte, len(avatarData))
+			copy(contact.Avatar, avatarData)
+		}
 	}
 
 	return &contact
@@ -126,11 +128,31 @@ func (mac *macOSDatabase) GetContactInfo(identifier string) (*imessage.Contact, 
 	} else {
 		cnContact = C.meowGetContactByEmail(mac.contactStore.int, C.CString(identifier))
 	}
-	goContact := cncontactToContact(cnContact)
+	goContact := cncontactToContact(cnContact, true)
 
 	// Release all memory Obj-C stuff was using and unlock the OS thread.
 	C.meowReleasePool(pool)
 	runtime.UnlockOSThread()
 
 	return goContact, nil
+}
+
+func (mac *macOSDatabase) GetContactList() ([]*imessage.Contact, error) {
+	if !mac.contactStore.HasAccess {
+		return []*imessage.Contact{}, nil
+	}
+
+	runtime.LockOSThread()
+	pool := C.meowMakePool()
+
+	cnContacts := C.meowGetContactList(mac.contactStore.int)
+	contacts := make([]*imessage.Contact, C.meowGetArrayLength(cnContacts))
+	for i := range contacts {
+		contacts[i] = cncontactToContact(C.meowGetContactArrayItem(cnContacts, C.ulong(i)), false)
+	}
+
+	C.meowReleasePool(pool)
+	runtime.UnlockOSThread()
+
+	return contacts, nil
 }

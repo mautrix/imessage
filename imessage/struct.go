@@ -110,14 +110,15 @@ const (
 )
 
 type Contact struct {
-	FirstName string `json:"first_name,omitempty"`
-	LastName  string `json:"last_name,omitempty"`
-	Nickname  string `json:"nickname,omitempty"`
-	Avatar    []byte
-	AvatarB64 string   `json:"avatar,omitempty"`
+	FirstName string   `json:"first_name,omitempty"`
+	LastName  string   `json:"last_name,omitempty"`
+	Nickname  string   `json:"nickname,omitempty"`
+	Avatar    []byte   `json:"avatar,omitempty"`
 	Phones    []string `json:"phones,omitempty"`
 	Emails    []string `json:"emails,omitempty"`
-	UserGUID  string   `json:"user_guid"`
+	UserGUID  string   `json:"user_guid,omitempty"`
+
+	PrimaryIdentifier string `json:"primary_identifier,omitempty"`
 }
 
 func (contact *Contact) Name() string {

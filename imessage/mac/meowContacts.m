@@ -43,6 +43,19 @@ void meowRequestAuth(CNContactStore* store) {
 	}];
 }
 
+NSArray<CNContact*>* meowGetContactList(CNContactStore* store) {
+	NSArray* keysToFetch = @[
+		CNContactGivenNameKey, CNContactFamilyNameKey, CNContactNicknameKey,
+		CNContactEmailAddressesKey, CNContactPhoneNumbersKey,
+	];
+	NSError* error;
+	NSString *containerId = store.defaultContainerIdentifier;
+	NSPredicate *predicate = [CNContact predicateForContactsInContainerWithIdentifier:containerId];
+	NSArray* contacts = [store unifiedContactsMatchingPredicate:predicate keysToFetch:keysToFetch error:&error];
+	return contacts;
+}
+CNContact* meowGetContactArrayItem(NSArray<CNContact*>* arr, unsigned long i) { return [arr objectAtIndex:i]; }
+
 CNContact* meowGetContactByPredicate(CNContactStore* store, NSPredicate* predicate) {
 	NSArray* keysToFetch = @[
 		CNContactGivenNameKey, CNContactFamilyNameKey, CNContactNicknameKey,

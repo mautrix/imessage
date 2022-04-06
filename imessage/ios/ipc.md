@@ -141,6 +141,11 @@ Another error response:
       enough that it doesn't need to go through the disk.
     * `phones` (list of str)
     * `emails` (list of str)
+* Get full contact list (request type `get_contact_list`)
+  * Returns an object with a `contacts` key that contains a list of contacts in the same format as `get_contact`
+  * There should be an additional `primary_identifier` field if the primary identifier of the contact is known.
+    * When the user starts a chat with the contact, that identifier will be passed to `resolve_identifier`.
+  * Avatars can be omitted in this case.
 * Get messages after a specific timestamp (request type `get_messages_after`)
   * Request includes `chat_guid` and `timestamp`
   * Returns list of messages (see incoming messages format below)

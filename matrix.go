@@ -71,6 +71,8 @@ func NewMatrixHandler(bridge *Bridge) *MatrixHandler {
 	bridge.AS.SetWebsocketCommandHandler("ping", handler.handleWSPing)
 	bridge.AS.SetWebsocketCommandHandler("syncproxy_error", handler.handleWSSyncProxyError)
 	bridge.AS.SetWebsocketCommandHandler("start_dm", handler.handleWSStartDM)
+	bridge.AS.SetWebsocketCommandHandler("resolve_identifier", handler.handleWSStartDM)
+	bridge.AS.SetWebsocketCommandHandler("list_contacts", handler.handleWSGetContacts)
 	return handler
 }
 
@@ -110,7 +112,7 @@ func (mx *MatrixHandler) handleWSSyncProxyError(cmd appservice.WebsocketCommand)
 }
 
 type StartDMResponse struct {
-	RoomID      id.RoomID `json:"room_id"`
+	RoomID      id.RoomID `json:"room_id,omitempty"`
 	GUID        string    `json:"guid"`
 	JustCreated bool      `json:"just_created"`
 }
@@ -118,20 +120,28 @@ type StartDMResponse struct {
 func (mx *MatrixHandler) handleWSStartDM(cmd appservice.WebsocketCommand) (bool, interface{}) {
 	if identifier := gjson.GetBytes(cmd.Data, "identifier").String(); len(identifier) == 0 {
 		return false, fmt.Errorf("missing or empty identifier")
-	} else if resp, err := mx.StartChat(identifier); err != nil {
+	} else if resp, err := mx.StartChat(identifier, cmd.Command == "start_dm"); err != nil {
 		return false, err
 	} else {
 		return true, resp
 	}
 }
 
-func (mx *MatrixHandler) StartChat(identifier string) (*StartDMResponse, error) {
+func (mx *MatrixHandler) handleWSGetContacts(_ appservice.WebsocketCommand) (bool, interface{}) {
+	contacts, err := mx.bridge.IM.GetContactList()
+	if err != nil {
+		return false, err
+	}
+	return true, contacts
+}
+
+func (mx *MatrixHandler) StartChat(identifier string, actuallyStart bool) (*StartDMResponse, error) {
 	var resp StartDMResponse
 	var err error
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(identifier); err != nil {
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
-	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 {
+	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !actuallyStart {
 		resp.RoomID = portal.MXID
 		return &resp, nil
 	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {

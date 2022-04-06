@@ -31,6 +31,7 @@ const (
 	ReqGetChat           ipc.Command = "get_chat"
 	ReqGetChatAvatar     ipc.Command = "get_chat_avatar"
 	ReqGetContact        ipc.Command = "get_contact"
+	ReqGetContactList    ipc.Command = "get_contact_list"
 	ReqGetMessagesAfter  ipc.Command = "get_messages_after"
 	ReqGetRecentMessages ipc.Command = "get_recent_messages"
 	ReqPreStartupSync    ipc.Command = "pre_startup_sync"
@@ -81,6 +82,10 @@ type GetChatsRequest struct {
 
 type GetContactRequest struct {
 	UserGUID string `json:"user_guid"`
+}
+
+type GetContactListResponse struct {
+	Contacts []*imessage.Contact `json:"contacts"`
 }
 
 type GetRecentMessagesRequest struct {

@@ -22,6 +22,8 @@ CNAuthorizationStatus meowCheckAuth();
 CNContactStore* meowCreateStore();
 void meowRequestAuth(CNContactStore* store);
 
+NSArray<CNContact*>* meowGetContactList(CNContactStore* store);
+CNContact* meowGetContactArrayItem(NSArray<CNContact*>* arr, unsigned long i);
 CNContact* meowGetContactByEmail(CNContactStore* store, char* emailAddressC);
 CNContact* meowGetContactByPhone(CNContactStore* store, char* phoneNumberC);
 
