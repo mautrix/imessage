@@ -182,7 +182,6 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
-	spaceRoomsLock   sync.Mutex
 }
 
 func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
@@ -660,6 +659,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	}
 	if portal.bridge.user.DoublePuppetIntent != nil {
+
 		portal.log.Debugln("Ensuring double puppet for", portal.bridge.user.MXID, "is joined to portal")
 		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
 	}
@@ -676,9 +676,9 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 }
 
 func (portal *Portal) addToSpace(user *User) {
-	portal.spaceRoomsLock.Lock()
+	portal.bridge.spaceRoomsLock.Lock()
 	portal.log.Info("Starting")
-	defer portal.spaceRoomsLock.Unlock()
+	defer portal.bridge.spaceRoomsLock.Unlock()
 	spaceID := user.GetSpaceRoom()
 	if len(spaceID) == 0 || portal.IsInSpace(portal.GUID) {
 		return
