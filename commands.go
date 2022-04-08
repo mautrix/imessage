@@ -260,7 +260,7 @@ const cmdHelpHelp = `help - Prints this help page.`
 
 // CommandHelp handles help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
-	cmdPrefix := handler.bridge.Config.Bridge.CommandPrefix
+	cmdPrefix := handler.bridge.Config.Bridge.CommandPrefix + " "
 	ce.Reply("* " + strings.Join([]string{
 		cmdPrefix + cmdHelpHelp,
 		cmdPrefix + cmdVersionHelp,
