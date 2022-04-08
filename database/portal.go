@@ -196,9 +196,9 @@ func (portal *Portal) IsInSpace(guid string) bool {
 		return cached
 	}
 	var inSpace bool
-	err := portal.db.QueryRow("SELECT in_space FROM user_portal WHERE guid=$1", guid).Scan(&inSpace)
+	err := portal.db.QueryRow("SELECT in_space FROM portal WHERE guid=$1", guid).Scan(&inSpace)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		portal.log.Warnfln("Failed to scan in space status from user portal table: %v", err)
+		portal.log.Warnfln("Failed to scan in space status from portal table: %v", err)
 	}
 	portal.inSpaceCache[guid] = inSpace
 	return inSpace
