@@ -677,7 +677,6 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 
 func (portal *Portal) addToSpace(user *User) {
 	portal.bridge.spaceRoomsLock.Lock()
-	portal.log.Info("Starting")
 	defer portal.bridge.spaceRoomsLock.Unlock()
 	spaceID := user.GetSpaceRoom()
 	if len(spaceID) == 0 || portal.IsInSpace(portal.GUID) {
@@ -692,7 +691,6 @@ func (portal *Portal) addToSpace(user *User) {
 		portal.log.Debugfln("Added room to %s's personal filtering space (%s)", user.MXID, spaceID)
 		portal.MarkInSpace(portal.GUID)
 	}
-	portal.log.Info("ENDING")
 }
 
 func (portal *Portal) IsPrivateChat() bool {
