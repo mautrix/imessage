@@ -139,7 +139,6 @@ type Bridge struct {
 	stopPinger    chan struct{}
 	latestState   *imessage.BridgeStatus
 	pushKey       *imessage.PushKeyRequest
-	spaceRooms    map[id.RoomID]*User
 
 	shortCircuitReconnectBackoff chan struct{}
 	websocketStarted             chan struct{}
@@ -168,7 +167,6 @@ func NewBridge() *Bridge {
 		portalsByGUID: make(map[string]*Portal),
 		puppets:       make(map[string]*Puppet),
 		stop:          make(chan struct{}, 1),
-		spaceRooms:    make(map[id.RoomID]*User),
 
 		shortCircuitReconnectBackoff: make(chan struct{}),
 		websocketStarted:             make(chan struct{}),

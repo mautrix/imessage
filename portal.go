@@ -182,6 +182,7 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
+	spaceRoomsLock   sync.Mutex
 }
 
 func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
@@ -675,6 +676,8 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 }
 
 func (portal *Portal) addToSpace(user *User) {
+	portal.spaceRoomsLock.Lock()
+	defer portal.spaceRoomsLock.Unlock()
 	spaceID := user.GetSpaceRoom()
 	if len(spaceID) == 0 || portal.IsInSpace(portal.GUID) {
 		return
