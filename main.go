@@ -646,6 +646,8 @@ func (bridge *Bridge) UpdateBotProfile() {
 
 	var err error
 	var mxc id.ContentURI
+	var mxc2 id.ContentURI
+	var err2 error
 	if botConfig.Avatar == "remove" {
 		err = bridge.Bot.SetAvatarURL(mxc)
 	} else if len(botConfig.Avatar) > 0 {
@@ -653,13 +655,17 @@ func (bridge *Bridge) UpdateBotProfile() {
 		if err == nil {
 			err = bridge.Bot.SetAvatarURL(mxc)
 		}
-		var mxc2 id.ContentURI
-		mxc2, err = id.ParseContentURI(bridge.Config.Bridge.PersonalFilteringSpaces.Image)
-		bridge.Config.Bridge.PersonalFilteringSpaces.ParsedImage = mxc2
 
+	}
+	mxc2, err2 = id.ParseContentURI(bridge.Config.Bridge.PersonalFilteringSpaces.Image)
+	if err2 == nil {
+		bridge.Config.Bridge.PersonalFilteringSpaces.ParsedImage = mxc2
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot avatar:", err)
+	}
+	if err2 != nil {
+		bridge.Log.Warnln("Failed to update space's image:", err)
 	}
 
 	if botConfig.Displayname == "remove" {
