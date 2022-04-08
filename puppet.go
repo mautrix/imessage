@@ -140,6 +140,8 @@ type Puppet struct {
 	bridge *Bridge
 	log    log.Logger
 
+	customIntent *appservice.IntentAPI
+
 	typingIn id.RoomID
 	typingAt int64
 
@@ -250,6 +252,10 @@ func (puppet *Puppet) Sync() {
 	}
 
 	puppet.SyncWithContact(contact)
+}
+
+func (puppet *Puppet) CustomIntent() *appservice.IntentAPI {
+	return puppet.customIntent
 }
 
 func (puppet *Puppet) SyncWithContact(contact *imessage.Contact) {

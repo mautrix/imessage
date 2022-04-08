@@ -266,6 +266,8 @@ func (portal *Portal) Sync(backfill bool) {
 
 	portal.ensureUserInvited(portal.bridge.user)
 
+	go portal.addToSpace(portal.bridge.user)
+
 	if !portal.IsPrivateChat() {
 		chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
 		if err != nil {
@@ -647,6 +649,8 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 
 	portal.ensureUserInvited(portal.bridge.user)
 
+	go portal.addToSpace(portal.bridge.user)
+
 	if !portal.IsPrivateChat() {
 		portal.log.Debugln("New portal is group chat, syncing participants")
 		portal.SyncParticipants(chatInfo)
@@ -668,6 +672,22 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 	}()
 	portal.log.Debugln("Finished creating Matrix room")
 	return nil
+}
+
+func (portal *Portal) addToSpace(user *User) {
+	spaceID := user.GetSpaceRoom()
+	if len(spaceID) == 0 || portal.IsInSpace(portal.GUID) {
+		return
+	}
+	_, err := portal.bridge.Bot.SendStateEvent(spaceID, event.StateSpaceChild, portal.MXID.String(), &event.SpaceChildEventContent{
+		Via: []string{portal.bridge.Config.Homeserver.Domain},
+	})
+	if err != nil {
+		portal.log.Errorfln("Failed to add room to %s's personal filtering space (%s): %v", user.MXID, spaceID, err)
+	} else {
+		portal.log.Debugfln("Added room to %s's personal filtering space (%s)", user.MXID, spaceID)
+		portal.MarkInSpace(portal.GUID)
+	}
 }
 
 func (portal *Portal) IsPrivateChat() bool {

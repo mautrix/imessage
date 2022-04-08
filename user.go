@@ -17,7 +17,9 @@
 package main
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 	"sync"
 
 	log "maunium.net/go/maulogger/v2"
@@ -39,6 +41,8 @@ type User struct {
 	DoublePuppetIntent *appservice.IntentAPI
 
 	mgmtCreateLock sync.Mutex
+
+	spaceMembershipChecked bool
 
 	customTypingIn map[id.RoomID]bool
 }
@@ -116,4 +120,85 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	if err != nil {
 		user.log.Warnln("Failed to update m.direct list:", err)
 	}
+}
+
+func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
+	inviteContent := event.Content{
+		Parsed: &event.MemberEventContent{
+			Membership: event.MembershipInvite,
+			IsDirect:   isDirect,
+		},
+		Raw: map[string]interface{}{},
+	}
+	customPuppet := user.bridge.GetPuppetByMXID(user.MXID)
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
+		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+	}
+	_, err := intent.SendStateEvent(roomID, event.StateMember, user.MXID.String(), &inviteContent)
+	var httpErr mautrix.HTTPError
+	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
+		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)
+		ok = true
+		return
+	} else if err != nil {
+		user.log.Warnfln("Failed to invite user to %s: %v", roomID, err)
+	} else {
+		ok = true
+	}
+
+	if customPuppet != nil && customPuppet.CustomIntent() != nil {
+		err = customPuppet.CustomIntent().EnsureJoined(roomID, appservice.EnsureJoinedParams{IgnoreCache: true})
+		if err != nil {
+			user.log.Warnfln("Failed to auto-join %s: %v", roomID, err)
+			ok = false
+		} else {
+			ok = true
+		}
+	}
+	return
+}
+
+func (user *User) GetSpaceRoom() id.RoomID {
+	if !user.bridge.Config.Bridge.PersonalFilteringSpaces.Enable {
+		return ""
+	}
+
+	if len(user.SpaceRoom) == 0 {
+
+		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+			Visibility: "private",
+			Name:       user.bridge.Config.Bridge.PersonalFilteringSpaces.Name,
+			Topic:      "Your " + user.bridge.Config.Bridge.PersonalFilteringSpaces.Name + " bridged chats",
+			InitialState: []*event.Event{{
+				Type: event.StateRoomAvatar,
+				Content: event.Content{
+					Parsed: &event.RoomAvatarEventContent{
+						URL: user.bridge.Config.Bridge.PersonalFilteringSpaces.ParsedImage,
+					},
+				},
+			}},
+			CreationContent: map[string]interface{}{
+				"type": event.RoomTypeSpace,
+			},
+			PowerLevelOverride: &event.PowerLevelsEventContent{
+				Users: map[id.UserID]int{
+					user.bridge.Bot.UserID: 9001,
+					user.MXID:              50,
+				},
+			},
+		})
+
+		if err != nil {
+			user.log.Errorln("Failed to auto-create space room:", err)
+		} else {
+			user.SpaceRoom = resp.RoomID
+			user.Update()
+			user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+		}
+	} else if !user.spaceMembershipChecked && !user.bridge.StateStore.IsInRoom(user.SpaceRoom, user.MXID) {
+		user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+	}
+	user.spaceMembershipChecked = true
+
+	return user.SpaceRoom
 }

@@ -36,7 +36,7 @@ func (uq *UserQuery) New() *User {
 }
 
 func (uq *UserQuery) GetByMXID(userID id.UserID) *User {
-	row := uq.db.QueryRow(`SELECT mxid, access_token, next_batch FROM "user" WHERE mxid=$1`, userID)
+	row := uq.db.QueryRow(`SELECT mxid, access_token, next_batch, space_room FROM "user" WHERE mxid=$1`, userID)
 	if row == nil {
 		return nil
 	}
@@ -50,10 +50,11 @@ type User struct {
 	MXID        id.UserID
 	AccessToken string
 	NextBatch   string
+	SpaceRoom   id.RoomID
 }
 
 func (user *User) Scan(row Scannable) *User {
-	err := row.Scan(&user.MXID, &user.AccessToken, &user.NextBatch)
+	err := row.Scan(&user.MXID, &user.AccessToken, &user.NextBatch, &user.SpaceRoom)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
@@ -64,16 +65,16 @@ func (user *User) Scan(row Scannable) *User {
 }
 
 func (user *User) Insert() {
-	_, err := user.db.Exec(`INSERT INTO "user" (mxid, access_token, next_batch) VALUES ($1, $2, $3)`,
-		user.MXID, user.AccessToken, user.NextBatch)
+	_, err := user.db.Exec(`INSERT INTO "user" (mxid, access_token, next_batch, space_room) VALUES ($1, $2, $3, $4)`,
+		user.MXID, user.AccessToken, user.NextBatch, user.SpaceRoom)
 	if err != nil {
 		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
 	}
 }
 
 func (user *User) Update() {
-	_, err := user.db.Exec(`UPDATE "user" SET access_token=$1, next_batch=$2 WHERE mxid=$3`,
-		user.AccessToken, user.NextBatch, user.MXID)
+	_, err := user.db.Exec(`UPDATE "user" SET access_token=$1, next_batch=$2, space_room=$3 WHERE mxid=$4`,
+		user.AccessToken, user.NextBatch, user.SpaceRoom, user.MXID)
 	if err != nil {
 		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)
 	}

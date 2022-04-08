@@ -55,6 +55,14 @@ type BridgeConfig struct {
 
 	FederateRooms bool `yaml:"federate_rooms"`
 
+	PersonalFilteringSpaces struct {
+		Enable bool   `yaml:"enable"`
+		Name   string `yaml:"name"`
+		Image  string `yaml:"image"`
+
+		ParsedImage id.ContentURI `yaml:"-"`
+	} `yaml:"personal_filtering_spaces"`
+
 	CommandPrefix string `yaml:"command_prefix"`
 
 	Encryption struct {
@@ -88,6 +96,10 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.FederateRooms = true
 	bc.MediaViewerSMSMinSize = 400 * 1024
 	bc.MediaViewerIMMinSize = 50 * 1024 * 1024
+	bc.PersonalFilteringSpaces.Enable = false
+	bc.PersonalFilteringSpaces.Name = "IMessage"
+	bc.PersonalFilteringSpaces.Image = ""
+
 }
 
 type umBridgeConfig BridgeConfig
