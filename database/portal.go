@@ -206,9 +206,9 @@ func (portal *Portal) IsInSpace(guid string) bool {
 
 func (portal *Portal) MarkInSpace(guid string) {
 	_, err := portal.db.Exec(`
-		INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-			ON CONFLICT (guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts) DO UPDATE SET in_space=true
-		`, portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS)
+		INSERT INTO portal (guid, mxid, name, in_space) VALUES ($1, $2, $3, true)
+			ON CONFLICT (guid) DO UPDATE SET in_space=true
+		`, portal.GUID, portal.mxidPtr(), portal.Name)
 	if err != nil {
 		portal.log.Warnfln("Failed to update in space status: %v", err)
 	} else {
