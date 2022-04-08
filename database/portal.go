@@ -117,6 +117,8 @@ type Portal struct {
 	Encrypted  bool
 
 	BackfillStartTS int64
+
+	in_space bool
 }
 
 func (portal *Portal) avatarHashSlice() []byte {
@@ -129,7 +131,7 @@ func (portal *Portal) avatarHashSlice() []byte {
 func (portal *Portal) Scan(row Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS)
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.in_space)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
