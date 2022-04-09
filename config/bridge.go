@@ -179,7 +179,7 @@ func (rc *RelayConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
-	if !rc.Enabled {
+	if !rc.Enabled || rc.IsBlacklisted(userID) {
 		return false
 	} else if rc.isAllWhitelisted {
 		return true
@@ -192,7 +192,7 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 	}
 }
 
-func (rc *RelayConfig) IsBlacklist(userID id.UserID) bool {
+func (rc *RelayConfig) IsBlacklisted(userID id.UserID) bool {
 	for _, item := range rc.Blacklist {
 		match, _ := regexp.MatchString(item, userID.String())
 		if match {
