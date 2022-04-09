@@ -148,7 +148,8 @@ bridge:
         # A list of user IDs and server names who are allowed to be relayed through this bridge. Use * to allow everyone.
         whitelist: []
         # A list of user IDs and server names who are not allowed to be relayed through this bridge. 
-        # Accepts regex for example to block all users from 
+        # Follows the schema above but cannot use * to block everyone (if that what you want just disable relay)
+        # Blacklist will be checked before whitelist
         blacklist: []
         # The formats to use when relaying messages to iMessage.
         message_formats:
