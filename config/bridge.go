@@ -23,6 +23,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/prometheus/common/log"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -182,6 +183,7 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 	if !rc.Enabled || rc.IsBlacklisted(userID) {
 		return false
 	} else if rc.isAllWhitelisted {
+
 		return true
 	} else if _, ok := rc.whitelistMap[string(userID)]; ok {
 		return true
@@ -194,6 +196,7 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 
 func (rc *RelayConfig) IsBlacklisted(userID id.UserID) bool {
 	for _, item := range rc.Blacklist {
+		log.Infoln("Hello: " + item)
 		match, _ := regexp.MatchString(item, userID.String())
 		if match {
 			return true
