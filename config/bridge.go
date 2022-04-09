@@ -18,12 +18,12 @@ package config
 
 import (
 	"bytes"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
 
-	"github.com/prometheus/common/log"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -196,7 +196,7 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 
 func (rc *RelayConfig) IsBlacklisted(userID id.UserID) bool {
 	for _, item := range rc.Blacklist {
-		log.Infoln("Hello: " + item)
+		log.Print("Test: " + item)
 		match, _ := regexp.MatchString(item, userID.String())
 		if match {
 			return true
