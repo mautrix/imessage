@@ -19,7 +19,6 @@ package config
 import (
 	"bytes"
 	"log"
-	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -168,6 +167,11 @@ func (rc *RelayConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	rc.blacklistMap = make(map[string]struct{}, len(rc.Blacklist))
+	for _, item := range rc.Blacklist {
+		rc.blacklistMap[item] = struct{}{}
+	}
+
 	rc.whitelistMap = make(map[string]struct{}, len(rc.Whitelist))
 	for _, item := range rc.Whitelist {
 		rc.whitelistMap[item] = struct{}{}
@@ -195,15 +199,17 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 
 func (rc *RelayConfig) IsBlacklisted(userID id.UserID) bool {
 	log.Print("Im testing: ")
-	for _, item := range rc.Blacklist {
-		log.Print("Test: " + item)
-		match, _ := regexp.MatchString(item, userID.String())
-		if match {
-			return true
-		}
+	if _, ok := rc.blacklistMap[string(userID)]; ok {
+		log.Println("Return of user in blacklist: true")
+		return true
+	} else {
+		log.Println("Return of user in blacklist: false")
+		_, homeserver, _ := userID.Parse()
+		_, ok = rc.blacklistMap[homeserver]
+		log.Println("Return of homeserver in blacklist: " + homeserver)
+		log.Println("Return of homeserver in blacklist boolean: " + strconv.FormatBool(ok))
+		return len(homeserver) > 0 && ok
 	}
-	return false
-
 }
 
 type Sender struct {
