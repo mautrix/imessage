@@ -183,7 +183,6 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 	if !rc.Enabled || rc.IsBlacklisted(userID) {
 		return false
 	} else if rc.isAllWhitelisted {
-
 		return true
 	} else if _, ok := rc.whitelistMap[string(userID)]; ok {
 		return true
@@ -195,6 +194,7 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 }
 
 func (rc *RelayConfig) IsBlacklisted(userID id.UserID) bool {
+	log.Print("Im testing: ")
 	for _, item := range rc.Blacklist {
 		log.Print("Test: " + item)
 		match, _ := regexp.MatchString(item, userID.String())
