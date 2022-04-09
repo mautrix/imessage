@@ -170,6 +170,7 @@ func (rc *RelayConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	rc.blacklistMap = make(map[string]struct{}, len(rc.Blacklist))
 	for _, item := range rc.Blacklist {
 		rc.blacklistMap[item] = struct{}{}
+		log.Println("Blacklist item: " + item)
 	}
 
 	rc.whitelistMap = make(map[string]struct{}, len(rc.Whitelist))
@@ -198,7 +199,7 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 }
 
 func (rc *RelayConfig) IsBlacklisted(userID id.UserID) bool {
-	log.Print("Im testing: ")
+	log.Print("Im testing: " + string(userID))
 	if _, ok := rc.blacklistMap[string(userID)]; ok {
 		log.Println("Return of user in blacklist: true")
 		return true
