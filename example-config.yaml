@@ -147,6 +147,9 @@ bridge:
         enabled: false
         # A list of user IDs and server names who are allowed to be relayed through this bridge. Use * to allow everyone.
         whitelist: []
+        # A list of user IDs and server names who are not allowed to be relayed through this bridge. 
+        # Accepts regex for example to block all users from 
+        blacklist: []
         # The formats to use when relaying messages to iMessage.
         message_formats:
             m.text: "{{ .Sender.Displayname }}: {{ .Message }}"

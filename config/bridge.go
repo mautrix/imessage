@@ -18,6 +18,7 @@ package config
 
 import (
 	"bytes"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -141,10 +142,12 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 type RelayConfig struct {
 	Enabled        bool                         `yaml:"enabled"`
 	Whitelist      []string                     `yaml:"whitelist"`
+	Blacklist      []string                     `yaml:"blacklist"`
 	MessageFormats map[event.MessageType]string `yaml:"message_formats"`
 
 	messageTemplates *template.Template  `yaml:"-"`
 	whitelistMap     map[string]struct{} `yaml:"-"`
+	blacklistMap     map[string]struct{} `yaml:"-"`
 	isAllWhitelisted bool                `yaml:"-"`
 }
 
@@ -176,7 +179,7 @@ func (rc *RelayConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
-	if !rc.Enabled {
+	if !rc.Enabled || rc.IsBlacklist(userID) {
 		return false
 	} else if rc.isAllWhitelisted {
 		return true
@@ -187,6 +190,17 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 		_, ok = rc.whitelistMap[homeserver]
 		return len(homeserver) > 0 && ok
 	}
+}
+
+func (rc *RelayConfig) IsBlacklist(userID id.UserID) bool {
+	for _, item := range rc.Blacklist {
+		match, _ := regexp.MatchString(item, userID.String())
+		if match {
+			return true
+		}
+	}
+	return false
+
 }
 
 type Sender struct {
