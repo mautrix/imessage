@@ -164,7 +164,6 @@ func (user *User) GetSpaceRoom() id.RoomID {
 	}
 
 	if len(user.SpaceRoom) == 0 {
-
 		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
 			Visibility: "private",
 			Name:       user.bridge.Config.Bridge.PersonalFilteringSpaces.Name,

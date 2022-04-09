@@ -659,7 +659,6 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	}
 	if portal.bridge.user.DoublePuppetIntent != nil {
-
 		portal.log.Debugln("Ensuring double puppet for", portal.bridge.user.MXID, "is joined to portal")
 		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
 	}

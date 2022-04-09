@@ -63,7 +63,7 @@ bridge:
         enable: false
         # The name of the space
         name: "IMessage"
-        # The Image of the space
+        # The MXC URI of the space
         image: mxc://maunium.net/tManJEpANASZvDVzvRvhILdX
 
     # Whether or not the bridge should send a read receipt from the bridge bot when a message has been
