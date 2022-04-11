@@ -76,6 +76,8 @@ func (bridge *Bridge) findPortal(roomID id.RoomID, state mautrix.RoomStateMap) b
 		portal.Encrypted = isEncrypted
 		// TODO find last message timestamp somewhere
 		portal.BackfillStartTS = time.Now().UnixNano() / int64(time.Millisecond)
+		portal.SendStatusStartTS = bridgeInfo.Channel.SendStatusStart
+		portal.TimeoutSeconds = bridge.Config.Bridge.MaxHandleSeconds
 		portal.Update()
 		bridge.Log.Infofln("Found portal %s to %s", roomID, portal.GUID)
 		return true
