@@ -32,9 +32,9 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
-	DeliveryReceipts            bool `yaml:"delivery_receipts"`
-	SendMessageSendStatusEvents bool `yaml:"send_message_send_status_events"`
-	SendErrorNotices            bool `yaml:"send_error_notices"`
+	DeliveryReceipts    bool `yaml:"delivery_receipts"`
+	MessageStatusEvents bool `yaml:"message_status_events"`
+	SendErrorNotices    bool `yaml:"send_error_notices"`
 
 	MaxHandleSeconds int `yaml:"max_handle_seconds"`
 
@@ -50,7 +50,6 @@ type BridgeConfig struct {
 	MediaViewerURL        string  `yaml:"media_viewer_url"`
 	MediaViewerSMSMinSize int     `yaml:"media_viewer_sms_min_size"`
 	MediaViewerIMMinSize  int     `yaml:"media_viewer_imessage_min_size"`
-	OldMediaViewerMinSize int     `yaml:"media_viewer_min_size"`
 	ConvertHEIF           bool    `yaml:"convert_heif"`
 
 	FederateRooms bool `yaml:"federate_rooms"`
@@ -75,6 +74,9 @@ type BridgeConfig struct {
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
 	communityTemplate   *template.Template `yaml:"-"`
+
+	OldMediaViewerMinSize  int  `yaml:"media_viewer_min_size"`
+	OldMessageStatusEvents bool `yaml:"send_message_send_status_events"`
 }
 
 func (bc *BridgeConfig) setDefaults() {
@@ -110,6 +112,9 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 	if bc.OldMediaViewerMinSize > 0 {
 		bc.MediaViewerSMSMinSize = bc.OldMediaViewerMinSize
+	}
+	if bc.OldMessageStatusEvents {
+		bc.MessageStatusEvents = true
 	}
 
 	return nil

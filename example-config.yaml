@@ -62,7 +62,7 @@ bridge:
     delivery_receipts: false
     # Whether or not the bridge should send the message status as a custom
     # com.beeper.message_send_status event.
-    send_message_send_status_events: false
+    message_status_events: true
     # Whether or not the bridge should send error notices via m.notice events
     # when a message fails to bridge.
     send_error_notices: true

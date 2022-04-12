@@ -507,7 +507,7 @@ func (bridge *Bridge) Start() {
 		os.Exit(15)
 	}
 
-	if bridge.Config.Bridge.SendMessageSendStatusEvents {
+	if bridge.Config.Bridge.MessageStatusEvents {
 		sendStatusStart := bridge.DB.KV.Get(database.KVSendStatusStart)
 		if len(sendStatusStart) > 0 {
 			bridge.SendStatusStartTS, _ = strconv.ParseInt(sendStatusStart, 10, 64)
