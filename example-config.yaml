@@ -62,7 +62,7 @@ bridge:
     delivery_receipts: false
     # Whether or not the bridge should send the message status as a custom
     # com.beeper.message_send_status event.
-    send_message_send_status_events: true
+    send_message_send_status_events: false
     # Whether or not the bridge should send error notices via m.notice events
     # when a message fails to bridge.
     send_error_notices: true
@@ -72,7 +72,7 @@ bridge:
     # prevent messages from being bridged a long time after arriving at the
     # homeserver which could cause confusion in the chat history on the remote
     # network. Set to 0 to disable.
-    max_handle_seconds: 10
+    max_handle_seconds: 0
 
     # Whether or not to sync with custom puppets to receive EDUs that are not normally sent to appservices.
     sync_with_custom_puppets: false
