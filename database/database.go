@@ -36,6 +36,7 @@ type Database struct {
 	Puppet  *PuppetQuery
 	Message *MessageQuery
 	Tapback *TapbackQuery
+	KV      *KeyValueQuery
 }
 
 func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
@@ -75,6 +76,10 @@ func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
 	db.Tapback = &TapbackQuery{
 		db:  db,
 		log: db.log.Sub("Tapback"),
+	}
+	db.KV = &KeyValueQuery{
+		db:  db,
+		log: db.log.Sub("KeyValue"),
 	}
 	return db, nil
 }
