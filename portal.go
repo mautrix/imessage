@@ -488,6 +488,9 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			GUID:    portal.GUID,
 			IsGroup: portal.Identifier.IsGroup,
 			Service: portal.Identifier.Service,
+
+			SendStatusStart: portal.bridge.SendStatusStartTS,
+			TimeoutSeconds:  portal.bridge.Config.Bridge.MaxHandleSeconds,
 		},
 	}
 	if portal.Identifier.Service == "SMS" {

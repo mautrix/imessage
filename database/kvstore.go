@@ -29,6 +29,13 @@ type KeyValueQuery struct {
 	log log.Logger
 }
 
+const (
+	KVSendStatusStart   = "com.beeper.send_status_start"
+	KVBridgeInfoVersion = "bridge_info_version"
+
+	ExpectedBridgeInfoVersion = ""
+)
+
 func (kvq *KeyValueQuery) Get(key string) (value string) {
 	err := kvq.db.QueryRow("SELECT value FROM kv_store WHERE key=$1", key).Scan(&value)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
