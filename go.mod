@@ -8,11 +8,11 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/strukturag/libheif v1.12.0
 	github.com/tidwall/gjson v1.14.0
-	golang.org/x/crypto v0.0.0-20220331220935-ae2d96664a29
+	golang.org/x/crypto v0.0.0-20220408190544-5352b0902921
 	gopkg.in/yaml.v2 v2.4.0
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.10.13-0.20220405095540-a66e384e4aa9
+	maunium.net/go/mautrix v0.10.13-0.20220409135345-cbe2dbaef0e9
 )
 
 require (
@@ -22,6 +22,6 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.4 // indirect
-	golang.org/x/net v0.0.0-20220403103023-749bd193bc2b // indirect
+	golang.org/x/net v0.0.0-20220407224826-aac1ed45d8e3 // indirect
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 )
