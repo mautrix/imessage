@@ -490,6 +490,9 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			GUID:    portal.GUID,
 			IsGroup: portal.Identifier.IsGroup,
 			Service: portal.Identifier.Service,
+
+			SendStatusStart: portal.bridge.SendStatusStartTS,
+			TimeoutSeconds:  portal.bridge.Config.Bridge.MaxHandleSeconds,
 		},
 	}
 	if portal.Identifier.Service == "SMS" {
@@ -804,7 +807,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 
 	var resp *mautrix.RespSendEvent
 	var err error
-	if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		reason := "m.event_not_handled"
 		canRetry := true
 		switch status {
@@ -870,7 +873,7 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint boo
 		}
 		go checkpoint.Send(portal.bridge.AS)
 
-		if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+		if portal.bridge.Config.Bridge.MessageStatusEvents {
 			content := MessageSendStatusEventContent{
 				Network: portal.getBridgeInfoStateKey(),
 				RelatesTo: &event.RelatesTo{
@@ -1108,7 +1111,7 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 	checkpoint.Info = err.Error()
 	checkpoint.Send(portal.bridge.AS)
 
-	if portal.bridge.Config.Bridge.SendMessageSendStatusEvents {
+	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		content := MessageSendStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
 			RelatesTo: &event.RelatesTo{

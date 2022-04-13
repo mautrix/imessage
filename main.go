@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -145,6 +146,9 @@ type Bridge struct {
 	websocketStarted             chan struct{}
 
 	suppressSyncStart bool
+
+	SendStatusStartTS    int64
+	sendStatusUpdateInfo bool
 }
 
 type Crypto interface {
@@ -504,6 +508,18 @@ func (bridge *Bridge) Start() {
 		os.Exit(15)
 	}
 
+	if bridge.Config.Bridge.MessageStatusEvents {
+		sendStatusStart := bridge.DB.KV.Get(database.KVSendStatusStart)
+		if len(sendStatusStart) > 0 {
+			bridge.SendStatusStartTS, _ = strconv.ParseInt(sendStatusStart, 10, 64)
+		}
+		if bridge.SendStatusStartTS == 0 {
+			bridge.SendStatusStartTS = time.Now().UnixMilli()
+			bridge.DB.KV.Set(database.KVSendStatusStart, strconv.FormatInt(bridge.SendStatusStartTS, 10))
+			bridge.sendStatusUpdateInfo = true
+		}
+	}
+
 	needsPortalFinding := bridge.Config.Bridge.FindPortalsIfEmpty && bridge.DB.Portal.Count() == 0
 	if needsPortalFinding {
 		bridge.suppressSyncStart = true
@@ -596,6 +612,8 @@ func (bridge *Bridge) StartupSync() {
 		bridge.Log.Errorln("iMessage connector returned error in startup sync hook:", err)
 	}
 
+	forceUpdateBridgeInfo := bridge.sendStatusUpdateInfo ||
+		bridge.DB.KV.Get(database.KVBridgeInfoVersion) != database.ExpectedBridgeInfoVersion
 	alreadySynced := make(map[string]bool)
 	for _, portal := range bridge.GetAllPortals() {
 		removed := portal.CleanupIfEmpty(true)
@@ -603,7 +621,13 @@ func (bridge *Bridge) StartupSync() {
 			portal.log.Infoln("Syncing portal (startup sync, existing portal)")
 			portal.Sync(true)
 			alreadySynced[portal.GUID] = true
+			if forceUpdateBridgeInfo {
+				portal.UpdateBridgeInfo()
+			}
 		}
+	}
+	if forceUpdateBridgeInfo {
+		bridge.DB.KV.Set(database.KVBridgeInfoVersion, database.ExpectedBridgeInfoVersion)
 	}
 	syncChatMaxAge := time.Duration(bridge.Config.Bridge.ChatSyncMaxAge*24*60) * time.Minute
 	chats, err := bridge.IM.GetChatsWithMessagesAfter(time.Now().Add(-syncChatMaxAge))
