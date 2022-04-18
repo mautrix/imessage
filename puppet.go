@@ -19,9 +19,12 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+	"io"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
@@ -148,16 +151,21 @@ type Puppet struct {
 }
 
 func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {
-	var name string
+	if puppet.Displayname != "" && (contact == nil || !contact.HasName()) {
+		// Don't update displayname if there's no contact list name available
+		return false
+	}
 	if contact != nil {
-		name = contact.Name()
+		return puppet.UpdateNameDirect(contact.Name())
 	} else {
-		if puppet.Displayname != "" {
-			// Don't update displayname if there's no contact list name available
-			return false
-		}
-		// TODO format if phone number
-		name = puppet.ID
+		// TODO format if phone numbers
+		return puppet.UpdateNameDirect(puppet.ID)
+	}
+}
+
+func (puppet *Puppet) UpdateNameDirect(name string) bool {
+	if len(name) == 0 {
+		return false
 	}
 	newName := puppet.bridge.Config.Bridge.FormatDisplayname(name)
 	if puppet.Displayname != newName {
@@ -174,14 +182,21 @@ func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {
 }
 
 func (puppet *Puppet) UpdateAvatar(contact *imessage.Contact) bool {
-	if contact == nil || contact.Avatar == nil {
+	if contact == nil {
 		return false
 	}
-	avatarHash := sha256.Sum256(contact.Avatar)
+	return puppet.UpdateAvatarFromBytes(contact.Avatar)
+}
+
+func (puppet *Puppet) UpdateAvatarFromBytes(avatar []byte) bool {
+	if avatar == nil {
+		return false
+	}
+	avatarHash := sha256.Sum256(avatar)
 	if puppet.AvatarHash == nil || *puppet.AvatarHash != avatarHash {
 		puppet.AvatarHash = &avatarHash
-		mimeTypeData := mimetype.Detect(contact.Avatar)
-		resp, err := puppet.Intent.UploadBytesWithName(contact.Avatar, mimeTypeData.String(), "image"+mimeTypeData.Extension())
+		mimeTypeData := mimetype.Detect(avatar)
+		resp, err := puppet.Intent.UploadBytesWithName(avatar, mimeTypeData.String(), "avatar"+mimeTypeData.Extension())
 		if err != nil {
 			puppet.AvatarHash = nil
 			puppet.log.Warnln("Failed to upload avatar:", err)
@@ -200,12 +215,21 @@ func (puppet *Puppet) UpdateAvatar(contact *imessage.Contact) bool {
 	return false
 }
 
+func applyMeta(portal *Portal, meta func(portal *Portal)) {
+	if portal == nil {
+		return
+	}
+	portal.roomCreateLock.Lock()
+	defer portal.roomCreateLock.Unlock()
+	meta(portal)
+}
+
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
 	imID := imessage.Identifier{Service: "iMessage", LocalID: puppet.ID}.String()
-	meta(puppet.bridge.GetPortalByGUID(imID))
+	applyMeta(puppet.bridge.GetPortalByGUID(imID), meta)
 	if strings.HasPrefix(puppet.ID, "+") {
 		smsID := imessage.Identifier{Service: "SMS", LocalID: puppet.ID}.String()
-		meta(puppet.bridge.GetPortalByGUID(smsID))
+		applyMeta(puppet.bridge.GetPortalByGUID(smsID), meta)
 	}
 }
 
@@ -250,6 +274,37 @@ func (puppet *Puppet) Sync() {
 	}
 
 	puppet.SyncWithContact(contact)
+}
+
+var avatarDownloadClient = http.Client{
+	Timeout: 30 * time.Second,
+}
+
+func (puppet *Puppet) backgroundAvatarUpdate(url string) {
+	var resp *http.Response
+	var body []byte
+	var err error
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	if resp, err = avatarDownloadClient.Get(url); err != nil {
+		puppet.log.Warnfln("Failed to request override avatar from %s: %v", url, err)
+	} else if body, err = io.ReadAll(resp.Body); err != nil {
+		puppet.log.Warnfln("Failed to read override avatar from %s: %v", url, err)
+	} else {
+		puppet.UpdateAvatarFromBytes(body)
+	}
+}
+
+func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
+	if len(override.Displayname) > 0 {
+		puppet.UpdateNameDirect(override.Displayname)
+	}
+	if len(override.PhotoURL) > 0 {
+		go puppet.backgroundAvatarUpdate(override.PhotoURL)
+	}
 }
 
 func (puppet *Puppet) SyncWithContact(contact *imessage.Contact) {

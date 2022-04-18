@@ -121,6 +121,10 @@ type Contact struct {
 	PrimaryIdentifier string `json:"primary_identifier,omitempty"`
 }
 
+func (contact *Contact) HasName() bool {
+	return len(contact.FirstName) > 0 || len(contact.LastName) > 0 || len(contact.Nickname) > 0
+}
+
 func (contact *Contact) Name() string {
 	if len(contact.FirstName) > 0 {
 		if len(contact.LastName) > 0 {
@@ -130,6 +134,8 @@ func (contact *Contact) Name() string {
 		}
 	} else if len(contact.LastName) > 0 {
 		return contact.LastName
+	} else if len(contact.Nickname) > 0 {
+		return contact.Nickname
 	} else if len(contact.Emails) > 0 {
 		return contact.Emails[0]
 	} else if len(contact.Phones) > 0 {
