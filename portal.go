@@ -910,6 +910,7 @@ func (portal *Portal) addRelaybotFormat(sender id.UserID, content *event.Message
 }
 
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
+	// puppet :=portal.bridge.GetPuppetByMXID()
 	msg, ok := evt.Content.Parsed.(*event.MessageEventContent)
 	if !ok {
 		// TODO log
