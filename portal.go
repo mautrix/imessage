@@ -257,7 +257,7 @@ func (portal *Portal) ensureUserInvited(user *User) {
 func (portal *Portal) Sync(backfill bool) {
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room due to sync")
-		err := portal.CreateMatrixRoom(nil)
+		err := portal.CreateMatrixRoom(nil, nil)
 		if err != nil {
 			portal.log.Errorln("Failed to create portal room:", err)
 		}
@@ -529,7 +529,7 @@ func (portal *Portal) UpdateBridgeInfo() {
 	}
 }
 
-func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
+func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverride *ProfileOverride) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
 	if len(portal.MXID) > 0 {
@@ -546,7 +546,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 		portal.log.Debugln("Getting chat info to create Matrix room")
 		chatInfo, err = portal.bridge.IM.GetChatInfo(portal.GUID)
 		if err != nil && !portal.IsPrivateChat() {
-			// If there's no chat info for a group, it probably doesn't exist and we shouldn't auto-create a Matrix room for it.
+			// If there's no chat info for a group, it probably doesn't exist, and we shouldn't auto-create a Matrix room for it.
 			return fmt.Errorf("failed to get chat info: %w", err)
 		}
 	}
@@ -559,6 +559,9 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo) error {
 	if portal.IsPrivateChat() {
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		puppet.Sync()
+		if profileOverride != nil {
+			puppet.SyncWithProfileOverride(*profileOverride)
+		}
 		portal.Name = puppet.Displayname
 		portal.AvatarURL = puppet.AvatarURL
 		portal.AvatarHash = puppet.AvatarHash
