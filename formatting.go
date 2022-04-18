@@ -50,9 +50,9 @@ func NewFormatter(bridge *Bridge) *Formatter {
 					if puppet != nil {
 						jids, ok := ctx[mentionedJIDsContextKey].([]string)
 						if !ok {
-							ctx[mentionedJIDsContextKey] = []string{puppet.Displayname}
+							ctx[mentionedJIDsContextKey] = []string{puppet.ID}
 						} else {
-							ctx[mentionedJIDsContextKey] = append(jids, puppet.Displayname)
+							ctx[mentionedJIDsContextKey] = append(jids, puppet.ID)
 						}
 						return "@" + puppet.Displayname
 					}

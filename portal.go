@@ -910,19 +910,21 @@ func (portal *Portal) addRelaybotFormat(sender id.UserID, content *event.Message
 }
 
 func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
-	// puppet :=portal.bridge.GetPuppetByMXID()
 
 	msg, ok := evt.Content.Parsed.(*event.MessageEventContent)
+
 	if !ok {
 		// TODO log
 		return
 	}
 	portal.log.Debugln("Starting handling Matrix message", evt.ID)
 	if msg.Format == event.FormatHTML {
-		text, MentionedJid := portal.bridge.Formatter.ParseMatrix(msg.FormattedBody)
-		log.Info("The text is", text, "The mentions are ", MentionedJid)
+		text, mentions := portal.bridge.Formatter.ParseMatrix(msg.FormattedBody)
+		msg.Body = text
+		log.Info("The text is", msg, "Mentions are ", mentions)
+	} else {
+		log.Info("Not HTML")
 	}
-	log.Info("Not HTML")
 
 	var messageReplyID string
 	var messageReplyPart int
