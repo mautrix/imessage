@@ -66,7 +66,7 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room to handle message")
-		err := portal.CreateMatrixRoom(nil)
+		err := portal.CreateMatrixRoom(nil, nil)
 		if err != nil {
 			imh.log.Warnfln("Failed to create Matrix room to handle message: %v", err)
 			return
@@ -105,7 +105,7 @@ func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
 		portal.SyncWithInfo(chat)
 	} else if !chat.NoCreateRoom {
 		portal.log.Infoln("Creating Matrix room to handle chat command")
-		err := portal.CreateMatrixRoom(chat)
+		err := portal.CreateMatrixRoom(chat, nil)
 		if err != nil {
 			imh.log.Warnfln("Failed to create Matrix room to handle chat command: %v", err)
 			return

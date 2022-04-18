@@ -24,7 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tidwall/gjson"
 	"maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix"
@@ -111,6 +110,18 @@ func (mx *MatrixHandler) handleWSSyncProxyError(cmd appservice.WebsocketCommand)
 	return true, &data
 }
 
+type ProfileOverride struct {
+	Displayname string `json:"displayname,omitempty"`
+	PhotoURL    string `json:"photo_url,omitempty"`
+}
+
+type StartDMRequest struct {
+	Identifier string `json:"identifier"`
+	ProfileOverride
+
+	ActuallyStart bool `json:"-"`
+}
+
 type StartDMResponse struct {
 	RoomID      id.RoomID `json:"room_id,omitempty"`
 	GUID        string    `json:"guid"`
@@ -118,9 +129,13 @@ type StartDMResponse struct {
 }
 
 func (mx *MatrixHandler) handleWSStartDM(cmd appservice.WebsocketCommand) (bool, interface{}) {
-	if identifier := gjson.GetBytes(cmd.Data, "identifier").String(); len(identifier) == 0 {
-		return false, fmt.Errorf("missing or empty identifier")
-	} else if resp, err := mx.StartChat(identifier, cmd.Command == "start_dm"); err != nil {
+	var req StartDMRequest
+	if err := json.Unmarshal(cmd.Data, &req); err != nil {
+		return false, fmt.Errorf("failed to parse request: %w", err)
+	}
+	req.ActuallyStart = cmd.Command == "start_dm"
+	resp, err := mx.StartChat(req)
+	if err != nil {
 		return false, err
 	} else {
 		return true, resp
@@ -135,18 +150,18 @@ func (mx *MatrixHandler) handleWSGetContacts(_ appservice.WebsocketCommand) (boo
 	return true, contacts
 }
 
-func (mx *MatrixHandler) StartChat(identifier string, actuallyStart bool) (*StartDMResponse, error) {
+func (mx *MatrixHandler) StartChat(req StartDMRequest) (*StartDMResponse, error) {
 	var resp StartDMResponse
 	var err error
 
-	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(identifier); err != nil {
+	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
-	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !actuallyStart {
+	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
 		resp.RoomID = portal.MXID
 		return &resp, nil
 	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
 		return nil, fmt.Errorf("failed to prepare DM: %w", err)
-	} else if err = portal.CreateMatrixRoom(nil); err != nil {
+	} else if err = portal.CreateMatrixRoom(nil, &req.ProfileOverride); err != nil {
 		return nil, fmt.Errorf("failed to create Matrix room: %w", err)
 	} else {
 		resp.JustCreated = true
