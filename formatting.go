@@ -57,7 +57,7 @@ func NewFormatter(bridge *Bridge) *Formatter {
 						return "@" + puppet.Displayname
 					}
 				}
-				return displayname
+				return "@" + displayname
 			},
 			BoldConverter:           func(text string, _ format.Context) string { return fmt.Sprintf("*%s*", text) },
 			ItalicConverter:         func(text string, _ format.Context) string { return fmt.Sprintf("_%s_", text) },
