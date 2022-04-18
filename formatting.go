@@ -17,11 +17,9 @@
 package main
 
 import (
-	"fmt"
 	"regexp"
 
 	"maunium.net/go/mautrix/format"
-	"maunium.net/go/mautrix/id"
 )
 
 var italicRegex = regexp.MustCompile("([\\s>~*]|^)_(.+?)_([^a-zA-Z\\d]|$)")
@@ -29,7 +27,7 @@ var boldRegex = regexp.MustCompile("([\\s>_~]|^)\\*(.+?)\\*([^a-zA-Z\\d]|$)")
 var strikethroughRegex = regexp.MustCompile("([\\s>_*]|^)~(.+?)~([^a-zA-Z\\d]|$)")
 var codeBlockRegex = regexp.MustCompile("```(?:.|\n)+?```")
 
-const mentionedJIDsContextKey = "net.maunium.whatsapp.mentioned_user"
+const mentionedName = "mentioned_user"
 
 type Formatter struct {
 	bridge *Bridge
@@ -37,40 +35,40 @@ type Formatter struct {
 	matrixHTMLParser *format.HTMLParser
 }
 
-func NewFormatter(bridge *Bridge) *Formatter {
-	formatter := &Formatter{
-		bridge: bridge,
-		matrixHTMLParser: &format.HTMLParser{
-			TabsToSpaces: 4,
-			Newline:      "\n",
+// func NewFormatter(bridge *Bridge) *Formatter {
+// 	formatter := &Formatter{
+// 		bridge: bridge,
+// 		matrixHTMLParser: &format.HTMLParser{
+// 			TabsToSpaces: 4,
+// 			Newline:      "\n",
 
-			PillConverter: func(displayname, mxid, eventID string, ctx format.Context) string {
-				if mxid[0] == '@' {
-					puppet := bridge.GetPuppetByMXID(id.UserID(mxid))
-					if puppet != nil {
-						jids, ok := ctx[mentionedJIDsContextKey].([]string)
-						if !ok {
-							ctx[mentionedJIDsContextKey] = []string{puppet.ID}
-						} else {
-							ctx[mentionedJIDsContextKey] = append(jids, puppet.ID)
-						}
-						return "@" + puppet.Displayname
-					}
-				}
-				return mxid
-			},
-			BoldConverter:           func(text string, _ format.Context) string { return fmt.Sprintf("*%s*", text) },
-			ItalicConverter:         func(text string, _ format.Context) string { return fmt.Sprintf("_%s_", text) },
-			StrikethroughConverter:  func(text string, _ format.Context) string { return fmt.Sprintf("~%s~", text) },
-			MonospaceConverter:      func(text string, _ format.Context) string { return fmt.Sprintf("```%s```", text) },
-			MonospaceBlockConverter: func(text, language string, _ format.Context) string { return fmt.Sprintf("```%s```", text) },
-		},
-	}
-	return formatter
-}
+// 			PillConverter: func(displayname, mxid, eventID string, ctx format.Context) string {
+// 				if mxid[0] == '@' {
+// 					puppet := bridge.GetPuppetByMXID(id.UserID(mxid))
+// 					if puppet != nil {
+// 						user, ok := ctx[mentionedName].([]string)
+// 						if !ok {
+// 							ctx[mentionedName] = []string{puppet.ID}
+// 						} else {
+// 							ctx[mentionedName] = append(user, puppet.ID)
+// 						}
+// 						return "@" + puppet.Displayname
+// 					}
+// 				}
+// 				return mxid
+// 			},
+// 			BoldConverter:           func(text string, _ format.Context) string { return fmt.Sprintf("*%s*", text) },
+// 			ItalicConverter:         func(text string, _ format.Context) string { return fmt.Sprintf("_%s_", text) },
+// 			StrikethroughConverter:  func(text string, _ format.Context) string { return fmt.Sprintf("~%s~", text) },
+// 			MonospaceConverter:      func(text string, _ format.Context) string { return fmt.Sprintf("```%s```", text) },
+// 			MonospaceBlockConverter: func(text, language string, _ format.Context) string { return fmt.Sprintf("```%s```", text) },
+// 		},
+// 	}
+// 	return formatter
+// }
 func (formatter *Formatter) ParseMatrix(html string) (string, []string) {
 	ctx := make(format.Context)
 	result := formatter.matrixHTMLParser.Parse(html, ctx)
-	mentionedJIDs, _ := ctx[mentionedJIDsContextKey].([]string)
+	mentionedJIDs, _ := ctx[mentionedName].([]string)
 	return result, mentionedJIDs
 }

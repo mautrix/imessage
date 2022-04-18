@@ -918,13 +918,13 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 	portal.log.Debugln("Starting handling Matrix message", evt.ID)
-	// if msg.Format == event.FormatHTML {
-	// 	text, mentions := portal.bridge.Formatter.ParseMatrix(msg.FormattedBody)
-	// 	msg.Body = text
-	// 	log.Info("The text is", msg, "Mentions are ", mentions)
-	// } else {
-	// 	log.Info("Not HTML")
-	// }
+	if msg.Format == event.FormatHTML {
+		text, mentions := portal.bridge.Formatter.ParseMatrix(msg.FormattedBody)
+		msg.Body = text
+		log.Info("The text is", msg, "Mentions are ", mentions)
+	} else {
+		log.Info("Not HTML")
+	}
 
 	var messageReplyID string
 	var messageReplyPart int
