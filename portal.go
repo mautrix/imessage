@@ -920,7 +920,6 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	portal.log.Debugln("Starting handling Matrix message", evt.ID)
 	if msg.Format == event.FormatHTML {
 		msg.Body, _ = portal.bridge.Formatter.ParseMatrix(msg.FormattedBody)
-
 	}
 
 	var messageReplyID string
