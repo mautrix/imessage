@@ -367,7 +367,6 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 	if mx.shouldIgnoreEvent(evt) {
 		return
 	}
-	mx.log.Info(evt.Content.Parsed)
 	content := evt.Content.AsMessage()
 	content.RemoveReplyFallback()
 	if evt.Sender == mx.bridge.user.MXID && content.MsgType == event.MsgText && strings.HasPrefix(content.Body, mx.bridge.Config.Bridge.CommandPrefix) {
