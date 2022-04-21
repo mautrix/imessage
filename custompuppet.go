@@ -195,6 +195,8 @@ func (user *User) handleTypingEvent(portal *Portal, evt *event.Event) {
 			break
 		}
 	}
+	user.customTypingLock.Lock()
+	defer user.customTypingLock.Unlock()
 	if user.customTypingIn[evt.RoomID] != isTyping {
 		user.customTypingIn[evt.RoomID] = isTyping
 		if !isTyping {

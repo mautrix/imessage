@@ -40,7 +40,8 @@ type User struct {
 
 	mgmtCreateLock sync.Mutex
 
-	customTypingIn map[id.RoomID]bool
+	customTypingIn   map[id.RoomID]bool
+	customTypingLock sync.Mutex
 }
 
 func (bridge *Bridge) loadDBUser() *User {
