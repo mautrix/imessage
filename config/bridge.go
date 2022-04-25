@@ -51,6 +51,10 @@ type BridgeConfig struct {
 	MediaViewerSMSMinSize int     `yaml:"media_viewer_sms_min_size"`
 	MediaViewerIMMinSize  int     `yaml:"media_viewer_imessage_min_size"`
 	ConvertHEIF           bool    `yaml:"convert_heif"`
+	ConvertVideo          struct {
+		Enabled    bool     `yaml:"enabled"`
+		FFMPEGArgs []string `yaml:"ffmpeg_args"`
+	} `yaml:"convert_video"`
 
 	FederateRooms bool `yaml:"federate_rooms"`
 

@@ -110,6 +110,14 @@ bridge:
     # Should we convert heif images to jpeg before re-uploading? This increases
     # compatibility, but adds generation loss (reduces quality).
     convert_heif: true
+    # Modern Apple devices tend to use h265 encoding for video, which is a licensed standard and therefore not
+    # supported by most major browsers. If enabled, all video attachments will be converted according to the
+    # ffmpeg args.
+    convert_video:
+        enabled: true
+        # Convert to webm format (open and widely supported standard) at decent quality while retaining original
+        # audio. Modify these args to do whatever encoding/quality you want. 
+        ffmpeg_args: ["-c:v", "libvpx-vp9", "-crf", "30"]
 
     # The prefix for commands.
     command_prefix: "!im"
