@@ -114,7 +114,7 @@ bridge:
     # supported by most major browsers. If enabled, all video attachments will be converted according to the
     # ffmpeg args.
     convert_video:
-        enabled: true
+        enabled: false
         # Convert to h264 format (supported by all major browsers) at decent quality while retaining original
         # audio. Modify these args to do whatever encoding/quality you want. 
         ffmpeg_args: ["-c:v", "libx264", "-preset", "faster", "-crf", "22", "-c:a", "copy"]
