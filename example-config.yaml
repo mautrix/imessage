@@ -115,9 +115,11 @@ bridge:
     # ffmpeg args.
     convert_video:
         enabled: true
-        # Convert to webm format (open and widely supported standard) at decent quality while retaining original
+        # Convert to h264 format (supported by all major browsers) at decent quality while retaining original
         # audio. Modify these args to do whatever encoding/quality you want. 
-        ffmpeg_args: ["-c:v", "libvpx-vp9", "-crf", "30"]
+        ffmpeg_args: ["-c:v", "libx264", "-preset", "faster", "-crf", "22", "-c:a", "copy"]
+        extension: "mp4"
+        mime_type: "video/mp4"
 
     # The prefix for commands.
     command_prefix: "!im"

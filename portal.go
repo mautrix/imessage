@@ -1350,12 +1350,13 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		}
 	}
 
-	if portal.Config.Bridge.ConvertVideo.Enabled && mimeType == "video/quicktime" {
-		webm, err := ffmpeg.ConvertBytes(data, ".webm", []string{}, portal.Config.Bridge.ConvertVideo.FFMPEGArgs, "video/quicktime")
+	if portal.bridge.Config.Bridge.ConvertVideo.Enabled && mimeType == "video/quicktime" {
+		conv := portal.bridge.Config.Bridge.ConvertVideo
+		convertedData, err := ffmpeg.ConvertBytes(data, "."+conv.Extension, []string{}, conv.FFMPEGArgs, "video/quicktime")
 		if err == nil {
-			mimeType = "video/webm"
-			fileName += ".webm"
-			data = webm
+			mimeType = conv.MimeType
+			fileName += "." + conv.Extension
+			data = convertedData
 		} else {
 			portal.log.Errorf("Failed to convert quicktime video to webm: %v - sending without conversion", err)
 		}

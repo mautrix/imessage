@@ -54,6 +54,8 @@ type BridgeConfig struct {
 	ConvertVideo          struct {
 		Enabled    bool     `yaml:"enabled"`
 		FFMPEGArgs []string `yaml:"ffmpeg_args"`
+		MimeType   string   `yaml:"mime_type"`
+		Extension  string   `yaml:"extension"`
 	} `yaml:"convert_video"`
 
 	FederateRooms bool `yaml:"federate_rooms"`
