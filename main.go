@@ -129,18 +129,17 @@ type Bridge struct {
 	IMHandler      *iMessageHandler
 	IPC            *ipc.Processor
 
-	user           *User
-	portalsByMXID  map[id.RoomID]*Portal
-	portalsByGUID  map[string]*Portal
-	portalsLock    sync.Mutex
-	puppets        map[string]*Puppet
-	puppetsLock    sync.Mutex
-	stopping       bool
-	stop           chan struct{}
-	stopPinger     chan struct{}
-	latestState    *imessage.BridgeStatus
-	pushKey        *imessage.PushKeyRequest
-	spaceRoomsLock sync.Mutex
+	user          *User
+	portalsByMXID map[id.RoomID]*Portal
+	portalsByGUID map[string]*Portal
+	portalsLock   sync.Mutex
+	puppets       map[string]*Puppet
+	puppetsLock   sync.Mutex
+	stopping      bool
+	stop          chan struct{}
+	stopPinger    chan struct{}
+	latestState   *imessage.BridgeStatus
+	pushKey       *imessage.PushKeyRequest
 
 	shortCircuitReconnectBackoff chan struct{}
 	websocketStarted             chan struct{}
