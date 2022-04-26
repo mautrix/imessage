@@ -1351,17 +1351,36 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	}
 
 	data, uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
-	uploadResp, err := intent.UploadBytes(data, uploadMime)
+
+	req := mautrix.ReqUploadMedia{
+		ContentBytes: data,
+		ContentType:  uploadMime,
+	}
+	var mxc id.ContentURI
+	if portal.bridge.Config.Homeserver.AsyncMedia {
+		uploaded, err := intent.UnstableUploadAsync(req)
+		if err != nil {
+			return nil, nil, err
+		}
+		mxc = uploaded.ContentURI
+	} else {
+		uploaded, err := intent.UploadMedia(req)
+		if err != nil {
+			return nil, nil, err
+		}
+		mxc = uploaded.ContentURI
+	}
+
 	if err != nil {
 		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
-		return nil, nil, fmt.Errorf("failed to re-upload attachment")
+		return nil, nil, fmt.Errorf("failed to upload attachment")
 	}
 	var content event.MessageEventContent
 	if uploadInfo != nil {
-		uploadInfo.URL = uploadResp.ContentURI.CUString()
+		uploadInfo.URL = mxc.CUString()
 		content.File = uploadInfo
 	} else {
-		content.URL = uploadResp.ContentURI.CUString()
+		content.URL = mxc.CUString()
 	}
 	content.Body = fileName
 	content.Info = &event.FileInfo{
