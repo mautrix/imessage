@@ -796,7 +796,7 @@ type MessageSendStatusEventContent struct {
 	IsCertain bool             `json:"is_certain,omitempty"`
 }
 
-func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, status appservice.MessageSendCheckpointStatus) id.EventID {
+func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, status appservice.MessageSendCheckpointStatus) {
 	checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
 	checkpoint.Info = rootErr.Error()
 	go checkpoint.Send(portal.bridge.AS)
@@ -806,8 +806,6 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 		possibility = "was not"
 	}
 
-	var resp *mautrix.RespSendEvent
-	var err error
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		reason := "m.event_not_handled"
 		canRetry := true
@@ -833,23 +831,22 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 			IsCertain: isCertain,
 		}
 
-		resp, err = portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
-			return ""
+			return
 		}
 	}
 	if portal.bridge.Config.Bridge.SendErrorNotices {
-		resp, err = portal.sendMainIntentMessage(event.MessageEventContent{
+		_, err := portal.sendMainIntentMessage(event.MessageEventContent{
 			MsgType: event.MsgNotice,
 			Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", possibility, rootErr),
 		})
 		if err != nil {
 			portal.log.Warnfln("Failed to send bridging error message:", err)
-			return ""
+			return
 		}
 	}
-	return resp.EventID
 }
 
 func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint bool) {

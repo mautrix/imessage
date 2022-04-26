@@ -44,7 +44,8 @@ type User struct {
 
 	spaceMembershipChecked bool
 
-	customTypingIn map[id.RoomID]bool
+	customTypingIn   map[id.RoomID]bool
+	customTypingLock sync.Mutex
 }
 
 func (bridge *Bridge) loadDBUser() *User {
