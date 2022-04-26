@@ -28,10 +28,11 @@ import (
 
 type Config struct {
 	Homeserver struct {
-		Address string `yaml:"address"`
-		WSProxy string `yaml:"websocket_proxy"`
-		Domain  string `yaml:"domain"`
-		Asmux   bool   `yaml:"asmux"`
+		Address    string `yaml:"address"`
+		WSProxy    string `yaml:"websocket_proxy"`
+		Domain     string `yaml:"domain"`
+		Asmux      bool   `yaml:"asmux"`
+		AsyncMedia bool   `yaml:"async_media"`
 
 		PingInterval int `yaml:"ping_interval_seconds"`
 	} `yaml:"homeserver"`

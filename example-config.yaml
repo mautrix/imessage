@@ -5,6 +5,8 @@ homeserver:
     websocket_proxy: ws://localhost:29331
     # The domain of the homeserver (for MXIDs, etc).
     domain: example.com
+    # Does the homeserver support https://github.com/matrix-org/matrix-spec-proposals/pull/2246?
+    async_media: false
 
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
