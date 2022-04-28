@@ -1350,6 +1350,18 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		}
 	}
 
+	if portal.bridge.Config.Bridge.ConvertVideo.Enabled && mimeType == "video/quicktime" {
+		conv := portal.bridge.Config.Bridge.ConvertVideo
+		convertedData, err := ffmpeg.ConvertBytes(data, "."+conv.Extension, []string{}, conv.FFMPEGArgs, "video/quicktime")
+		if err == nil {
+			mimeType = conv.MimeType
+			fileName += "." + conv.Extension
+			data = convertedData
+		} else {
+			portal.log.Errorf("Failed to convert quicktime video to webm: %v - sending without conversion", err)
+		}
+	}
+
 	data, uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
 
 	req := mautrix.ReqUploadMedia{
