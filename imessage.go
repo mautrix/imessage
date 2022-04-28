@@ -17,7 +17,10 @@
 package main
 
 import (
+	"errors"
+
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/appservice"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
@@ -42,6 +45,7 @@ func (imh *iMessageHandler) Start() {
 	typingNotifications := imh.bridge.IM.TypingNotificationChan()
 	chat := imh.bridge.IM.ChatChan()
 	contact := imh.bridge.IM.ContactChan()
+	messageStatuses := imh.bridge.IM.MessageStatusChan()
 	for {
 		select {
 		case msg := <-messages:
@@ -54,6 +58,8 @@ func (imh *iMessageHandler) Start() {
 			imh.HandleChat(c)
 		case contact := <-contact:
 			imh.HandleContact(contact)
+		case status := <-messageStatuses:
+			imh.HandleMessageStatus(status)
 		case <-imh.stop:
 			return
 		}
@@ -73,6 +79,39 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 		}
 	}
 	portal.Messages <- msg
+}
+
+func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStatus) {
+	msg := imh.bridge.DB.Message.GetLastByOnlyGUID(status.GUID)
+	if msg == nil {
+		imh.log.Debugln("Ignoring message status for unknown message", status.GUID)
+		return
+	}
+	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
+	if len(portal.GUID) == 0 {
+		imh.log.Debugfln("Ignoring message status for message from unknown portal %s/%s", msg.GUID, msg.ChatGUID)
+		return
+	}
+	imh.log.Debugfln("Processing message status with type %v for event %s/%s %s/%s", status.Status, msg.MXID, portal.MXID, msg.GUID, msg.ChatGUID)
+	if status.Status == "sent" {
+		portal.sendSuccessCheckpoint(msg.MXID)
+	} else if status.Status == "failed" {
+		evt, err := portal.MainIntent().GetEvent(portal.MXID, msg.MXID)
+		if err != nil {
+			imh.log.Warnfln("Failed to lookup event %s/%s %s/%s: %v", msg.MXID, portal.MXID, msg.GUID, msg.ChatGUID, err)
+			return
+		}
+		errString := "internal error"
+		if len(status.Message) != 0 {
+			errString = status.Message
+		} else if len(status.StatusCode) != 0 {
+			errString = status.StatusCode
+		}
+		portal.sendErrorMessage(evt, errors.New(errString), true, appservice.StatusPermFailure)
+	} else {
+		imh.log.Infofln("Ignoring unused message status type %v for event %s/%s %s/%s", status.Status, msg.MXID, portal.MXID, msg.GUID, msg.ChatGUID)
+		return
+	}
 }
 
 func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {

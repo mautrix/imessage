@@ -838,33 +838,37 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint boo
 	}
 
 	if sendCheckpoint {
-		// We don't have access to the entire event, so we are omitting some
-		// metadata here. However, that metadata can be inferred from previous
-		// checkpoints.
-		checkpoint := appservice.MessageSendCheckpoint{
-			EventID:    eventID,
-			RoomID:     portal.MXID,
-			Step:       appservice.StepRemote,
-			Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
-			Status:     appservice.StatusSuccesss,
-			ReportedBy: appservice.ReportedByBridge,
+		portal.sendSuccessCheckpoint(eventID)
+	}
+}
+
+func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID) {
+	// We don't have access to the entire event, so we are omitting some
+	// metadata here. However, that metadata can be inferred from previous
+	// checkpoints.
+	checkpoint := appservice.MessageSendCheckpoint{
+		EventID:    eventID,
+		RoomID:     portal.MXID,
+		Step:       appservice.StepRemote,
+		Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
+		Status:     appservice.StatusSuccesss,
+		ReportedBy: appservice.ReportedByBridge,
+	}
+	go checkpoint.Send(portal.bridge.AS)
+
+	if portal.bridge.Config.Bridge.MessageStatusEvents {
+		content := MessageSendStatusEventContent{
+			Network: portal.getBridgeInfoStateKey(),
+			RelatesTo: &event.RelatesTo{
+				Type:    event.RelReference,
+				EventID: eventID,
+			},
+			Success: true,
 		}
-		go checkpoint.Send(portal.bridge.AS)
 
-		if portal.bridge.Config.Bridge.MessageStatusEvents {
-			content := MessageSendStatusEventContent{
-				Network: portal.getBridgeInfoStateKey(),
-				RelatesTo: &event.RelatesTo{
-					Type:    event.RelReference,
-					EventID: eventID,
-				},
-				Success: true,
-			}
-
-			_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
-			if err != nil {
-				portal.log.Warnfln("Failed to send message send status event:", err)
-			}
+		_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		if err != nil {
+			portal.log.Warnfln("Failed to send message send status event:", err)
 		}
 	}
 }
@@ -973,7 +977,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
 		dbMessage.Timestamp = resp.Time.UnixNano() / 1e6
-		portal.sendDeliveryReceipt(evt.ID, true)
+		portal.sendDeliveryReceipt(evt.ID, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
 		dbMessage.Insert()
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
