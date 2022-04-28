@@ -84,12 +84,12 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStatus) {
 	msg := imh.bridge.DB.Message.GetLastByOnlyGUID(status.GUID)
 	if msg == nil {
-		imh.log.Infoln("Ignoring message status for unknown message", status.GUID)
+		imh.log.Debugln("Ignoring message status for unknown message", status.GUID)
 		return
 	}
 	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
 	if len(portal.GUID) == 0 {
-		imh.log.Infofln("Ignoring message status for message from unknown portal %s/%s", msg.GUID, msg.ChatGUID)
+		imh.log.Debugfln("Ignoring message status for message from unknown portal %s/%s", msg.GUID, msg.ChatGUID)
 		return
 	}
 	imh.log.Debugfln("Processing message status with type %v for event %s/%s %s/%s", status.Status, msg.MXID, portal.MXID, msg.GUID, msg.ChatGUID)

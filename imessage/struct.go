@@ -248,5 +248,5 @@ type SendMessageStatus struct {
 	GUID       string `json:"guid"`
 	Status     string `json:"status"`
 	Message    string `json:"message,omitempty"`
-	StatusCode string `json:"statusCode,omitempty"`
+	StatusCode string `json:"status_code,omitempty"`
 }
