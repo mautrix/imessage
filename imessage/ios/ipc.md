@@ -211,7 +211,9 @@ Another error response:
 * Outgoing message status (request type `send_message_status`)
   * `guid` (str, UUID) - The GUID of the message that the status update is about.
   * `status` (str, enum) - The current status of the message.
-    * TODO: allowed values
+    * Allowed values: `sent`, `delivered`, `failed`
+  * `message` (str) - A human-readable description of the status, if needed.
+  * `status_code` (str) - A machine-readable identifier for the current status.
 * Pinging the Matrix websocket (request type `ping_server`)
   * Used to ensure that the websocket connection is alive. Should be called if there's some reason to believe
     the connection may have silently failed, e.g. when the device wakes up from sleep.

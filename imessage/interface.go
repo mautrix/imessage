@@ -45,6 +45,7 @@ type API interface {
 	TypingNotificationChan() <-chan *TypingNotification
 	ChatChan() <-chan *ChatInfo
 	ContactChan() <-chan *Contact
+	MessageStatusChan() <-chan *SendMessageStatus
 	GetContactInfo(identifier string) (*Contact, error)
 	GetContactList() ([]*Contact, error)
 	GetChatInfo(chatID string) (*ChatInfo, error)
