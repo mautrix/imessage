@@ -786,6 +786,12 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 		possibility = "was not"
 	}
 
+	errorIntent := portal.bridge.Bot
+	if !portal.Encrypted {
+		// Bridge bot isn't present in unencrypted DMs
+		errorIntent = portal.MainIntent()
+	}
+
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		reason := "m.event_not_handled"
 		canRetry := true
@@ -811,17 +817,17 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 			IsCertain: isCertain,
 		}
 
-		_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, err := portal.sendMessage(errorIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 			return
 		}
 	}
 	if portal.bridge.Config.Bridge.SendErrorNotices {
-		_, err := portal.sendMainIntentMessage(event.MessageEventContent{
+		_, err := portal.sendMessage(errorIntent, event.EventMessage, event.MessageEventContent{
 			MsgType: event.MsgNotice,
 			Body:    fmt.Sprintf("\u26a0 Your message %s bridged: %v", possibility, rootErr),
-		})
+		}, map[string]interface{}{}, 0)
 		if err != nil {
 			portal.log.Warnfln("Failed to send bridging error message:", err)
 			return
@@ -866,7 +872,11 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID) {
 			Success: true,
 		}
 
-		_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		statusIntent := portal.bridge.Bot
+		if !portal.Encrypted {
+			statusIntent = portal.MainIntent()
+		}
+		_, err := portal.sendMessage(statusIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 		}
@@ -1108,9 +1118,13 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 			IsCertain: true,
 		}
 
-		_, err := portal.sendMessage(portal.MainIntent(), EventMessageSendStatus, content, map[string]interface{}{}, 0)
-		if err != nil {
-			portal.log.Warnfln("Failed to send message send status event:", err)
+		errorIntent := portal.bridge.Bot
+		if !portal.Encrypted {
+			errorIntent = portal.MainIntent()
+		}
+		_, sendErr := portal.sendMessage(errorIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		if sendErr != nil {
+			portal.log.Warnln("Failed to send message send status event:", sendErr)
 		}
 	}
 }
