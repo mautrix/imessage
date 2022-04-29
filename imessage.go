@@ -40,8 +40,8 @@ func (imh *iMessageHandler) Start() {
 	messages := imh.bridge.IM.MessageChan()
 	readReceipts := imh.bridge.IM.ReadReceiptChan()
 	typingNotifications := imh.bridge.IM.TypingNotificationChan()
-	chat := imh.bridge.IM.ChatChan()
-	contact := imh.bridge.IM.ContactChan()
+	chats := imh.bridge.IM.ChatChan()
+	contacts := imh.bridge.IM.ContactChan()
 	messageStatuses := imh.bridge.IM.MessageStatusChan()
 	for {
 		select {
@@ -51,9 +51,9 @@ func (imh *iMessageHandler) Start() {
 			imh.HandleReadReceipt(rr)
 		case notif := <-typingNotifications:
 			imh.HandleTypingNotification(notif)
-		case c := <-chat:
-			imh.HandleChat(c)
-		case contact := <-contact:
+		case chat := <-chats:
+			imh.HandleChat(chat)
+		case contact := <-contacts:
 			imh.HandleContact(contact)
 		case status := <-messageStatuses:
 			imh.HandleMessageStatus(status)
