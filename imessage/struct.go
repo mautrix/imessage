@@ -246,6 +246,7 @@ type PushKeyRequest struct {
 
 type SendMessageStatus struct {
 	GUID       string `json:"guid"`
+	ChatGUID   string `json:"chat_guid"`
 	Status     string `json:"status"`
 	Message    string `json:"message,omitempty"`
 	StatusCode string `json:"status_code,omitempty"`
