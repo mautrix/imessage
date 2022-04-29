@@ -339,8 +339,8 @@ func (portal *Portal) handleMessageLoop() {
 		select {
 		case msg := <-portal.Messages:
 			portal.HandleiMessage(msg, false)
-		case read_receipt := <-portal.ReadReceipts:
-			portal.HandleiMessageReadReceipt(read_receipt)
+		case readReceipt := <-portal.ReadReceipts:
+			portal.HandleiMessageReadReceipt(readReceipt)
 		case <-portal.backfillStart:
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
@@ -1101,7 +1101,7 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 	portal.log.Errorf("Sending unsupported checkpoint. Error: %+v", err)
 	checkpoint := appservice.NewMessageSendCheckpoint(evt, step, appservice.StatusUnsupported, 0)
 	checkpoint.Info = err.Error()
-	checkpoint.Send(portal.bridge.AS)
+	go checkpoint.Send(portal.bridge.AS)
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		content := MessageSendStatusEventContent{
@@ -1187,7 +1187,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("Bridge does not support any kinds of redactions"))
+		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("bridge does not support any kinds of redactions"))
 		return
 	}
 
@@ -1210,7 +1210,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
 		}
 	}
-	portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, fmt.Errorf("Can't redact non-reaction event"))
+	portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, fmt.Errorf("can't redact non-reaction event"))
 }
 
 func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
