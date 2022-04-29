@@ -59,11 +59,6 @@ func (mq *MessageQuery) GetLastByGUID(chat string, guid string) *Message {
 		"FROM message WHERE chat_guid=$1 AND guid=$2 ORDER BY part DESC LIMIT 1", chat, guid)
 }
 
-func (mq *MessageQuery) GetLastByOnlyGUID(guid string) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
-		"FROM message WHERE guid=$1 ORDER BY part DESC LIMIT 1", guid)
-}
-
 func (mq *MessageQuery) GetByGUID(chat string, guid string, part int) *Message {
 	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
 		"FROM message WHERE chat_guid=$1 AND guid=$2 AND part=$3", chat, guid, part)

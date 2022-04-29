@@ -150,10 +150,11 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		bridge: bridge,
 		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
 
-		Identifier:    imessage.ParseIdentifier(dbPortal.GUID),
-		Messages:      make(chan *imessage.Message, 100),
-		ReadReceipts:  make(chan *imessage.ReadReceipt, 100),
-		backfillStart: make(chan struct{}),
+		Identifier:      imessage.ParseIdentifier(dbPortal.GUID),
+		Messages:        make(chan *imessage.Message, 100),
+		ReadReceipts:    make(chan *imessage.ReadReceipt, 100),
+		MessageStatuses: make(chan *imessage.SendMessageStatus, 100),
+		backfillStart:   make(chan struct{}),
 	}
 	if !bridge.IM.Capabilities().MessageSendResponses {
 		portal.messageDedup = make(map[string]SentMessage)
@@ -175,6 +176,7 @@ type Portal struct {
 
 	Messages         chan *imessage.Message
 	ReadReceipts     chan *imessage.ReadReceipt
+	MessageStatuses  chan *imessage.SendMessageStatus
 	backfillStart    chan struct{}
 	backfillWait     sync.WaitGroup
 	backfillLock     sync.Mutex
@@ -346,6 +348,38 @@ func (portal *Portal) handleMessageLoop() {
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
 		}
+	}
+}
+
+func (portal *Portal) HandleiMessageSendMessageStatus(status *imessage.SendMessageStatus) {
+	var eventID id.EventID
+	if msg := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, status.GUID); msg != nil {
+		eventID = msg.MXID
+	} else if tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, status.GUID); tapback != nil {
+		eventID = tapback.MXID
+	} else {
+		portal.log.Debugfln("Dropping send message status for %s: not found in db messages or tapbacks", status.GUID)
+		return
+	}
+	portal.log.Debugfln("Processing message status with type %v for event %s/%s %s/%s", status.Status, string(eventID), portal.MXID, status.GUID, portal.GUID)
+	if status.Status == "sent" {
+		portal.sendSuccessCheckpoint(eventID)
+	} else if status.Status == "failed" {
+		evt, err := portal.MainIntent().GetEvent(portal.MXID, eventID)
+		if err != nil {
+			portal.log.Warnfln("Failed to lookup event %s/%s %s/%s: %v", string(eventID), portal.MXID, status.GUID, status.ChatGUID, err)
+			return
+		}
+		errString := "internal error"
+		if len(status.Message) != 0 {
+			errString = status.Message
+		} else if len(status.StatusCode) != 0 {
+			errString = status.StatusCode
+		}
+		portal.sendErrorMessage(evt, errors.New(errString), true, appservice.StatusPermFailure)
+	} else {
+		portal.log.Infofln("Ignoring unused message status type %v for event %s/%s %s/%s", status.Status, string(eventID), portal.MXID, status.GUID, portal.GUID)
+		return
 	}
 }
 
