@@ -154,6 +154,7 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		Messages:        make(chan *imessage.Message, 100),
 		ReadReceipts:    make(chan *imessage.ReadReceipt, 100),
 		MessageStatuses: make(chan *imessage.SendMessageStatus, 100),
+		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
 	}
 	if !bridge.IM.Capabilities().MessageSendResponses {
@@ -177,6 +178,7 @@ type Portal struct {
 	Messages         chan *imessage.Message
 	ReadReceipts     chan *imessage.ReadReceipt
 	MessageStatuses  chan *imessage.SendMessageStatus
+	MatrixMessages   chan *event.Event
 	backfillStart    chan struct{}
 	backfillWait     sync.WaitGroup
 	backfillLock     sync.Mutex
@@ -347,6 +349,10 @@ func (portal *Portal) handleMessageLoop() {
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
+		case event := <-portal.MatrixMessages:
+			portal.HandleMatrixMessage(event)
+		case status := <-portal.MessageStatuses:
+			portal.HandleiMessageSendMessageStatus(status)
 		}
 	}
 }
