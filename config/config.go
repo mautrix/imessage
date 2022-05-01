@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
@@ -45,6 +46,8 @@ type Config struct {
 			Username    string `yaml:"username"`
 			Displayname string `yaml:"displayname"`
 			Avatar      string `yaml:"avatar"`
+
+			ParsedAvatar id.ContentURI `yaml:"-"`
 		} `yaml:"bot"`
 
 		ASToken string `yaml:"as_token"`

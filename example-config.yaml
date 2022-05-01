@@ -58,6 +58,8 @@ bridge:
     # Displayname template for iMessage users.
     # {{.}} is replaced with the contact list name (if available) or username (phone number or email) of the iMessage user.
     displayname_template: "{{.}} (iMessage)"
+    # Should the bridge create a space and add bridged rooms to it?
+    personal_filtering_spaces: false
 
     # Whether or not the bridge should send a read receipt from the bridge bot when a message has been
     # sent to iMessage.
@@ -118,7 +120,7 @@ bridge:
     convert_video:
         enabled: false
         # Convert to h264 format (supported by all major browsers) at decent quality while retaining original
-        # audio. Modify these args to do whatever encoding/quality you want. 
+        # audio. Modify these args to do whatever encoding/quality you want.
         ffmpeg_args: ["-c:v", "libx264", "-preset", "faster", "-crf", "22", "-c:a", "copy"]
         extension: "mp4"
         mime_type: "video/mp4"

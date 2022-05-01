@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,7 +17,10 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	log "maunium.net/go/maulogger/v2"
@@ -39,6 +42,8 @@ type User struct {
 	DoublePuppetIntent *appservice.IntentAPI
 
 	mgmtCreateLock sync.Mutex
+
+	spaceMembershipChecked bool
 
 	customTypingIn   map[id.RoomID]bool
 	customTypingLock sync.Mutex
@@ -117,4 +122,84 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 	if err != nil {
 		user.log.Warnln("Failed to update m.direct list:", err)
 	}
+}
+
+func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
+	inviteContent := event.Content{
+		Parsed: &event.MemberEventContent{
+			Membership: event.MembershipInvite,
+			IsDirect:   isDirect,
+		},
+		Raw: map[string]interface{}{},
+	}
+	if user.DoublePuppetIntent != nil {
+		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+	}
+	_, err := intent.SendStateEvent(roomID, event.StateMember, user.MXID.String(), &inviteContent)
+	var httpErr mautrix.HTTPError
+	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
+		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)
+		ok = true
+		return
+	} else if err != nil {
+		user.log.Warnfln("Failed to invite user to %s: %v", roomID, err)
+	} else {
+		ok = true
+	}
+
+	if user.DoublePuppetIntent != nil {
+		err = user.DoublePuppetIntent.EnsureJoined(roomID)
+		if err != nil {
+			user.log.Warnfln("Failed to auto-join %s as %s: %v", roomID, user.MXID, err)
+		}
+	}
+	return
+}
+
+func (user *User) GetSpaceRoom() id.RoomID {
+	if !user.bridge.Config.Bridge.PersonalFilteringSpaces {
+		return ""
+	}
+
+	if len(user.SpaceRoom) == 0 {
+		name := "iMessage"
+		if user.bridge.Config.IMessage.Platform == "android" {
+			name = "Android SMS"
+		}
+		resp, err := user.bridge.Bot.CreateRoom(&mautrix.ReqCreateRoom{
+			Visibility: "private",
+			Name:       name,
+			Topic:      fmt.Sprintf("Your %s bridged chats", name),
+			InitialState: []*event.Event{{
+				Type: event.StateRoomAvatar,
+				Content: event.Content{
+					Parsed: &event.RoomAvatarEventContent{
+						URL: user.bridge.Config.AppService.Bot.ParsedAvatar,
+					},
+				},
+			}},
+			CreationContent: map[string]interface{}{
+				"type": event.RoomTypeSpace,
+			},
+			PowerLevelOverride: &event.PowerLevelsEventContent{
+				Users: map[id.UserID]int{
+					user.bridge.Bot.UserID: 9001,
+					user.MXID:              100,
+				},
+			},
+		})
+
+		if err != nil {
+			user.log.Errorln("Failed to auto-create space room:", err)
+		} else {
+			user.SpaceRoom = resp.RoomID
+			user.Update()
+			user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+		}
+	} else if !user.spaceMembershipChecked && !user.bridge.StateStore.IsInRoom(user.SpaceRoom, user.MXID) {
+		user.ensureInvited(user.bridge.Bot, user.SpaceRoom, false)
+	}
+	user.spaceMembershipChecked = true
+
+	return user.SpaceRoom
 }

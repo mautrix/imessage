@@ -41,14 +41,12 @@ type macOSDatabase struct {
 	chatGUIDQuery        *sql.Stmt
 	groupActionQuery     *sql.Stmt
 	recentChatsQuery     *sql.Stmt
+	groupMemberQuery     *sql.Stmt
 	Messages             chan *imessage.Message
 	ReadReceipts         chan *imessage.ReadReceipt
 	stopWakeupDetecting  chan struct{}
 	stopWatching         chan struct{}
 	stopWait             sync.WaitGroup
-
-	ppDB             *sql.DB
-	groupMemberQuery *sql.Stmt
 
 	contactStore *ContactStore
 }

@@ -32,6 +32,8 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
+	PersonalFilteringSpaces bool `yaml:"personal_filtering_spaces"`
+
 	DeliveryReceipts    bool `yaml:"delivery_receipts"`
 	MessageStatusEvents bool `yaml:"message_status_events"`
 	SendErrorNotices    bool `yaml:"send_error_notices"`

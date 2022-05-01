@@ -113,7 +113,6 @@ func (handler *CommandHandler) CommandMux(ce *CommandEvent) {
 		handler.CommandPingMatrix(ce)
 	case "logout-matrix":
 		handler.CommandLogoutMatrix(ce)
-
 	default:
 		ce.Reply("Unknown command, use the `help` command for help.")
 	}
@@ -228,7 +227,7 @@ const cmdHelpHelp = `help - Prints this help page.`
 
 // CommandHelp handles help command
 func (handler *CommandHandler) CommandHelp(ce *CommandEvent) {
-	cmdPrefix := handler.bridge.Config.Bridge.CommandPrefix
+	cmdPrefix := handler.bridge.Config.Bridge.CommandPrefix + " "
 	ce.Reply("* " + strings.Join([]string{
 		cmdPrefix + cmdHelpHelp,
 		cmdPrefix + cmdVersionHelp,
