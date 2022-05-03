@@ -463,6 +463,10 @@ func (mac *macOSDatabase) ContactChan() <-chan *imessage.Contact {
 	return make(chan *imessage.Contact, 0)
 }
 
+func (mac *macOSDatabase) MessageStatusChan() <-chan *imessage.SendMessageStatus {
+	return make(<-chan *imessage.SendMessageStatus, 0)
+}
+
 func (mac *macOSDatabase) Start() error {
 	mac.stopWait.Add(2)
 	go mac.ListenWakeup()

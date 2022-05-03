@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -58,7 +58,6 @@ func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 }
 
 func (pq *PortalQuery) FindPrivateChats() []*Portal {
-	// TODO make sure this is right
 	return pq.getAll("SELECT * FROM portal WHERE guid LIKE '%;-;%'")
 }
 
@@ -89,12 +88,12 @@ type Portal struct {
 	GUID string
 	MXID id.RoomID
 
-	Name       string
-	AvatarHash *[32]byte
-	AvatarURL  id.ContentURI
-	Encrypted  bool
-
+	Name            string
+	AvatarHash      *[32]byte
+	AvatarURL       id.ContentURI
+	Encrypted       bool
 	BackfillStartTS int64
+	InSpace         bool
 }
 
 func (portal *Portal) avatarHashSlice() []byte {
@@ -107,7 +106,7 @@ func (portal *Portal) avatarHashSlice() []byte {
 func (portal *Portal) Scan(row Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS)
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -132,8 +131,8 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS)
+	_, err := portal.db.Exec("INSERT INTO portal (guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
 	}
@@ -144,8 +143,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6 WHERE guid=$7",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.GUID)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7 WHERE guid=$8",
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}
