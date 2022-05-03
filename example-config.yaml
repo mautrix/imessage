@@ -5,6 +5,8 @@ homeserver:
     websocket_proxy: ws://localhost:29331
     # The domain of the homeserver (for MXIDs, etc).
     domain: example.com
+    # Does the homeserver support https://github.com/matrix-org/matrix-spec-proposals/pull/2246?
+    async_media: false
 
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
@@ -56,6 +58,8 @@ bridge:
     # Displayname template for iMessage users.
     # {{.}} is replaced with the contact list name (if available) or username (phone number or email) of the iMessage user.
     displayname_template: "{{.}} (iMessage)"
+    # Should the bridge create a space and add bridged rooms to it?
+    personal_filtering_spaces: false
 
     # Whether or not the bridge should send a read receipt from the bridge bot when a message has been
     # sent to iMessage.
@@ -110,6 +114,16 @@ bridge:
     # Should we convert heif images to jpeg before re-uploading? This increases
     # compatibility, but adds generation loss (reduces quality).
     convert_heif: true
+    # Modern Apple devices tend to use h265 encoding for video, which is a licensed standard and therefore not
+    # supported by most major browsers. If enabled, all video attachments will be converted according to the
+    # ffmpeg args.
+    convert_video:
+        enabled: false
+        # Convert to h264 format (supported by all major browsers) at decent quality while retaining original
+        # audio. Modify these args to do whatever encoding/quality you want.
+        ffmpeg_args: ["-c:v", "libx264", "-preset", "faster", "-crf", "22", "-c:a", "copy"]
+        extension: "mp4"
+        mime_type: "video/mp4"
 
     # The prefix for commands.
     command_prefix: "!im"

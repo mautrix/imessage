@@ -40,6 +40,7 @@ const (
 	IncomingContact            ipc.Command = "contact"
 	IncomingMessageIDQuery     ipc.Command = "message_ids_after_time"
 	IncomingPushKey            ipc.Command = "push_key"
+	IncomingSendMessageStatus  ipc.Command = "send_message_status"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -60,27 +61,29 @@ type APIWithIPC interface {
 }
 
 type iOSConnector struct {
-	IPC         *ipc.Processor
-	bridge      imessage.Bridge
-	log         log.Logger
-	messageChan chan *imessage.Message
-	receiptChan chan *imessage.ReadReceipt
-	typingChan  chan *imessage.TypingNotification
-	chatChan    chan *imessage.ChatInfo
-	contactChan chan *imessage.Contact
-	isAndroid   bool
+	IPC               *ipc.Processor
+	bridge            imessage.Bridge
+	log               log.Logger
+	messageChan       chan *imessage.Message
+	receiptChan       chan *imessage.ReadReceipt
+	typingChan        chan *imessage.TypingNotification
+	chatChan          chan *imessage.ChatInfo
+	contactChan       chan *imessage.Contact
+	messageStatusChan chan *imessage.SendMessageStatus
+	isAndroid         bool
 }
 
 func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
 	return &iOSConnector{
-		log:         logger,
-		bridge:      bridge,
-		messageChan: make(chan *imessage.Message, 256),
-		receiptChan: make(chan *imessage.ReadReceipt, 32),
-		typingChan:  make(chan *imessage.TypingNotification, 32),
-		chatChan:    make(chan *imessage.ChatInfo, 32),
-		contactChan: make(chan *imessage.Contact, 2048),
-		isAndroid:   bridge.GetConnectorConfig().Platform == "android",
+		log:               logger,
+		bridge:            bridge,
+		messageChan:       make(chan *imessage.Message, 256),
+		receiptChan:       make(chan *imessage.ReadReceipt, 32),
+		typingChan:        make(chan *imessage.TypingNotification, 32),
+		chatChan:          make(chan *imessage.ChatInfo, 32),
+		contactChan:       make(chan *imessage.Contact, 2048),
+		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
+		isAndroid:         bridge.GetConnectorConfig().Platform == "android",
 	}
 }
 
@@ -110,6 +113,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingContact, ios.handleIncomingContact)
 	ios.IPC.SetHandler(IncomingMessageIDQuery, ios.handleMessageIDQuery)
 	ios.IPC.SetHandler(IncomingPushKey, ios.handlePushKey)
+	ios.IPC.SetHandler(IncomingSendMessageStatus, ios.handleIncomingSendMessageStatus)
 	return nil
 }
 
@@ -297,6 +301,21 @@ func (ios *iOSConnector) handleIncomingContact(data json.RawMessage) interface{}
 	return nil
 }
 
+func (ios *iOSConnector) handleIncomingSendMessageStatus(data json.RawMessage) interface{} {
+	var status imessage.SendMessageStatus
+	err := json.Unmarshal(data, &status)
+	if err != nil {
+		ios.log.Warnln("Failed to parse incoming send message status:", err)
+		return nil
+	}
+	select {
+	case ios.messageStatusChan <- &status:
+	default:
+		ios.log.Warnln("Incoming send message status buffer is full")
+	}
+	return nil
+}
+
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetMessagesAfter, &GetMessagesAfterRequest{
@@ -345,6 +364,10 @@ func (ios *iOSConnector) ChatChan() <-chan *imessage.ChatInfo {
 
 func (ios *iOSConnector) ContactChan() <-chan *imessage.Contact {
 	return ios.contactChan
+}
+
+func (ios *iOSConnector) MessageStatusChan() <-chan *imessage.SendMessageStatus {
+	return ios.messageStatusChan
 }
 
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {

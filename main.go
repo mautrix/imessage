@@ -1,5 +1,5 @@
 // mautrix-imessage - A Matrix-iMessage puppeting bridge.
-// Copyright (C) 2021 Tulir Asokan
+// Copyright (C) 2022 Tulir Asokan
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -568,6 +568,14 @@ func (bridge *Bridge) Start() {
 	go bridge.IMHandler.Start()
 	bridge.Log.Debugln("Starting IPC loop")
 	go bridge.IPC.Loop()
+
+	if len(bridge.Config.AppService.Bot.Avatar) > 0 && bridge.Config.AppService.Bot.Avatar != "remove" {
+		bridge.Config.AppService.Bot.ParsedAvatar, err = id.ParseContentURI(bridge.Config.AppService.Bot.Avatar)
+		if err != nil {
+			bridge.Log.Warnfln("Failed to parse bot avatar URL: %v", err)
+		}
+	}
+
 	go bridge.UpdateBotProfile()
 	if bridge.Crypto != nil && !cryptoReset {
 		go bridge.Crypto.Start()
@@ -669,14 +677,10 @@ func (bridge *Bridge) UpdateBotProfile() {
 	botConfig := bridge.Config.AppService.Bot
 
 	var err error
-	var mxc id.ContentURI
 	if botConfig.Avatar == "remove" {
-		err = bridge.Bot.SetAvatarURL(mxc)
-	} else if len(botConfig.Avatar) > 0 {
-		mxc, err = id.ParseContentURI(botConfig.Avatar)
-		if err == nil {
-			err = bridge.Bot.SetAvatarURL(mxc)
-		}
+		err = bridge.Bot.SetAvatarURL(id.ContentURI{})
+	} else if len(botConfig.Avatar) > 0 && !botConfig.ParsedAvatar.IsEmpty() {
+		err = bridge.Bot.SetAvatarURL(botConfig.ParsedAvatar)
 	}
 	if err != nil {
 		bridge.Log.Warnln("Failed to update bot avatar:", err)

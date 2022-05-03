@@ -193,12 +193,13 @@ func (mac *MacNoSIPConnector) Stop() {
 
 func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
-		MessageSendResponses:    true,
-		SendTapbacks:            true,
-		SendReadReceipts:        true,
-		SendTypingNotifications: true,
-		SendCaptions:            true,
-		BridgeState:             true,
+		MessageSendResponses:     true,
+		SendTapbacks:             true,
+		SendReadReceipts:         true,
+		SendTypingNotifications:  true,
+		SendCaptions:             true,
+		BridgeState:              true,
+		MessageStatusCheckpoints: true,
 	}
 }
 

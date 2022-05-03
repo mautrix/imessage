@@ -378,7 +378,7 @@ func (mx *MatrixHandler) HandleMessage(evt *event.Event) {
 
 	portal := mx.bridge.GetPortalByMXID(evt.RoomID)
 	if portal != nil {
-		portal.HandleMatrixMessage(evt)
+		portal.MatrixMessages <- evt
 	}
 }
 

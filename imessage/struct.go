@@ -225,12 +225,13 @@ type SendResponse struct {
 }
 
 type ConnectorCapabilities struct {
-	MessageSendResponses    bool
-	SendTapbacks            bool
-	SendReadReceipts        bool
-	SendTypingNotifications bool
-	SendCaptions            bool
-	BridgeState             bool
+	MessageSendResponses     bool
+	SendTapbacks             bool
+	SendReadReceipts         bool
+	SendTypingNotifications  bool
+	SendCaptions             bool
+	BridgeState              bool
+	MessageStatusCheckpoints bool
 }
 
 type PushKeyRequest struct {
@@ -241,4 +242,12 @@ type PushKeyRequest struct {
 	PushKeyTS int64  `json:"pushkey_ts"`
 
 	Data map[string]interface{} `json:"data"`
+}
+
+type SendMessageStatus struct {
+	GUID       string `json:"guid"`
+	ChatGUID   string `json:"chat_guid"`
+	Status     string `json:"status"`
+	Message    string `json:"message,omitempty"`
+	StatusCode string `json:"status_code,omitempty"`
 }

@@ -32,6 +32,8 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
+	PersonalFilteringSpaces bool `yaml:"personal_filtering_spaces"`
+
 	DeliveryReceipts    bool `yaml:"delivery_receipts"`
 	MessageStatusEvents bool `yaml:"message_status_events"`
 	SendErrorNotices    bool `yaml:"send_error_notices"`
@@ -51,6 +53,12 @@ type BridgeConfig struct {
 	MediaViewerSMSMinSize int     `yaml:"media_viewer_sms_min_size"`
 	MediaViewerIMMinSize  int     `yaml:"media_viewer_imessage_min_size"`
 	ConvertHEIF           bool    `yaml:"convert_heif"`
+	ConvertVideo          struct {
+		Enabled    bool     `yaml:"enabled"`
+		FFMPEGArgs []string `yaml:"ffmpeg_args"`
+		MimeType   string   `yaml:"mime_type"`
+		Extension  string   `yaml:"extension"`
+	} `yaml:"convert_video"`
 
 	FederateRooms bool `yaml:"federate_rooms"`
 

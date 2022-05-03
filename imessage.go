@@ -40,8 +40,9 @@ func (imh *iMessageHandler) Start() {
 	messages := imh.bridge.IM.MessageChan()
 	readReceipts := imh.bridge.IM.ReadReceiptChan()
 	typingNotifications := imh.bridge.IM.TypingNotificationChan()
-	chat := imh.bridge.IM.ChatChan()
-	contact := imh.bridge.IM.ContactChan()
+	chats := imh.bridge.IM.ChatChan()
+	contacts := imh.bridge.IM.ContactChan()
+	messageStatuses := imh.bridge.IM.MessageStatusChan()
 	for {
 		select {
 		case msg := <-messages:
@@ -50,10 +51,12 @@ func (imh *iMessageHandler) Start() {
 			imh.HandleReadReceipt(rr)
 		case notif := <-typingNotifications:
 			imh.HandleTypingNotification(notif)
-		case c := <-chat:
-			imh.HandleChat(c)
-		case contact := <-contact:
+		case chat := <-chats:
+			imh.HandleChat(chat)
+		case contact := <-contacts:
 			imh.HandleContact(contact)
+		case status := <-messageStatuses:
+			imh.HandleMessageStatus(status)
 		case <-imh.stop:
 			return
 		}
@@ -73,6 +76,15 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 		}
 	}
 	portal.Messages <- msg
+}
+
+func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStatus) {
+	portal := imh.bridge.GetPortalByGUID(status.ChatGUID)
+	if len(portal.GUID) == 0 {
+		imh.log.Debugfln("Ignoring message status for message from unknown portal %s/%s", status.GUID, status.ChatGUID)
+		return
+	}
+	portal.MessageStatuses <- status
 }
 
 func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
