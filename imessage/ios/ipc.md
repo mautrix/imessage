@@ -161,6 +161,10 @@ Another error response:
 * Prepare a new private chat (request type `prepare_dm`)
   * `guid` (str) - The GUID of the user to start a chat with
   * Doesn't return anything (just acknowledge with an empty response).
+* Confirm a message being bridged (request type `message_bridge_result`).
+  * Has fields `chat_guid`, `message_guid` and `success`.
+  * Doesn't have an ID, so it doesn't need to be responded to.
+  * Only enabled for android-sms.
 
 #### to mautrix-imessage
 * Incoming messages (request type `message`)

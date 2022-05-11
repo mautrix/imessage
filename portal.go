@@ -327,8 +327,8 @@ func (portal *Portal) handleMessageLoop() {
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
-		case event := <-portal.MatrixMessages:
-			portal.HandleMatrixMessage(event)
+		case evt := <-portal.MatrixMessages:
+			portal.HandleMatrixMessage(evt)
 		case status := <-portal.MessageStatuses:
 			portal.HandleiMessageSendMessageStatus(status)
 		}
@@ -1565,10 +1565,13 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 }
 
 func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.EventID {
+	var dbMessage *database.Message
+	var overrideSuccess bool
 	defer func() {
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
 		}
+		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, overrideSuccess || (dbMessage != nil && len(dbMessage.MXID) > 0))
 	}()
 
 	if msg.Tapback != nil {
@@ -1576,11 +1579,13 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 		return ""
 	} else if portal.bridge.DB.Message.GetLastByGUID(portal.GUID, msg.GUID) != nil {
 		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
+		// Send a success confirmation since it's a duplicate message
+		overrideSuccess = true
 		return ""
 	}
 
 	portal.log.Debugln("Starting handling of iMessage", msg.GUID)
-	dbMessage := portal.bridge.DB.Message.New()
+	dbMessage = portal.bridge.DB.Message.New()
 	dbMessage.ChatGUID = portal.GUID
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
