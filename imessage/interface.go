@@ -35,7 +35,7 @@ var (
 )
 
 type API interface {
-	Start() error
+	Start(readyCallback func()) error
 	Stop()
 	GetMessagesSinceDate(chatID string, minDate time.Time) ([]*Message, error)
 	GetMessagesWithLimit(chatID string, limit int) ([]*Message, error)
