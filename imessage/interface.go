@@ -60,6 +60,7 @@ type API interface {
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
+	SendMessageBridgeResult(chatID, messageID string, success bool)
 
 	PreStartupSyncHook() error
 

@@ -22,21 +22,22 @@ import (
 )
 
 const (
-	ReqSendMessage       ipc.Command = "send_message"
-	ReqSendMedia         ipc.Command = "send_media"
-	ReqSendTapback       ipc.Command = "send_tapback"
-	ReqSendReadReceipt   ipc.Command = "send_read_receipt"
-	ReqSetTyping         ipc.Command = "set_typing"
-	ReqGetChats          ipc.Command = "get_chats"
-	ReqGetChat           ipc.Command = "get_chat"
-	ReqGetChatAvatar     ipc.Command = "get_chat_avatar"
-	ReqGetContact        ipc.Command = "get_contact"
-	ReqGetContactList    ipc.Command = "get_contact_list"
-	ReqGetMessagesAfter  ipc.Command = "get_messages_after"
-	ReqGetRecentMessages ipc.Command = "get_recent_messages"
-	ReqPreStartupSync    ipc.Command = "pre_startup_sync"
-	ReqResolveIdentifier ipc.Command = "resolve_identifier"
-	ReqPrepareDM         ipc.Command = "prepare_dm"
+	ReqSendMessage         ipc.Command = "send_message"
+	ReqSendMedia           ipc.Command = "send_media"
+	ReqSendTapback         ipc.Command = "send_tapback"
+	ReqSendReadReceipt     ipc.Command = "send_read_receipt"
+	ReqSetTyping           ipc.Command = "set_typing"
+	ReqGetChats            ipc.Command = "get_chats"
+	ReqGetChat             ipc.Command = "get_chat"
+	ReqGetChatAvatar       ipc.Command = "get_chat_avatar"
+	ReqGetContact          ipc.Command = "get_contact"
+	ReqGetContactList      ipc.Command = "get_contact_list"
+	ReqGetMessagesAfter    ipc.Command = "get_messages_after"
+	ReqGetRecentMessages   ipc.Command = "get_recent_messages"
+	ReqPreStartupSync      ipc.Command = "pre_startup_sync"
+	ReqResolveIdentifier   ipc.Command = "resolve_identifier"
+	ReqPrepareDM           ipc.Command = "prepare_dm"
+	ReqMessageBridgeResult ipc.Command = "message_bridge_result"
 )
 
 type SendMessageRequest struct {
@@ -114,4 +115,10 @@ type ResolveIdentifierResponse struct {
 
 type PrepareDMRequest struct {
 	GUID string `json:"guid"`
+}
+
+type MessageBridgeResult struct {
+	ChatGUID string `json:"chat_guid"`
+	GUID     string `json:"message_guid"`
+	Success  bool   `json:"success"`
 }

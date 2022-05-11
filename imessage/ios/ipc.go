@@ -463,6 +463,18 @@ func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool) erro
 	})
 }
 
+func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, success bool) {
+	if !ios.isAndroid {
+		// Only android needs message bridging confirmations
+		return
+	}
+	_ = ios.IPC.Send(ReqMessageBridgeResult, &MessageBridgeResult{
+		ChatGUID: chatID,
+		GUID:     messageID,
+		Success:  success,
+	})
+}
+
 func (ios *iOSConnector) PreStartupSyncHook() error {
 	return ios.IPC.Request(context.Background(), ReqPreStartupSync, nil, nil)
 }
