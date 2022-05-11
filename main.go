@@ -617,12 +617,12 @@ func (bridge *Bridge) serverPinger() {
 }
 
 func (bridge *Bridge) StartupSync() {
-	// Hacky way to make sure preinitialization is done
-	time.Sleep(3 * time.Second)
-
-	err := bridge.IM.PreStartupSyncHook()
+	resp, err := bridge.IM.PreStartupSyncHook()
 	if err != nil {
 		bridge.Log.Errorln("iMessage connector returned error in startup sync hook:", err)
+	} else if resp.SkipSync {
+		bridge.Log.Debugln("Skipping startup sync")
+		return
 	}
 
 	forceUpdateBridgeInfo := bridge.sendStatusUpdateInfo ||

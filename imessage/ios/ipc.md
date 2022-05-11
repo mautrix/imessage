@@ -158,6 +158,10 @@ Another error response:
   * Returns `guid` (str) with a GUID for the chat with the user.
   * If the identifier isn't valid or messages can't be sent to it, return a
     standard error response with an appropriate message.
+* Prepare for startup sync (request type `pre_startup_sync`)
+  * Sent when the bridge is starting and is about to do the startup sync.
+    The sync won't start until this request responds.
+  * Optionally, the response may contain `"skip_sync": true` to skip the startup sync.
 * Prepare a new private chat (request type `prepare_dm`)
   * `guid` (str) - The GUID of the user to start a chat with
   * Doesn't return anything (just acknowledge with an empty response).

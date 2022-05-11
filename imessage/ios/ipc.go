@@ -476,8 +476,9 @@ func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, succe
 	})
 }
 
-func (ios *iOSConnector) PreStartupSyncHook() error {
-	return ios.IPC.Request(context.Background(), ReqPreStartupSync, nil, nil)
+func (ios *iOSConnector) PreStartupSyncHook() (resp imessage.StartupSyncHookResponse, err error) {
+	err = ios.IPC.Request(context.Background(), ReqPreStartupSync, nil, &resp)
+	return
 }
 
 func (ios *iOSConnector) ResolveIdentifier(identifier string) (string, error) {

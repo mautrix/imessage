@@ -251,3 +251,7 @@ type SendMessageStatus struct {
 	Message    string `json:"message,omitempty"`
 	StatusCode string `json:"status_code,omitempty"`
 }
+
+type StartupSyncHookResponse struct {
+	SkipSync bool `json:"skip_sync"`
+}
