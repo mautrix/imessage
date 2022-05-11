@@ -62,7 +62,7 @@ type API interface {
 	SendTypingNotification(chatID string, typing bool) error
 	SendMessageBridgeResult(chatID, messageID string, success bool)
 
-	PreStartupSyncHook() error
+	PreStartupSyncHook() (StartupSyncHookResponse, error)
 
 	Capabilities() ConnectorCapabilities
 }
