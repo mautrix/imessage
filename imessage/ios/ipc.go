@@ -102,7 +102,7 @@ func (ios *iOSConnector) SetIPC(proc *ipc.Processor) {
 	ios.IPC = proc
 }
 
-func (ios *iOSConnector) Start() error {
+func (ios *iOSConnector) Start(readyCallback func()) error {
 	ios.IPC.SetHandler(IncomingMessage, ios.handleIncomingMessage)
 	ios.IPC.SetHandler(IncomingReadReceipt, ios.handleIncomingReadReceipt)
 	ios.IPC.SetHandler(IncomingTypingNotification, ios.handleIncomingTypingNotification)
@@ -114,6 +114,7 @@ func (ios *iOSConnector) Start() error {
 	ios.IPC.SetHandler(IncomingMessageIDQuery, ios.handleMessageIDQuery)
 	ios.IPC.SetHandler(IncomingPushKey, ios.handlePushKey)
 	ios.IPC.SetHandler(IncomingSendMessageStatus, ios.handleIncomingSendMessageStatus)
+	readyCallback()
 	return nil
 }
 

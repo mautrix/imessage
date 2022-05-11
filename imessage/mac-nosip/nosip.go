@@ -64,7 +64,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	}, nil
 }
 
-func (mac *MacNoSIPConnector) Start() error {
+func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	mac.log.Debugln("Preparing to execute", mac.path)
 	mac.proc = exec.Command(mac.path, mac.args...)
 
@@ -102,7 +102,7 @@ func (mac *MacNoSIPConnector) Start() error {
 
 	go mac.pingLoop(ipcProc)
 
-	return mac.APIWithIPC.Start()
+	return mac.APIWithIPC.Start(readyCallback)
 }
 
 func (mac *MacNoSIPConnector) pingLoop(ipcProc *ipc.Processor) {
