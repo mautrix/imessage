@@ -1121,7 +1121,8 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 	mimeType := mimetype.Detect(data).String()
 	isVoiceMemo := false
 	_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
-	if isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
+	// Only convert when sending to iMessage. SMS users probably don't want CAF.
+	if portal.Identifier.Service == "iMessage" && isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
 		filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
 		mimeType = "audio/x-caf"
 		isVoiceMemo = true
