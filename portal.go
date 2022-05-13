@@ -338,10 +338,6 @@ func (portal *Portal) handleMessageLoop() {
 func (portal *Portal) HandleiMessageSendMessageStatus(status *imessage.SendMessageStatus) {
 	var eventID id.EventID
 	if msg := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, status.GUID); msg != nil {
-		if status.Service != msg.Service {
-			msg.Service = status.Service
-			msg.Update()
-		}
 		eventID = msg.MXID
 	} else if tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, status.GUID); tapback != nil {
 		eventID = tapback.MXID
@@ -1042,8 +1038,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
 		dbMessage.Timestamp = resp.Time.UnixNano() / 1e6
-		dbMessage.Service = resp.Service
-		portal.sendDeliveryReceipt(evt.ID, dbMessage.Service, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
+		portal.sendDeliveryReceipt(evt.ID, resp.Service, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
 		dbMessage.Insert()
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
@@ -1326,9 +1321,8 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 			portal.log.Warnfln("Echo for Matrix message %s has lower timestamp than expected (message: %s, expected: %s)", msg.Time.Unix(), dedup.Timestamp.Unix())
 		}
 		dbMessage.MXID = dedup.EventID
-		dbMessage.Service = msg.Service
 		dbMessage.Insert()
-		portal.sendDeliveryReceipt(dbMessage.MXID, dbMessage.Service, true)
+		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, true)
 		return true
 	}
 	portal.messageDedupLock.Unlock()
@@ -1615,7 +1609,6 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
 	dbMessage.Timestamp = msg.Time.UnixNano() / int64(time.Millisecond)
-	dbMessage.Service = msg.Service
 
 	intent := portal.getIntentForMessage(msg, dbMessage)
 	if intent == nil {
@@ -1649,7 +1642,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	}
 
 	if len(dbMessage.MXID) > 0 {
-		portal.sendDeliveryReceipt(dbMessage.MXID, dbMessage.Service, false)
+		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, false)
 		if !isBackfill && !msg.IsFromMe && msg.IsRead && portal.bridge.user.DoublePuppetIntent != nil {
 			err := portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, dbMessage.MXID)
 			if err != nil {
