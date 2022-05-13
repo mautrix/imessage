@@ -1554,7 +1554,12 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 		}
 		return intent
 	} else if len(msg.Sender.LocalID) > 0 {
-		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
+		localID := msg.Sender.LocalID
+		if portal.bridge.Config.Bridge.ForceUniformDMSenders && portal.IsPrivateChat() && msg.Sender.LocalID != portal.Identifier.LocalID {
+			portal.log.Debugfln("Message received from %s, which is not the expected sender %s. Forcing the original puppet.", localID, portal.Identifier.LocalID)
+			localID = portal.Identifier.LocalID
+		}
+		puppet := portal.bridge.GetPuppetByLocalID(localID)
 		if len(puppet.Displayname) == 0 {
 			portal.log.Debugfln("Displayname of %s is empty, syncing before handling %s", puppet.ID, msg.GUID)
 			puppet.Sync()

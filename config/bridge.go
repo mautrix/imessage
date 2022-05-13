@@ -60,6 +60,8 @@ type BridgeConfig struct {
 		Extension  string   `yaml:"extension"`
 	} `yaml:"convert_video"`
 
+	ForceUniformDMSenders bool `yaml:"force_uniform_dm_senders"`
+
 	FederateRooms bool `yaml:"federate_rooms"`
 
 	CommandPrefix string `yaml:"command_prefix"`
