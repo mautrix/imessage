@@ -499,9 +499,6 @@ func (portal *Portal) buildProtocol(service string) event.BridgeInfoSection {
 		AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
 		ExternalURL: "https://support.apple.com/messages",
 	}
-	if len(service) == 0 {
-		service = portal.Identifier.Service
-	}
 	if service == "SMS" {
 		if portal.bridge.Config.IMessage.Platform == "android" {
 			protocol.ID = "android-sms"
@@ -524,7 +521,7 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 		BridgeEventContent: event.BridgeEventContent{
 			BridgeBot: portal.bridge.Bot.UserID,
 			Creator:   portal.MainIntent().UserID,
-			Protocol:  portal.buildProtocol(""),
+			Protocol:  portal.buildProtocol(portal.Identifier.Service),
 		},
 		Channel: CustomBridgeInfoSection{
 			BridgeInfoSection: event.BridgeInfoSection{
