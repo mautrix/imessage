@@ -41,6 +41,9 @@ type Message struct {
 	JSONTargetGUID string     `json:"target_guid"`
 	Target         Identifier `json:"-"`
 
+	// The service from the sender_guid is extracted and stored here.
+	Service string `json:"service"`
+
 	IsFromMe       bool      `json:"is_from_me"`
 	IsRead         bool      `json:"is_read"`
 	ReadAt         time.Time `json:"-"`
@@ -232,6 +235,7 @@ type ConnectorCapabilities struct {
 	SendCaptions             bool
 	BridgeState              bool
 	MessageStatusCheckpoints bool
+	MergedChats              bool
 }
 
 type PushKeyRequest struct {
@@ -248,6 +252,7 @@ type SendMessageStatus struct {
 	GUID       string `json:"guid"`
 	ChatGUID   string `json:"chat_guid"`
 	Status     string `json:"status"`
+	Service    string `json:"service"`
 	Message    string `json:"message,omitempty"`
 	StatusCode string `json:"status_code,omitempty"`
 }

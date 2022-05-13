@@ -71,6 +71,7 @@ type iOSConnector struct {
 	contactChan       chan *imessage.Contact
 	messageStatusChan chan *imessage.SendMessageStatus
 	isAndroid         bool
+	isNoSIP           bool
 }
 
 func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
@@ -84,6 +85,7 @@ func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC 
 		contactChan:       make(chan *imessage.Contact, 2048),
 		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
 		isAndroid:         bridge.GetConnectorConfig().Platform == "android",
+		isNoSIP:           bridge.GetConnectorConfig().Platform == "mac-nosip",
 	}
 }
 
@@ -122,7 +124,12 @@ func (ios *iOSConnector) Stop() {}
 
 func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 	if !message.IsFromMe {
-		message.Sender = imessage.ParseIdentifier(message.JSONSenderGUID)
+		sender := imessage.ParseIdentifier(message.JSONSenderGUID)
+		if ios.Capabilities().MergedChats {
+			sender.Service = "iMessage"
+			message.JSONSenderGUID = sender.String()
+		}
+		message.Sender = sender
 	}
 	if len(message.JSONTargetGUID) > 0 {
 		message.Target = imessage.ParseIdentifier(message.JSONTargetGUID)
@@ -510,5 +517,6 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTypingNotifications: !ios.isAndroid,
 		SendCaptions:            ios.isAndroid,
 		BridgeState:             false,
+		MergedChats:             ios.isNoSIP,
 	}
 }

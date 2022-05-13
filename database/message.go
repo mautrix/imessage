@@ -55,22 +55,22 @@ func (mq *MessageQuery) GetIDsSince(chat string, since time.Time) (messages []st
 }
 
 func (mq *MessageQuery) GetLastByGUID(chat string, guid string) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp, service "+
 		"FROM message WHERE chat_guid=$1 AND guid=$2 ORDER BY part DESC LIMIT 1", chat, guid)
 }
 
 func (mq *MessageQuery) GetByGUID(chat string, guid string, part int) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp, service "+
 		"FROM message WHERE chat_guid=$1 AND guid=$2 AND part=$3", chat, guid, part)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp, service "+
 		"FROM message WHERE mxid=$1", mxid)
 }
 
 func (mq *MessageQuery) GetLastInChat(chat string) *Message {
-	msg := mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	msg := mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp, service "+
 		"FROM message WHERE chat_guid=$1 ORDER BY timestamp DESC LIMIT 1", chat)
 	if msg == nil || msg.Timestamp == 0 {
 		// Old db, we don't know what the last message is.
@@ -97,6 +97,7 @@ type Message struct {
 	MXID       id.EventID
 	SenderGUID string
 	Timestamp  int64
+	Service    string
 }
 
 func (msg *Message) Time() time.Time {
@@ -105,7 +106,7 @@ func (msg *Message) Time() time.Time {
 }
 
 func (msg *Message) Scan(row Scannable) *Message {
-	err := row.Scan(&msg.ChatGUID, &msg.GUID, &msg.Part, &msg.MXID, &msg.SenderGUID, &msg.Timestamp)
+	err := row.Scan(&msg.ChatGUID, &msg.GUID, &msg.Part, &msg.MXID, &msg.SenderGUID, &msg.Timestamp, &msg.Service)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
@@ -116,10 +117,18 @@ func (msg *Message) Scan(row Scannable) *Message {
 }
 
 func (msg *Message) Insert() {
-	_, err := msg.db.Exec("INSERT INTO message (chat_guid, guid, part, mxid, sender_guid, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
-		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp)
+	_, err := msg.db.Exec("INSERT INTO message (chat_guid, guid, part, mxid, sender_guid, timestamp, service) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp, msg.Service)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s.%d@%s: %v", msg.GUID, msg.Part, msg.ChatGUID, err)
+	}
+}
+
+func (msg *Message) Update() {
+	_, err := msg.db.Exec("UPDATE message SET service=$1 WHERE mxid=$2",
+		msg.Service, msg.MXID)
+	if err != nil {
+		msg.log.Warnfln("Failed to update %s: %v", msg.GUID, err)
 	}
 }
 

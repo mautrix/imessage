@@ -338,6 +338,10 @@ func (portal *Portal) handleMessageLoop() {
 func (portal *Portal) HandleiMessageSendMessageStatus(status *imessage.SendMessageStatus) {
 	var eventID id.EventID
 	if msg := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, status.GUID); msg != nil {
+		if status.Service != msg.Service {
+			msg.Service = status.Service
+			msg.Update()
+		}
 		eventID = msg.MXID
 	} else if tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, status.GUID); tapback != nil {
 		eventID = tapback.MXID
@@ -484,17 +488,39 @@ func (portal *Portal) getBridgeInfoStateKey() string {
 		bridgeInfoProto, strings.ToLower(portal.Identifier.Service), portal.GUID)
 }
 
+func (portal *Portal) buildProtocol(service string) event.BridgeInfoSection {
+	protocol := event.BridgeInfoSection{
+		ID:          "imessage",
+		DisplayName: "iMessage",
+		AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+		ExternalURL: "https://support.apple.com/messages",
+	}
+	if len(service) == 0 {
+		service = portal.Identifier.Service
+	}
+	if service == "SMS" {
+		if portal.bridge.Config.IMessage.Platform == "android" {
+			protocol.ID = "android-sms"
+			protocol.DisplayName = "Android SMS"
+			protocol.ExternalURL = ""
+		} else {
+			protocol.ID = "imessage-sms"
+			protocol.DisplayName = "iMessage (SMS)"
+		}
+	} else if portal.bridge.Config.IMessage.Platform == "ios" {
+		protocol.ID = "imessage-ios"
+	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
+		protocol.ID = "imessage-nosip"
+	}
+	return protocol
+}
+
 func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	bridgeInfo := CustomBridgeInfoContent{
 		BridgeEventContent: event.BridgeEventContent{
 			BridgeBot: portal.bridge.Bot.UserID,
 			Creator:   portal.MainIntent().UserID,
-			Protocol: event.BridgeInfoSection{
-				ID:          "imessage",
-				DisplayName: "iMessage",
-				AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
-				ExternalURL: "https://support.apple.com/messages",
-			},
+			Protocol:  portal.buildProtocol(""),
 		},
 		Channel: CustomBridgeInfoSection{
 			BridgeInfoSection: event.BridgeInfoSection{
@@ -510,20 +536,6 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			SendStatusStart: portal.bridge.SendStatusStartTS,
 			TimeoutSeconds:  portal.bridge.Config.Bridge.MaxHandleSeconds,
 		},
-	}
-	if portal.Identifier.Service == "SMS" {
-		if portal.bridge.Config.IMessage.Platform == "android" {
-			bridgeInfo.Protocol.ID = "android-sms"
-			bridgeInfo.Protocol.DisplayName = "Android SMS"
-			bridgeInfo.Protocol.ExternalURL = ""
-		} else {
-			bridgeInfo.Protocol.ID = "imessage-sms"
-			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
-		}
-	} else if portal.bridge.Config.IMessage.Platform == "ios" {
-		bridgeInfo.Protocol.ID = "imessage-ios"
-	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
-		bridgeInfo.Protocol.ID = "imessage-nosip"
 	}
 	return portal.getBridgeInfoStateKey(), bridgeInfo
 }
@@ -1394,6 +1406,8 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		}
 	}
 
+	extraContent["protocol"] = portal.buildProtocol(msg.Service)
+
 	if CanConvertHEIF && portal.bridge.Config.Bridge.ConvertHEIF && (mimeType == "image/heic" || mimeType == "image/heif") {
 		convertedData, err := ConvertHEIF(data)
 		if err == nil {
@@ -1512,7 +1526,9 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{
+			"protocol": portal.buildProtocol(msg.Service),
+		}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
@@ -1590,6 +1606,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
 	dbMessage.Timestamp = msg.Time.UnixNano() / int64(time.Millisecond)
+	dbMessage.Service = msg.Service
 
 	intent := portal.getIntentForMessage(msg, dbMessage)
 	if intent == nil {
