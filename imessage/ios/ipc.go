@@ -123,6 +123,9 @@ func (ios *iOSConnector) Start(readyCallback func()) error {
 func (ios *iOSConnector) Stop() {}
 
 func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
+	if len(message.Service) == 0 {
+		message.Service = imessage.ParseIdentifier(message.ChatGUID).Service
+	}
 	if !message.IsFromMe {
 		sender := imessage.ParseIdentifier(message.JSONSenderGUID)
 		if ios.Capabilities().MergedChats {
@@ -312,6 +315,9 @@ func (ios *iOSConnector) handleIncomingContact(data json.RawMessage) interface{}
 func (ios *iOSConnector) handleIncomingSendMessageStatus(data json.RawMessage) interface{} {
 	var status imessage.SendMessageStatus
 	err := json.Unmarshal(data, &status)
+	if len(status.Service) == 0 {
+		status.Service = imessage.ParseIdentifier(status.ChatGUID).Service
+	}
 	if err != nil {
 		ios.log.Warnln("Failed to parse incoming send message status:", err)
 		return nil
@@ -412,6 +418,9 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 	}, &resp)
 	if err == nil {
 		resp.Time = floatToTime(resp.UnixTime)
+	}
+	if len(resp.Service) == 0 {
+		resp.Service = imessage.ParseIdentifier(chatID).Service
 	}
 	return &resp, err
 }

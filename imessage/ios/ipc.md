@@ -99,6 +99,7 @@ Another error response:
   * `chat_guid` (str) - Chat identifier
   * `text` (str) - Text to send
   * Response should contain the sent message `guid`, `timestamp`, and (preliminary) `service`
+    * If the service is omitted, it defaults to the service of the chat.
 * Send a media message (request type `send_media`)
   * `chat_guid` (str) - Chat identifier
   * `text` (str) - An optional caption to send with the media
@@ -182,6 +183,7 @@ Another error response:
     `SMS;-;+123456`. Not required if `is_from_me` is true.
   * `is_from_me` (bool) - True if the message was sent by the local user
   * `service` (str) - Explicitly states the origin service (e.g. `SMS`, `iMessage`), most useful when using chat merging
+    * If the service is omitted, it defaults to the service of the chat.
   * `thread_originator_guid` (str, UUID, optional) - The thread originator message ID
   * `thread_originator_part` (int) - The thread originator message part index (e.g. 0)
   * `attachments` (list of objects, optional) - Attachment info (media messages, maybe stickers?)
@@ -225,6 +227,7 @@ Another error response:
   * `message` (str) - A human-readable description of the status, if needed.
   * `status_code` (str) - A machine-readable identifier for the current status.
   * `service` (str) - The service the outgoing message will be sent on. If the message is downgraded to SMS, you should send this payload again with service set to `SMS`.
+    * If the service is omitted, it defaults to the service of the chat.
 * Pinging the Matrix websocket (request type `ping_server`)
   * Used to ensure that the websocket connection is alive. Should be called if there's some reason to believe
     the connection may have silently failed, e.g. when the device wakes up from sleep.
