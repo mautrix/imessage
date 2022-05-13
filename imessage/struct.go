@@ -223,6 +223,7 @@ func (id Identifier) String() string {
 
 type SendResponse struct {
 	GUID     string    `json:"guid"`
+	Service  string    `json:"service"`
 	Time     time.Time `json:"-"`
 	UnixTime float64   `json:"timestamp"`
 }
