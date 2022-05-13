@@ -479,37 +479,9 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	}
 }
 
-func (portal *Portal) getBridgeInfoStateKeyForService(service string) string {
-	return fmt.Sprintf("%s://%s/%s",
-		bridgeInfoProto, strings.ToLower(service), portal.GUID)
-}
-
 func (portal *Portal) getBridgeInfoStateKey() string {
-	return portal.getBridgeInfoStateKeyForService(portal.Identifier.Service)
-}
-
-func (portal *Portal) buildProtocol(service string) event.BridgeInfoSection {
-	protocol := event.BridgeInfoSection{
-		ID:          "imessage",
-		DisplayName: "iMessage",
-		AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
-		ExternalURL: "https://support.apple.com/messages",
-	}
-	if service == "SMS" {
-		if portal.bridge.Config.IMessage.Platform == "android" {
-			protocol.ID = "android-sms"
-			protocol.DisplayName = "Android SMS"
-			protocol.ExternalURL = ""
-		} else {
-			protocol.ID = "imessage-sms"
-			protocol.DisplayName = "iMessage (SMS)"
-		}
-	} else if portal.bridge.Config.IMessage.Platform == "ios" {
-		protocol.ID = "imessage-ios"
-	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
-		protocol.ID = "imessage-nosip"
-	}
-	return protocol
+	return fmt.Sprintf("%s://%s/%s",
+		bridgeInfoProto, strings.ToLower(portal.Identifier.Service), portal.GUID)
 }
 
 func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
@@ -517,7 +489,12 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 		BridgeEventContent: event.BridgeEventContent{
 			BridgeBot: portal.bridge.Bot.UserID,
 			Creator:   portal.MainIntent().UserID,
-			Protocol:  portal.buildProtocol(portal.Identifier.Service),
+			Protocol: event.BridgeInfoSection{
+				ID:          "imessage",
+				DisplayName: "iMessage",
+				AvatarURL:   id.ContentURIString(portal.bridge.Config.AppService.Bot.Avatar),
+				ExternalURL: "https://support.apple.com/messages",
+			},
 		},
 		Channel: CustomBridgeInfoSection{
 			BridgeInfoSection: event.BridgeInfoSection{
@@ -533,6 +510,20 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			SendStatusStart: portal.bridge.SendStatusStartTS,
 			TimeoutSeconds:  portal.bridge.Config.Bridge.MaxHandleSeconds,
 		},
+	}
+	if portal.Identifier.Service == "SMS" {
+		if portal.bridge.Config.IMessage.Platform == "android" {
+			bridgeInfo.Protocol.ID = "android-sms"
+			bridgeInfo.Protocol.DisplayName = "Android SMS"
+			bridgeInfo.Protocol.ExternalURL = ""
+		} else {
+			bridgeInfo.Protocol.ID = "imessage-sms"
+			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
+		}
+	} else if portal.bridge.Config.IMessage.Platform == "ios" {
+		bridgeInfo.Protocol.ID = "imessage-ios"
+	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
+		bridgeInfo.Protocol.ID = "imessage-nosip"
 	}
 	return portal.getBridgeInfoStateKey(), bridgeInfo
 }
@@ -908,14 +899,8 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 	go checkpoint.Send(portal.bridge.AS)
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		var bridgeInfoStateKey string
-		if portal.bridge.IM.Capabilities().MergedChats {
-			bridgeInfoStateKey = portal.getBridgeInfoStateKeyForService(service)
-		} else {
-			bridgeInfoStateKey = portal.getBridgeInfoStateKey()
-		}
 		content := MessageSendStatusEventContent{
-			Network: bridgeInfoStateKey,
+			Network: portal.getBridgeInfoStateKey(),
 			RelatesTo: &event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: eventID,
@@ -927,7 +912,9 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 		if !portal.Encrypted {
 			statusIntent = portal.MainIntent()
 		}
-		_, err := portal.sendMessage(statusIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, err := portal.sendMessage(statusIntent, EventMessageSendStatus, content, map[string]interface{}{
+			bridgeInfoService: service,
+		}, 0)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 		}
@@ -1409,7 +1396,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		}
 	}
 
-	extraContent["protocol"] = portal.buildProtocol(msg.Service)
+	extraContent[bridgeInfoService] = msg.Service
 
 	if CanConvertHEIF && portal.bridge.Config.Bridge.ConvertHEIF && (mimeType == "image/heic" || mimeType == "image/heif") {
 		convertedData, err := ConvertHEIF(data)
@@ -1530,7 +1517,7 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 		}
 		portal.SetReply(content, msg)
 		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{
-			"protocol": portal.buildProtocol(msg.Service),
+			bridgeInfoService: msg.Service,
 		}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
