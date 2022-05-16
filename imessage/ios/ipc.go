@@ -71,6 +71,7 @@ type iOSConnector struct {
 	contactChan       chan *imessage.Contact
 	messageStatusChan chan *imessage.SendMessageStatus
 	isAndroid         bool
+	isNoSIP           bool
 }
 
 func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
@@ -84,6 +85,7 @@ func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC 
 		contactChan:       make(chan *imessage.Contact, 2048),
 		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
 		isAndroid:         bridge.GetConnectorConfig().Platform == "android",
+		isNoSIP:           bridge.GetConnectorConfig().Platform == "mac-nosip",
 	}
 }
 
@@ -121,8 +123,16 @@ func (ios *iOSConnector) Start(readyCallback func()) error {
 func (ios *iOSConnector) Stop() {}
 
 func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
+	if len(message.Service) == 0 {
+		message.Service = imessage.ParseIdentifier(message.ChatGUID).Service
+	}
 	if !message.IsFromMe {
-		message.Sender = imessage.ParseIdentifier(message.JSONSenderGUID)
+		sender := imessage.ParseIdentifier(message.JSONSenderGUID)
+		if ios.Capabilities().MergedChats {
+			sender.Service = "iMessage"
+			message.JSONSenderGUID = sender.String()
+		}
+		message.Sender = sender
 	}
 	if len(message.JSONTargetGUID) > 0 {
 		message.Target = imessage.ParseIdentifier(message.JSONTargetGUID)
@@ -305,6 +315,9 @@ func (ios *iOSConnector) handleIncomingContact(data json.RawMessage) interface{}
 func (ios *iOSConnector) handleIncomingSendMessageStatus(data json.RawMessage) interface{} {
 	var status imessage.SendMessageStatus
 	err := json.Unmarshal(data, &status)
+	if len(status.Service) == 0 {
+		status.Service = imessage.ParseIdentifier(status.ChatGUID).Service
+	}
 	if err != nil {
 		ios.log.Warnln("Failed to parse incoming send message status:", err)
 		return nil
@@ -405,6 +418,9 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 	}, &resp)
 	if err == nil {
 		resp.Time = floatToTime(resp.UnixTime)
+	}
+	if len(resp.Service) == 0 {
+		resp.Service = imessage.ParseIdentifier(chatID).Service
 	}
 	return &resp, err
 }
@@ -510,5 +526,6 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTypingNotifications: !ios.isAndroid,
 		SendCaptions:            ios.isAndroid,
 		BridgeState:             false,
+		MergedChats:             ios.isNoSIP,
 	}
 }
