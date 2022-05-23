@@ -72,6 +72,7 @@ type iOSConnector struct {
 	messageStatusChan chan *imessage.SendMessageStatus
 	isAndroid         bool
 	isNoSIP           bool
+	mergeChats        bool
 }
 
 func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
@@ -86,6 +87,7 @@ func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC 
 		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
 		isAndroid:         bridge.GetConnectorConfig().Platform == "android",
 		isNoSIP:           bridge.GetConnectorConfig().Platform == "mac-nosip",
+		mergeChats:        bridge.GetConnectorConfig().ChatMerging,
 	}
 }
 
@@ -526,6 +528,6 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTypingNotifications: !ios.isAndroid,
 		SendCaptions:            ios.isAndroid,
 		BridgeState:             false,
-		MergedChats:             ios.isNoSIP,
+		MergedChats:             ios.mergeChats,
 	}
 }
