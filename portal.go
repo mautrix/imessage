@@ -810,6 +810,8 @@ type MessageSendStatusEventContent struct {
 	Message   string           `json:"message,omitempty"`
 	CanRetry  bool             `json:"can_retry,omitempty"`
 	IsCertain bool             `json:"is_certain,omitempty"`
+
+	Service string `json:"fi.mau.imessage.service,omitempty"`
 }
 
 func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, status appservice.MessageSendCheckpointStatus) {
@@ -853,7 +855,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 			IsCertain: isCertain,
 		}
 
-		_, err := portal.sendMessage(errorIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, err := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 			return
@@ -900,6 +902,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		content := MessageSendStatusEventContent{
+			Service: service,
 			Network: portal.getBridgeInfoStateKey(),
 			RelatesTo: &event.RelatesTo{
 				Type:    event.RelReference,
@@ -912,9 +915,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 		if !portal.Encrypted {
 			statusIntent = portal.MainIntent()
 		}
-		_, err := portal.sendMessage(statusIntent, EventMessageSendStatus, content, map[string]interface{}{
-			bridgeInfoService: service,
-		}, 0)
+		_, err := statusIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 		}
@@ -1161,7 +1162,7 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 		if !portal.Encrypted {
 			errorIntent = portal.MainIntent()
 		}
-		_, sendErr := portal.sendMessage(errorIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, sendErr := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
 		if sendErr != nil {
 			portal.log.Warnln("Failed to send message send status event:", sendErr)
 		}
