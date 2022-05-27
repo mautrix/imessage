@@ -111,6 +111,10 @@ bridge:
     media_viewer_sms_min_size: 409600
     # Same as above, but for iMessages.
     media_viewer_imessage_min_size: 52428800
+    # Should we rewrite the sender in a DM to match the chat GUID?
+    # This is helpful when the sender ID shifts depending on the device they use, since
+    # the bridge is unable to add participants to the chat post-creation.
+    force_uniform_dm_senders: true
     # Should we convert heif images to jpeg before re-uploading? This increases
     # compatibility, but adds generation loss (reduces quality).
     convert_heif: true

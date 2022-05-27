@@ -467,7 +467,7 @@ func (mac *macOSDatabase) MessageStatusChan() <-chan *imessage.SendMessageStatus
 	return make(<-chan *imessage.SendMessageStatus, 0)
 }
 
-func (mac *macOSDatabase) Start() error {
+func (mac *macOSDatabase) Start(readyCallback func()) error {
 	mac.stopWait.Add(2)
 	go mac.ListenWakeup()
 
@@ -496,6 +496,7 @@ func (mac *macOSDatabase) Start() error {
 	} else if !lastRowIDSQL.Valid {
 		return imessage.ErrNotLoggedIn
 	}
+	readyCallback()
 	lastRowID := int(lastRowIDSQL.Int32)
 Loop:
 	for {

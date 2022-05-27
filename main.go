@@ -436,7 +436,8 @@ func (bridge *Bridge) requestStartSync() {
 	}
 }
 
-func (bridge *Bridge) startWebsocket() {
+func (bridge *Bridge) startWebsocket(wg *sync.WaitGroup) {
+	var wgOnce sync.Once
 	onConnect := func() {
 		if bridge.latestState != nil {
 			go bridge.SendBridgeStatus(*bridge.latestState)
@@ -447,6 +448,7 @@ func (bridge *Bridge) startWebsocket() {
 		if !bridge.suppressSyncStart {
 			bridge.requestStartSync()
 		}
+		wgOnce.Do(wg.Done)
 		select {
 		case bridge.websocketStarted <- struct{}{}:
 		default:
@@ -487,8 +489,8 @@ func (bridge *Bridge) startWebsocket() {
 	}
 }
 
-func (bridge *Bridge) connectToiMessage() {
-	err := bridge.IM.Start()
+func (bridge *Bridge) connectToiMessage(wg *sync.WaitGroup) {
+	err := bridge.IM.Start(wg.Done)
 	if err != nil {
 		bridge.Log.Fatalln("Error in iMessage connection:", err)
 		os.Exit(40)
@@ -539,10 +541,12 @@ func (bridge *Bridge) Start() {
 	bridge.Log.Debugln("Finding bridge user")
 	bridge.user = bridge.loadDBUser()
 	bridge.user.initDoublePuppet()
+	var startupGroup sync.WaitGroup
+	startupGroup.Add(2)
 	bridge.Log.Debugln("Connecting to iMessage")
-	go bridge.connectToiMessage()
+	go bridge.connectToiMessage(&startupGroup)
 	bridge.Log.Debugln("Starting application service websocket")
-	go bridge.startWebsocket()
+	go bridge.startWebsocket(&startupGroup)
 	bridge.Log.Debugln("Starting event processor")
 	go bridge.EventProcessor.Start()
 
@@ -579,6 +583,8 @@ func (bridge *Bridge) Start() {
 		go bridge.Crypto.Start()
 	}
 
+	startupGroup.Wait()
+
 	go bridge.StartupSync()
 	bridge.Log.Infoln("Initialization complete")
 	go bridge.PeriodicSync()
@@ -611,12 +617,12 @@ func (bridge *Bridge) serverPinger() {
 }
 
 func (bridge *Bridge) StartupSync() {
-	// Hacky way to make sure preinitialization is done
-	time.Sleep(3 * time.Second)
-
-	err := bridge.IM.PreStartupSyncHook()
+	resp, err := bridge.IM.PreStartupSyncHook()
 	if err != nil {
 		bridge.Log.Errorln("iMessage connector returned error in startup sync hook:", err)
+	} else if resp.SkipSync {
+		bridge.Log.Debugln("Skipping startup sync")
+		return
 	}
 
 	forceUpdateBridgeInfo := bridge.sendStatusUpdateInfo ||

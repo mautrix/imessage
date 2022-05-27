@@ -47,6 +47,7 @@ type MacNoSIPConnector struct {
 	printPayloadContent bool
 	pingInterval        time.Duration
 	stopPinger          chan bool
+	mergeChats          bool
 }
 
 func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -61,12 +62,17 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
 		pingInterval:        time.Duration(bridge.GetConnectorConfig().PingInterval) * time.Second,
 		stopPinger:          make(chan bool, 8),
+		mergeChats:          bridge.GetConnectorConfig().ChatMerging,
 	}, nil
 }
 
-func (mac *MacNoSIPConnector) Start() error {
+func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	mac.log.Debugln("Preparing to execute", mac.path)
-	mac.proc = exec.Command(mac.path, mac.args...)
+	args := mac.args
+	if mac.mergeChats {
+		args = append(args, "--enable-merged-chats")
+	}
+	mac.proc = exec.Command(mac.path, args...)
 
 	if runtime.GOOS == "ios" {
 		mac.log.Debugln("Running Barcelona connector on iOS, temp files will be world-readable")
@@ -102,7 +108,7 @@ func (mac *MacNoSIPConnector) Start() error {
 
 	go mac.pingLoop(ipcProc)
 
-	return mac.APIWithIPC.Start()
+	return mac.APIWithIPC.Start(readyCallback)
 }
 
 func (mac *MacNoSIPConnector) pingLoop(ipcProc *ipc.Processor) {
@@ -200,6 +206,7 @@ func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendCaptions:             true,
 		BridgeState:              true,
 		MessageStatusCheckpoints: true,
+		MergedChats:              mac.mergeChats,
 	}
 }
 
