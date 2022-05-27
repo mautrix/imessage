@@ -327,8 +327,8 @@ func (portal *Portal) handleMessageLoop() {
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
-		case event := <-portal.MatrixMessages:
-			portal.HandleMatrixMessage(event)
+		case evt := <-portal.MatrixMessages:
+			portal.HandleMatrixMessage(evt)
 		case status := <-portal.MessageStatuses:
 			portal.HandleiMessageSendMessageStatus(status)
 		}
@@ -347,7 +347,7 @@ func (portal *Portal) HandleiMessageSendMessageStatus(status *imessage.SendMessa
 	}
 	portal.log.Debugfln("Processing message status with type %v for event %s/%s %s/%s", status.Status, string(eventID), portal.MXID, status.GUID, portal.GUID)
 	if status.Status == "sent" {
-		portal.sendSuccessCheckpoint(eventID)
+		portal.sendSuccessCheckpoint(eventID, status.Service)
 	} else if status.Status == "failed" {
 		evt, err := portal.MainIntent().GetEvent(portal.MXID, eventID)
 		if err != nil {
@@ -810,6 +810,8 @@ type MessageSendStatusEventContent struct {
 	Message   string           `json:"message,omitempty"`
 	CanRetry  bool             `json:"can_retry,omitempty"`
 	IsCertain bool             `json:"is_certain,omitempty"`
+
+	Service string `json:"fi.mau.imessage.service,omitempty"`
 }
 
 func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, status appservice.MessageSendCheckpointStatus) {
@@ -853,7 +855,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 			IsCertain: isCertain,
 		}
 
-		_, err := portal.sendMessage(errorIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, err := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 			return
@@ -871,7 +873,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 	}
 }
 
-func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint bool) {
+func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, service string, sendCheckpoint bool) {
 	if portal.bridge.Config.Bridge.DeliveryReceipts {
 		err := portal.bridge.Bot.MarkRead(portal.MXID, eventID)
 		if err != nil {
@@ -880,11 +882,11 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, sendCheckpoint boo
 	}
 
 	if sendCheckpoint {
-		portal.sendSuccessCheckpoint(eventID)
+		portal.sendSuccessCheckpoint(eventID, service)
 	}
 }
 
-func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID) {
+func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) {
 	// We don't have access to the entire event, so we are omitting some
 	// metadata here. However, that metadata can be inferred from previous
 	// checkpoints.
@@ -900,6 +902,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID) {
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		content := MessageSendStatusEventContent{
+			Service: service,
 			Network: portal.getBridgeInfoStateKey(),
 			RelatesTo: &event.RelatesTo{
 				Type:    event.RelReference,
@@ -912,7 +915,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID) {
 		if !portal.Encrypted {
 			statusIntent = portal.MainIntent()
 		}
-		_, err := portal.sendMessage(statusIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, err := statusIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 		}
@@ -1026,7 +1029,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
 		dbMessage.Timestamp = resp.Time.UnixNano() / 1e6
-		portal.sendDeliveryReceipt(evt.ID, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
+		portal.sendDeliveryReceipt(evt.ID, resp.Service, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
 		dbMessage.Insert()
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
@@ -1162,7 +1165,7 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 		if !portal.Encrypted {
 			errorIntent = portal.MainIntent()
 		}
-		_, sendErr := portal.sendMessage(errorIntent, EventMessageSendStatus, content, map[string]interface{}{}, 0)
+		_, sendErr := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
 		if sendErr != nil {
 			portal.log.Warnln("Failed to send message send status event:", sendErr)
 		}
@@ -1310,7 +1313,7 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 		}
 		dbMessage.MXID = dedup.EventID
 		dbMessage.Insert()
-		portal.sendDeliveryReceipt(dbMessage.MXID, true)
+		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, true)
 		return true
 	}
 	portal.messageDedupLock.Unlock()
@@ -1396,6 +1399,8 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 			portal.log.Errorf("Failed to convert audio message to ogg/opus: %v - sending without conversion", err)
 		}
 	}
+
+	extraContent[bridgeInfoService] = msg.Service
 
 	if CanConvertHEIF && portal.bridge.Config.Bridge.ConvertHEIF && (mimeType == "image/heic" || mimeType == "image/heif") {
 		convertedData, err := ConvertHEIF(data)
@@ -1515,7 +1520,9 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{
+			bridgeInfoService: msg.Service,
+		}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
@@ -1557,7 +1564,12 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 		}
 		return intent
 	} else if len(msg.Sender.LocalID) > 0 {
-		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
+		localID := msg.Sender.LocalID
+		if portal.bridge.Config.Bridge.ForceUniformDMSenders && portal.IsPrivateChat() && msg.Sender.LocalID != portal.Identifier.LocalID {
+			portal.log.Debugfln("Message received from %s, which is not the expected sender %s. Forcing the original puppet.", localID, portal.Identifier.LocalID)
+			localID = portal.Identifier.LocalID
+		}
+		puppet := portal.bridge.GetPuppetByLocalID(localID)
 		if len(puppet.Displayname) == 0 {
 			portal.log.Debugfln("Displayname of %s is empty, syncing before handling %s", puppet.ID, msg.GUID)
 			puppet.Sync()
@@ -1568,10 +1580,13 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 }
 
 func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.EventID {
+	var dbMessage *database.Message
+	var overrideSuccess bool
 	defer func() {
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
 		}
+		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, overrideSuccess || (dbMessage != nil && len(dbMessage.MXID) > 0))
 	}()
 
 	if msg.Tapback != nil {
@@ -1579,11 +1594,13 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 		return ""
 	} else if portal.bridge.DB.Message.GetLastByGUID(portal.GUID, msg.GUID) != nil {
 		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
+		// Send a success confirmation since it's a duplicate message
+		overrideSuccess = true
 		return ""
 	}
 
 	portal.log.Debugln("Starting handling of iMessage", msg.GUID)
-	dbMessage := portal.bridge.DB.Message.New()
+	dbMessage = portal.bridge.DB.Message.New()
 	dbMessage.ChatGUID = portal.GUID
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
@@ -1621,7 +1638,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	}
 
 	if len(dbMessage.MXID) > 0 {
-		portal.sendDeliveryReceipt(dbMessage.MXID, false)
+		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, false)
 		if !isBackfill && !msg.IsFromMe && msg.IsRead && portal.bridge.user.DoublePuppetIntent != nil {
 			err := portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, dbMessage.MXID)
 			if err != nil {

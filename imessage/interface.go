@@ -35,7 +35,7 @@ var (
 )
 
 type API interface {
-	Start() error
+	Start(readyCallback func()) error
 	Stop()
 	GetMessagesSinceDate(chatID string, minDate time.Time) ([]*Message, error)
 	GetMessagesWithLimit(chatID string, limit int) ([]*Message, error)
@@ -60,8 +60,9 @@ type API interface {
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
+	SendMessageBridgeResult(chatID, messageID string, success bool)
 
-	PreStartupSyncHook() error
+	PreStartupSyncHook() (StartupSyncHookResponse, error)
 
 	Capabilities() ConnectorCapabilities
 }
@@ -118,6 +119,8 @@ type PlatformConfig struct {
 	LogIPCPayloads bool     `yaml:"log_ipc_payloads"`
 
 	PingInterval int64 `yaml:"ping_interval_seconds"`
+
+	ChatMerging bool `yaml:"chat_merging"`
 }
 
 func (pc *PlatformConfig) BridgeName() string {

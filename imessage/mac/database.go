@@ -83,14 +83,16 @@ func init() {
 	imessage.Implementations["mac"] = NewChatDatabase
 }
 
-func (mac *macOSDatabase) PreStartupSyncHook() error {
-	return nil
+func (mac *macOSDatabase) PreStartupSyncHook() (resp imessage.StartupSyncHookResponse, err error) {
+	return
 }
 
 func (mac *macOSDatabase) PrepareDM(guid string) error {
 	// Nothing needed here
 	return nil
 }
+
+func (mac *macOSDatabase) SendMessageBridgeResult(chatID, messageID string, success bool) {}
 
 func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
