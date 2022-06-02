@@ -236,11 +236,6 @@ func (portal *Portal) ensureUserInvited(user *User) {
 }
 
 func (portal *Portal) Sync(backfill bool) {
-	if portal.Identifier.Service == "SMS" && portal.bridge.Config.IMessage.TombstoneOldRooms && portal.bridge.Config.IMessage.ChatMerging {
-		portal.log.Infoln("Skipping SMS chat as it has been merged into iMessage")
-		return
-	}
-
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room due to sync")
 		err := portal.CreateMatrixRoom(nil, nil)
@@ -1759,6 +1754,7 @@ func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
 	return users, nil
 }
 
+// TombstoneOrReIDIfNeeded returns true if the portal metadata should be synchronized
 func (portal *Portal) TombstoneOrReIDIfNeeded() bool {
 	if portal.Identifier.Service == "SMS" && portal.bridge.Config.IMessage.TombstoneOldRooms {
 		if len(portal.MXID) == 0 {
@@ -1775,7 +1771,10 @@ func (portal *Portal) TombstoneOrReIDIfNeeded() bool {
 				return true
 			}
 			var tombstoneContent event.TombstoneEventContent
-			portal.MainIntent().StateEvent(portal.MXID, event.StateTombstone, "", &tombstoneContent)
+			if err := portal.MainIntent().StateEvent(portal.MXID, event.StateTombstone, "", &tombstoneContent); err != nil {
+				portal.log.Errorfln("Error while getting tombstone state event in portal %s: %v", portal.MXID, err)
+				return false
+			}
 			if len(tombstoneContent.ReplacementRoom) == 0 {
 				portal.log.Infofln("Tombstoning SMS portal %s with replacement portal %s", portal.GUID, replacement.GUID)
 				_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
@@ -1784,8 +1783,10 @@ func (portal *Portal) TombstoneOrReIDIfNeeded() bool {
 				})
 				if err != nil {
 					portal.log.Errorfln("Failed to tombstone portal %s: %v", portal.GUID, err)
+					return false
 				}
 			}
+			portal.Delete()
 		} else {
 			portal.log.Infofln("ReID %s to %s for chat merging", portal.Identifier.String(), identifier.String())
 			portal.ReID(identifier.String())
