@@ -236,6 +236,11 @@ func (portal *Portal) ensureUserInvited(user *User) {
 }
 
 func (portal *Portal) Sync(backfill bool) {
+	if portal.Identifier.Service == "SMS" && portal.bridge.Config.IMessage.TombstoneOldRooms && portal.bridge.Config.IMessage.ChatMerging {
+		portal.log.Infoln("Skipping SMS chat as it has been merged into iMessage")
+		return
+	}
+
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room due to sync")
 		err := portal.CreateMatrixRoom(nil, nil)
