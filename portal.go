@@ -1755,10 +1755,10 @@ func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
 }
 
 // TombstoneOrReIDIfNeeded returns true if the portal metadata should be synchronized
-func (portal *Portal) TombstoneOrReIDIfNeeded() bool {
+func (portal *Portal) TombstoneOrReIDIfNeeded() (retargeted bool, tombstoned bool) {
 	if portal.Identifier.Service == "SMS" && portal.bridge.Config.IMessage.TombstoneOldRooms {
 		if len(portal.MXID) == 0 {
-			return false
+			return false, false
 		}
 		identifier := portal.Identifier
 		identifier.Service = "iMessage"
@@ -1768,33 +1768,27 @@ func (portal *Portal) TombstoneOrReIDIfNeeded() bool {
 				replacement.Delete()
 				portal.ReID(identifier.String())
 				portal.Identifier = identifier
-				return true
+				return true, false
 			}
-			var tombstoneContent event.TombstoneEventContent
-			if err := portal.MainIntent().StateEvent(portal.MXID, event.StateTombstone, "", &tombstoneContent); err != nil {
-				portal.log.Errorfln("Error while getting tombstone state event in portal %s: %v", portal.MXID, err)
-				return false
-			}
-			if len(tombstoneContent.ReplacementRoom) == 0 {
-				portal.log.Infofln("Tombstoning SMS portal %s with replacement portal %s", portal.GUID, replacement.GUID)
-				_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
-					Body:            "SMS rooms have been merged with iMessage rooms.",
-					ReplacementRoom: replacement.MXID,
-				})
-				if err != nil {
-					portal.log.Errorfln("Failed to tombstone portal %s: %v", portal.GUID, err)
-					return false
-				}
+			portal.log.Infofln("Tombstoning SMS portal %s with replacement portal %s", portal.GUID, replacement.GUID)
+			_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
+				Body:            "SMS rooms have been merged with iMessage rooms.",
+				ReplacementRoom: replacement.MXID,
+			})
+			if err != nil {
+				portal.log.Errorfln("Error while tombstoning %s: %v", portal.MXID, err)
+				return false, false
 			}
 			portal.Delete()
+			return false, true
 		} else {
 			portal.log.Infofln("ReID %s to %s for chat merging", portal.Identifier.String(), identifier.String())
 			portal.ReID(identifier.String())
 			portal.Identifier = identifier
-			return true
+			return true, false
 		}
 	}
-	return false
+	return false, false
 }
 
 func (portal *Portal) CleanupIfEmpty(deleteIfForbidden bool) bool {
