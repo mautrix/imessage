@@ -1754,6 +1754,43 @@ func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
 	return users, nil
 }
 
+func (portal *Portal) TombstoneOrReIDIfNeeded() bool {
+	if portal.Identifier.Service == "SMS" && portal.bridge.Config.IMessage.TombstoneOldRooms {
+		if len(portal.MXID) == 0 {
+			return false
+		}
+		identifier := portal.Identifier
+		identifier.Service = "iMessage"
+		if replacement := portal.bridge.DB.Portal.GetByGUID(identifier.String()); replacement != nil {
+			if len(replacement.MXID) == 0 {
+				portal.log.Infofln("ReID %s to %s for chat merging", portal.Identifier.String(), identifier.String())
+				replacement.Delete()
+				portal.ReID(identifier.String())
+				portal.Identifier = identifier
+				return true
+			}
+			var tombstoneContent event.TombstoneEventContent
+			portal.MainIntent().StateEvent(portal.MXID, event.StateTombstone, "", &tombstoneContent)
+			if len(tombstoneContent.ReplacementRoom) == 0 {
+				portal.log.Infofln("Tombstoning SMS portal %s with replacement portal %s", portal.GUID, replacement.GUID)
+				_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
+					Body:            "SMS rooms have been merged with iMessage rooms.",
+					ReplacementRoom: replacement.MXID,
+				})
+				if err != nil {
+					portal.log.Errorfln("Failed to tombstone portal %s: %v", portal.GUID, err)
+				}
+			}
+		} else {
+			portal.log.Infofln("ReID %s to %s for chat merging", portal.Identifier.String(), identifier.String())
+			portal.ReID(identifier.String())
+			portal.Identifier = identifier
+			return true
+		}
+	}
+	return false
+}
+
 func (portal *Portal) CleanupIfEmpty(deleteIfForbidden bool) bool {
 	if len(portal.MXID) == 0 {
 		return false
