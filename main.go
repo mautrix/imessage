@@ -641,9 +641,13 @@ func (bridge *Bridge) StartupSync() {
 		removed := portal.CleanupIfEmpty(true)
 		if !removed && len(portal.MXID) > 0 {
 			portal.log.Infoln("Syncing portal (startup sync, existing portal)")
+			retargeted, tombstoned := portal.TombstoneOrReIDIfNeeded()
+			if tombstoned {
+				continue
+			}
 			portal.Sync(true)
 			alreadySynced[portal.GUID] = true
-			if forceUpdateBridgeInfo {
+			if forceUpdateBridgeInfo || retargeted {
 				portal.UpdateBridgeInfo()
 			}
 		}

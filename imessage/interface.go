@@ -120,7 +120,8 @@ type PlatformConfig struct {
 
 	PingInterval int64 `yaml:"ping_interval_seconds"`
 
-	ChatMerging bool `yaml:"chat_merging"`
+	ChatMerging       bool `yaml:"chat_merging"`
+	TombstoneOldRooms bool `yaml:"tombstone_old_rooms"`
 }
 
 func (pc *PlatformConfig) BridgeName() string {
