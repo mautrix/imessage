@@ -1755,7 +1755,7 @@ func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
 }
 
 // TombstoneOrReIDIfNeeded returns true if the portal metadata should be synchronized
-func (portal *Portal) TombstoneOrReIDIfNeeded() (retargeted bool, tombstoned bool) {
+func (portal *Portal) TombstoneOrReIDIfNeeded() (retargeted, tombstoned bool) {
 	if portal.Identifier.Service == "SMS" && portal.bridge.Config.IMessage.TombstoneOldRooms {
 		if len(portal.MXID) == 0 {
 			return false, false
