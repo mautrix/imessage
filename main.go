@@ -143,6 +143,7 @@ type Bridge struct {
 
 	shortCircuitReconnectBackoff chan struct{}
 	websocketStarted             chan struct{}
+	websocketStopped             chan struct{}
 
 	suppressSyncStart bool
 
@@ -174,6 +175,7 @@ func NewBridge() *Bridge {
 
 		shortCircuitReconnectBackoff: make(chan struct{}),
 		websocketStarted:             make(chan struct{}),
+		websocketStopped:             make(chan struct{}),
 	}
 
 	var err error
@@ -456,6 +458,10 @@ func (bridge *Bridge) startWebsocket(wg *sync.WaitGroup) {
 	}
 	reconnectBackoff := defaultReconnectBackoff
 	lastDisconnect := time.Now().UnixNano()
+	defer func() {
+		bridge.Log.Debugfln("Appservice websocket loop finished")
+		close(bridge.websocketStopped)
+	}()
 	for {
 		err := bridge.AS.StartWebsocket(bridge.Config.Homeserver.WSProxy, onConnect)
 		if err == appservice.ErrWebsocketManualStop {
@@ -485,6 +491,9 @@ func (bridge *Bridge) startWebsocket(wg *sync.WaitGroup) {
 		case <-bridge.shortCircuitReconnectBackoff:
 			bridge.Log.Debugln("Reconnect backoff was short-circuited")
 		case <-time.After(reconnectBackoff):
+		}
+		if bridge.stopping {
+			return
 		}
 	}
 }
@@ -632,9 +641,13 @@ func (bridge *Bridge) StartupSync() {
 		removed := portal.CleanupIfEmpty(true)
 		if !removed && len(portal.MXID) > 0 {
 			portal.log.Infoln("Syncing portal (startup sync, existing portal)")
+			retargeted, tombstoned := portal.TombstoneOrReIDIfNeeded()
+			if tombstoned {
+				continue
+			}
 			portal.Sync(true)
 			alreadySynced[portal.GUID] = true
-			if forceUpdateBridgeInfo {
+			if forceUpdateBridgeInfo || retargeted {
 				portal.UpdateBridgeInfo()
 			}
 		}
@@ -728,6 +741,16 @@ func (bridge *Bridge) internalStop() {
 	bridge.Log.Debugln("Stopping iMessage connector")
 	bridge.IM.Stop()
 	bridge.IMHandler.Stop()
+	// Short-circuit reconnect backoff so the websocket loop exits even if it's disconnected
+	select {
+	case bridge.shortCircuitReconnectBackoff <- struct{}{}:
+	default:
+	}
+	select {
+	case <-bridge.websocketStopped:
+	case <-time.After(4 * time.Second):
+		bridge.Log.Warnln("Timed out waiting for websocket to close")
+	}
 }
 
 func (bridge *Bridge) Main() {
