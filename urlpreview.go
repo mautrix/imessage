@@ -17,10 +17,17 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"image"
+	"io/ioutil"
+	"net/http"
+	"time"
 
 	"github.com/tidwall/gjson"
 	"go.mau.fi/mautrix-imessage/imessage"
+	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -102,5 +109,75 @@ func (portal *Portal) convertURLPreviewToIMessage(evt *event.Event) (output *ime
 		}
 		output.Image.Source.Data = imgBytes
 	}
+	return
+}
+
+func (portal *Portal) convertRichLinkToBeeper(richLink *imessage.RichLink) (output *BeeperLinkPreview) {
+	description := richLink.SelectedText
+	if description == "" {
+		description = richLink.Summary
+	}
+
+	output = &BeeperLinkPreview{
+		MatchedURL:   richLink.OriginalURL,
+		CanonicalURL: richLink.URL,
+		Title:        richLink.Title,
+		Description:  description,
+	}
+
+	if richLink.Image != nil {
+		output.ImageWidth = int(richLink.Image.Size.Width)
+		output.ImageHeight = int(richLink.Image.Size.Height)
+		output.ImageType = richLink.ItemType
+
+		thumbnailData := richLink.Image.Source.Data
+		if thumbnailData == nil {
+			if url := richLink.Image.Source.URL; url != "" {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+				defer cancel()
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+				if err != nil {
+					return
+				}
+				thumbnailData, _ = ioutil.ReadAll(req.Body)
+			}
+		}
+
+		if thumbnailData == nil {
+			return
+		}
+
+		if output.ImageHeight == 0 || output.ImageWidth == 0 {
+			src, _, err := image.Decode(bytes.NewReader(thumbnailData))
+			if err == nil {
+				imageBounds := src.Bounds()
+				output.ImageWidth, output.ImageHeight = imageBounds.Max.X, imageBounds.Max.Y
+			}
+		}
+
+		output.ImageSize = len(thumbnailData)
+		if output.ImageType == "" {
+			output.ImageType = http.DetectContentType(thumbnailData)
+		}
+
+		uploadData, uploadMime := thumbnailData, output.ImageType
+		if portal.Encrypted {
+			crypto := attachment.NewEncryptedFile()
+			crypto.EncryptInPlace(uploadData)
+			uploadMime = "application/octet-stream"
+			output.ImageEncryption = &event.EncryptedFileInfo{EncryptedFile: *crypto}
+		}
+		resp, err := portal.bridge.Bot.UploadBytes(uploadData, uploadMime)
+		if err != nil {
+			portal.log.Warnfln("Failed to reupload thumbnail for link preview: %v", err)
+		} else {
+			if output.ImageEncryption != nil {
+				output.ImageEncryption.URL = resp.ContentURI.CUString()
+			} else {
+				output.ImageURL = resp.ContentURI.CUString()
+			}
+		}
+	}
+
 	return
 }

@@ -1508,7 +1508,7 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 	}
 }
 
-func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI, linkPreview *BeeperLinkPreview) {
 	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
 	msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
 	if len(msg.Text) > 0 {
@@ -1522,9 +1522,13 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{
+		extraAttrs := map[string]interface{}{
 			bridgeInfoService: msg.Service,
-		}, dbMessage.Timestamp)
+		}
+		if linkPreview != nil {
+			extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
+		}
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, extraAttrs, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
@@ -1617,8 +1621,9 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	switch msg.ItemType {
 	case imessage.ItemTypeMessage:
+		linkPreview := portal.convertRichLinkToBeeper(&msg.RichLink)
 		portal.handleIMAttachments(msg, dbMessage, intent)
-		portal.handleIMText(msg, dbMessage, intent)
+		portal.handleIMText(msg, dbMessage, intent, linkPreview)
 	case imessage.ItemTypeMember:
 		groupUpdateEventID = portal.handleIMMemberChange(msg, dbMessage, intent)
 	case imessage.ItemTypeName:
