@@ -984,6 +984,11 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 
+	var imessageRichLink *imessage.RichLink
+	if portal.bridge.IM.Capabilities().RichLinks {
+		imessageRichLink = portal.convertURLPreviewToIMessage(evt)
+	}
+
 	var err error
 	var resp *imessage.SendResponse
 	if msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote {
@@ -996,7 +1001,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			msg.Body = "/me " + msg.Body
 		}
 		portal.addDedup(evt.ID, msg.Body)
-		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart)
+		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart, imessageRichLink)
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart)
 	}
@@ -1088,7 +1093,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		}
 		if !hasUsableThumbnail {
 			portal.addDedup(evt.ID, caption)
-			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart)
+			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart, nil)
 		}
 	}
 

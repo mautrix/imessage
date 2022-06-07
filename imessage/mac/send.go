@@ -176,7 +176,7 @@ func (mac *macOSDatabase) sendMessageWithRetry(script, fallbackScript1, fallback
 	return err
 }
 
-func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int, _ *imessage.RichLink) (*imessage.SendResponse, error) {
 	return nil, mac.sendMessageWithRetry(sendMessage, sendMessageWithService, sendMessageBuddy, imessage.ParseIdentifier(chatID), text)
 }
 

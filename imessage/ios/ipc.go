@@ -410,13 +410,14 @@ func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, er
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
 	err := ios.IPC.Request(context.Background(), ReqSendMessage, &SendMessageRequest{
 		ChatGUID:    chatID,
 		Text:        text,
 		ReplyTo:     replyTo,
 		ReplyToPart: replyToPart,
+		RichLink:    richLink,
 	}, &resp)
 	if err == nil {
 		resp.Time = floatToTime(resp.UnixTime)

@@ -41,10 +41,11 @@ const (
 )
 
 type SendMessageRequest struct {
-	ChatGUID    string `json:"chat_guid"`
-	Text        string `json:"text"`
-	ReplyTo     string `json:"reply_to"`
-	ReplyToPart int    `json:"reply_to_part"`
+	ChatGUID    string             `json:"chat_guid"`
+	Text        string             `json:"text"`
+	ReplyTo     string             `json:"reply_to"`
+	ReplyToPart int                `json:"reply_to_part"`
+	RichLink    *imessage.RichLink `json:"rich_link,omitempty"`
 }
 
 type SendMediaRequest struct {
