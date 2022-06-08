@@ -26,10 +26,11 @@ import (
 	"time"
 
 	"github.com/tidwall/gjson"
-	"go.mau.fi/mautrix-imessage/imessage"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 type BeeperLinkPreview struct {
@@ -59,7 +60,7 @@ func (portal *Portal) convertURLPreviewToIMessage(evt *event.Event) (output *ime
 	}
 	// iMessage only supports a single preview.
 	preview := previews[0]
-	if len(preview.MatchedURL) == 0 {
+	if len(preview.MatchedURL) == 0 && len(preview.CanonicalURL) == 0 {
 		return
 	}
 
@@ -73,6 +74,8 @@ func (portal *Portal) convertURLPreviewToIMessage(evt *event.Event) (output *ime
 
 	if output.URL == "" {
 		output.URL = preview.MatchedURL
+	} else if output.OriginalURL == "" {
+		output.OriginalURL = preview.CanonicalURL
 	}
 
 	if preview.ImageURL != "" || preview.ImageEncryption != nil {
@@ -113,6 +116,9 @@ func (portal *Portal) convertURLPreviewToIMessage(evt *event.Event) (output *ime
 }
 
 func (portal *Portal) convertRichLinkToBeeper(richLink *imessage.RichLink) (output *BeeperLinkPreview) {
+	if richLink == nil {
+		return
+	}
 	description := richLink.SelectedText
 	if description == "" {
 		description = richLink.Summary

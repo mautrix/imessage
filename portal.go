@@ -1508,7 +1508,7 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 	}
 }
 
-func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI, linkPreview *BeeperLinkPreview) {
+func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
 	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
 	msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
 	if len(msg.Text) > 0 {
@@ -1525,6 +1525,7 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 		extraAttrs := map[string]interface{}{
 			bridgeInfoService: msg.Service,
 		}
+		linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
 		if linkPreview != nil {
 			extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
 		}
@@ -1621,9 +1622,8 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	switch msg.ItemType {
 	case imessage.ItemTypeMessage:
-		linkPreview := portal.convertRichLinkToBeeper(&msg.RichLink)
 		portal.handleIMAttachments(msg, dbMessage, intent)
-		portal.handleIMText(msg, dbMessage, intent, linkPreview)
+		portal.handleIMText(msg, dbMessage, intent)
 	case imessage.ItemTypeMember:
 		groupUpdateEventID = portal.handleIMMemberChange(msg, dbMessage, intent)
 	case imessage.ItemTypeName:
