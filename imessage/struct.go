@@ -67,6 +67,9 @@ type Message struct {
 	ItemType        ItemType        `json:"item_type,omitempty"`
 	GroupActionType GroupActionType `json:"group_action_type,omitempty"`
 	NewGroupName    string          `json:"new_group_title,omitempty"`
+
+	// Rich Links
+	RichLink RichLink `json:"rich_link,omitempty"`
 }
 
 func (msg *Message) SenderText() string {
@@ -237,6 +240,7 @@ type ConnectorCapabilities struct {
 	BridgeState              bool
 	MessageStatusCheckpoints bool
 	MergedChats              bool
+	RichLinks                bool
 }
 
 type PushKeyRequest struct {
@@ -260,4 +264,51 @@ type SendMessageStatus struct {
 
 type StartupSyncHookResponse struct {
 	SkipSync bool `json:"skip_sync"`
+}
+
+type RichLinkAsset struct {
+	MimeType          string               `json:"mimeType,omitempty"`
+	AccessibilityText string               `json:"accessibilityText,omitempty"`
+	Source            *RichLinkAssetSource `json:"source,omitempty"`
+	OriginalURL       string               `json:"originalURL,omitempty"`
+	Size              *RichLinkAssetSize   `json:"size,omitempty"`
+}
+
+type RichLinkAssetSource struct {
+	URL  string `json:"url,omitempty"`
+	Data []byte `json:"data,omitempty"`
+}
+
+type RichLinkAssetSize struct {
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+type RichLinkVideoAsset struct {
+	HasAudio     bool          `json:"hasAudio,omitempty"`
+	YouTubeURL   string        `json:"youTubeURL,omitempty"`
+	StreamingURL string        `json:"streamingURL,omitempty"`
+	Asset        RichLinkAsset `json:"asset"`
+}
+
+type RichLink struct {
+	OriginalURL            string              `json:"originalURL,omitempty"`
+	URL                    string              `json:"URL,omitempty"`
+	Title                  string              `json:"title,omitempty"`
+	Summary                string              `json:"summary,omitempty"`
+	SelectedText           string              `json:"selectedText,omitempty"`
+	SiteName               string              `json:"siteName,omitempty"`
+	RelatedURL             string              `json:"relatedURL,omitempty"`
+	Creator                string              `json:"creator,omitempty"`
+	CreatorFacebookProfile string              `json:"creatorFacebookProfile,omitempty"`
+	CreatorTwitterUsername string              `json:"creatorTwitterUsername,omitempty"`
+	ItemType               string              `json:"itemType,omitempty"`
+	Icon                   *RichLinkAsset      `json:"icon,omitempty"`
+	Image                  *RichLinkAsset      `json:"image,omitempty"`
+	Video                  *RichLinkVideoAsset `json:"video,omitempty"`
+	Audio                  *RichLinkAsset      `json:"audio,omitempty"`
+	Images                 []RichLinkAsset     `json:"images,omitempty"`
+	Videos                 []RichLinkAsset     `json:"videos,omitempty"`
+	StreamingVideos        []RichLinkAsset     `json:"streamingVideos,omitempty"`
+	Audios                 []RichLinkAsset     `json:"audios,omitempty"`
 }

@@ -54,7 +54,7 @@ type API interface {
 	ResolveIdentifier(identifier string) (string, error)
 	PrepareDM(guid string) error
 
-	SendMessage(chatID, text string, replyTo string, replyToPart int) (*SendResponse, error)
+	SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *RichLink) (*SendResponse, error)
 	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*SendResponse, error)
 	SendFileCleanup(sendFileDir string)
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)

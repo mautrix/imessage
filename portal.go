@@ -984,6 +984,11 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 
+	var imessageRichLink *imessage.RichLink
+	if portal.bridge.IM.Capabilities().RichLinks {
+		imessageRichLink = portal.convertURLPreviewToIMessage(evt)
+	}
+
 	var err error
 	var resp *imessage.SendResponse
 	if msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote {
@@ -996,7 +1001,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			msg.Body = "/me " + msg.Body
 		}
 		portal.addDedup(evt.ID, msg.Body)
-		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart)
+		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart, imessageRichLink)
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart)
 	}
@@ -1088,7 +1093,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		}
 		if !hasUsableThumbnail {
 			portal.addDedup(evt.ID, caption)
-			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart)
+			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart, nil)
 		}
 	}
 
@@ -1503,7 +1508,7 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 	}
 }
 
-func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI, linkPreview *BeeperLinkPreview) {
 	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
 	msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
 	if len(msg.Text) > 0 {
@@ -1517,9 +1522,13 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{
+		extraAttrs := map[string]interface{}{
 			bridgeInfoService: msg.Service,
-		}, dbMessage.Timestamp)
+		}
+		if linkPreview != nil {
+			extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
+		}
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, extraAttrs, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
@@ -1612,8 +1621,9 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	switch msg.ItemType {
 	case imessage.ItemTypeMessage:
+		linkPreview := portal.convertRichLinkToBeeper(&msg.RichLink)
 		portal.handleIMAttachments(msg, dbMessage, intent)
-		portal.handleIMText(msg, dbMessage, intent)
+		portal.handleIMText(msg, dbMessage, intent, linkPreview)
 	case imessage.ItemTypeMember:
 		groupUpdateEventID = portal.handleIMMemberChange(msg, dbMessage, intent)
 	case imessage.ItemTypeName:
