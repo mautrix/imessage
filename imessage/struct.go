@@ -68,8 +68,7 @@ type Message struct {
 	GroupActionType GroupActionType `json:"group_action_type,omitempty"`
 	NewGroupName    string          `json:"new_group_title,omitempty"`
 
-	// Rich Links
-	RichLink RichLink `json:"rich_link,omitempty"`
+	RichLink *RichLink `json:"rich_link,omitempty"`
 }
 
 func (msg *Message) SenderText() string {
