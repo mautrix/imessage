@@ -850,7 +850,6 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 			Success:   false,
 			Reason:    reason,
 			Error:     rootErr.Error(),
-			Message:   fmt.Sprintf("Your message %s bridged.", possibility),
 			CanRetry:  canRetry,
 			IsCertain: isCertain,
 		}
@@ -1158,7 +1157,6 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 			Success:   false,
 			Reason:    "com.beeper.unsupported_event",
 			Error:     err.Error(),
-			Message:   "Message type is not supported",
 			CanRetry:  false, // There is no point in retrying a message that is unsupported.
 			IsCertain: true,
 		}
@@ -1176,7 +1174,7 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservic
 
 func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("Reaction is not supported in portal"))
+		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("reactions are not supported"))
 		return
 	}
 	portal.log.Debugln("Starting handling of Matrix reaction", evt.ID)
@@ -1232,7 +1230,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("bridge does not support any kinds of redactions"))
+		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("redactions are not supported"))
 		return
 	}
 
