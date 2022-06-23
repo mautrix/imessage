@@ -1084,7 +1084,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		if len(caption) > 0 {
 			caption += ": "
 		}
-		caption += mediaURL
+		caption += fmt.Sprintf(portal.bridge.Config.Bridge.MediaViewerTemplate, mediaURL)
 
 		// Check if there's a thumbnail we can bridge.
 		// If not, just send the link. If yes, send the thumbnail and the link as a caption.

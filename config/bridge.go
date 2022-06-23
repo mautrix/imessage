@@ -52,6 +52,7 @@ type BridgeConfig struct {
 	MediaViewerURL        string  `yaml:"media_viewer_url"`
 	MediaViewerSMSMinSize int     `yaml:"media_viewer_sms_min_size"`
 	MediaViewerIMMinSize  int     `yaml:"media_viewer_imessage_min_size"`
+	MediaViewerTemplate   string  `yaml:"media_viewer_template"`
 	ConvertHEIF           bool    `yaml:"convert_heif"`
 	ConvertVideo          struct {
 		Enabled    bool     `yaml:"enabled"`
@@ -106,6 +107,7 @@ func (bc *BridgeConfig) setDefaults() {
 	bc.FederateRooms = true
 	bc.MediaViewerSMSMinSize = 400 * 1024
 	bc.MediaViewerIMMinSize = 50 * 1024 * 1024
+	bc.MediaViewerTemplate = "Full size attachment: %s"
 }
 
 type umBridgeConfig BridgeConfig
