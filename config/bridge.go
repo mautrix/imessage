@@ -80,8 +80,12 @@ type BridgeConfig struct {
 }
 
 func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts {
-	// TODO implement me
-	panic("implement me")
+	return bridgeconfig.ManagementRoomTexts{
+		Welcome:            "Hello, I'm an iMessage bridge bot.",
+		WelcomeConnected:   "Use `help` for help.",
+		WelcomeUnconnected: "",
+		AdditionalHelp:     "",
+	}
 }
 
 func (bc BridgeConfig) Validate() error {

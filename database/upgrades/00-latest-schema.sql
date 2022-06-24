@@ -1,4 +1,4 @@
--- v0 -> v11: Latest schema
+-- v0 -> v12: Latest schema
 
 CREATE TABLE portal (
 	guid        TEXT    PRIMARY KEY,
@@ -19,10 +19,11 @@ CREATE TABLE puppet (
 );
 
 CREATE TABLE "user" (
-	mxid         TEXT PRIMARY KEY,
-	access_token TEXT NOT NULL,
-	next_batch   TEXT NOT NULL,
-	space_room   TEXT NOT NULL
+	mxid            TEXT PRIMARY KEY,
+	access_token    TEXT NOT NULL,
+	next_batch      TEXT NOT NULL,
+	space_room      TEXT NOT NULL,
+	management_room TEXT NOT NULL
 );
 
 CREATE TABLE message (

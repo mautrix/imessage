@@ -68,11 +68,12 @@ func (user *User) IsLoggedIn() bool {
 }
 
 func (user *User) GetManagementRoomID() id.RoomID {
-	return ""
+	return user.ManagementRoom
 }
 
 func (user *User) SetManagementRoom(roomID id.RoomID) {
-	panic("implement me")
+	user.ManagementRoom = roomID
+	user.Update()
 }
 
 func (user *User) GetMXID() id.UserID {
