@@ -167,6 +167,12 @@ func (br *IMBridge) ensureConnection() {
 	}
 }
 
+func (br *IMBridge) PreInit() {
+	br.Log = log.Createm(map[string]interface{}{
+		"username": br.Config.Bridge.User.String(),
+	})
+}
+
 func (br *IMBridge) Init() {
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
 	br.DB = database.New(br.Bridge.DB)
