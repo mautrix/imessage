@@ -30,6 +30,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/database"
@@ -38,11 +39,11 @@ import (
 
 var userIDRegex *regexp.Regexp
 
-func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (string, bool) {
+func (br *IMBridge) ParsePuppetMXID(mxid id.UserID) (string, bool) {
 	if userIDRegex == nil {
 		userIDRegex = regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
-			bridge.Config.Bridge.FormatUsername("(.+)"),
-			bridge.Config.Homeserver.Domain))
+			br.Config.Bridge.FormatUsername("(.+)"),
+			br.Config.Homeserver.Domain))
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
 	if match == nil || len(match) != 2 {
@@ -54,7 +55,7 @@ func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (string, bool) {
 	if strings.Contains(localID, "=40") {
 		localpart, err := id.DecodeUserLocalpart(localID)
 		if err != nil {
-			bridge.Log.Debugfln("Failed to decode user localpart '%s': %v", localID, err)
+			br.Log.Debugfln("Failed to decode user localpart '%s': %v", localID, err)
 			return "", false
 		}
 		return localpart, true
@@ -67,80 +68,80 @@ func (bridge *Bridge) ParsePuppetMXID(mxid id.UserID) (string, bool) {
 	}
 }
 
-func (bridge *Bridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
-	localID, ok := bridge.ParsePuppetMXID(mxid)
+func (br *IMBridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
+	localID, ok := br.ParsePuppetMXID(mxid)
 	if !ok {
 		return nil
 	}
 
-	return bridge.GetPuppetByLocalID(localID)
+	return br.GetPuppetByLocalID(localID)
 }
 
-func (bridge *Bridge) GetPuppetByGUID(guid string) *Puppet {
-	return bridge.GetPuppetByLocalID(imessage.ParseIdentifier(guid).LocalID)
+func (br *IMBridge) GetPuppetByGUID(guid string) *Puppet {
+	return br.GetPuppetByLocalID(imessage.ParseIdentifier(guid).LocalID)
 }
 
-func (bridge *Bridge) GetPuppetByLocalID(id string) *Puppet {
-	bridge.puppetsLock.Lock()
-	defer bridge.puppetsLock.Unlock()
-	puppet, ok := bridge.puppets[id]
+func (br *IMBridge) GetPuppetByLocalID(id string) *Puppet {
+	br.puppetsLock.Lock()
+	defer br.puppetsLock.Unlock()
+	puppet, ok := br.puppets[id]
 	if !ok {
-		dbPuppet := bridge.DB.Puppet.Get(id)
+		dbPuppet := br.DB.Puppet.Get(id)
 		if dbPuppet == nil {
-			dbPuppet = bridge.DB.Puppet.New()
+			dbPuppet = br.DB.Puppet.New()
 			dbPuppet.ID = id
 			dbPuppet.Insert()
 		}
-		puppet = bridge.NewPuppet(dbPuppet)
-		bridge.puppets[puppet.ID] = puppet
+		puppet = br.NewPuppet(dbPuppet)
+		br.puppets[puppet.ID] = puppet
 	}
 	return puppet
 }
 
-func (bridge *Bridge) GetAllPuppets() []*Puppet {
-	return bridge.dbPuppetsToPuppets(bridge.DB.Puppet.GetAll())
+func (br *IMBridge) GetAllPuppets() []*Puppet {
+	return br.dbPuppetsToPuppets(br.DB.Puppet.GetAll())
 }
 
-func (bridge *Bridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet {
-	bridge.puppetsLock.Lock()
-	defer bridge.puppetsLock.Unlock()
+func (br *IMBridge) dbPuppetsToPuppets(dbPuppets []*database.Puppet) []*Puppet {
+	br.puppetsLock.Lock()
+	defer br.puppetsLock.Unlock()
 	output := make([]*Puppet, len(dbPuppets))
 	for index, dbPuppet := range dbPuppets {
 		if dbPuppet == nil {
 			continue
 		}
-		puppet, ok := bridge.puppets[dbPuppet.ID]
+		puppet, ok := br.puppets[dbPuppet.ID]
 		if !ok {
-			puppet = bridge.NewPuppet(dbPuppet)
-			bridge.puppets[dbPuppet.ID] = puppet
+			puppet = br.NewPuppet(dbPuppet)
+			br.puppets[dbPuppet.ID] = puppet
 		}
 		output[index] = puppet
 	}
 	return output
 }
 
-func (bridge *Bridge) FormatPuppetMXID(guid string) id.UserID {
+func (br *IMBridge) FormatPuppetMXID(guid string) id.UserID {
 	return id.NewUserID(
-		bridge.Config.Bridge.FormatUsername(guid),
-		bridge.Config.Homeserver.Domain)
+		br.Config.Bridge.FormatUsername(guid),
+		br.Config.Homeserver.Domain)
 }
 
-func (bridge *Bridge) NewPuppet(dbPuppet *database.Puppet) *Puppet {
-	mxid := bridge.FormatPuppetMXID(dbPuppet.ID)
+func (br *IMBridge) NewPuppet(dbPuppet *database.Puppet) *Puppet {
+	mxid := br.FormatPuppetMXID(dbPuppet.ID)
 	return &Puppet{
 		Puppet: dbPuppet,
-		bridge: bridge,
-		log:    bridge.Log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.ID)),
+		bridge: br,
+		log:    br.Log.Sub(fmt.Sprintf("Puppet/%s", dbPuppet.ID)),
 
 		MXID:   mxid,
-		Intent: bridge.AS.Intent(mxid),
+		Intent: br.AS.Intent(mxid),
 	}
 }
 
 type Puppet struct {
 	*database.Puppet
 
-	bridge *Bridge
+	bridge *IMBridge
 	log    log.Logger
 
 	typingIn id.RoomID
@@ -148,6 +149,24 @@ type Puppet struct {
 
 	MXID   id.UserID
 	Intent *appservice.IntentAPI
+}
+
+var _ bridge.Ghost = (*Puppet)(nil)
+
+func (puppet *Puppet) CustomIntent() *appservice.IntentAPI {
+	return nil
+}
+
+func (puppet *Puppet) SwitchCustomMXID(accessToken string, userID id.UserID) error {
+	panic("Puppet.SwitchCustomMXID is not implemented")
+}
+
+func (puppet *Puppet) DefaultIntent() *appservice.IntentAPI {
+	return puppet.Intent
+}
+
+func (puppet *Puppet) GetMXID() id.UserID {
+	return puppet.MXID
 }
 
 func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {

@@ -23,12 +23,12 @@ import (
 )
 
 type iMessageHandler struct {
-	bridge *Bridge
+	bridge *IMBridge
 	log    log.Logger
 	stop   chan struct{}
 }
 
-func NewiMessageHandler(bridge *Bridge) *iMessageHandler {
+func NewiMessageHandler(bridge *IMBridge) *iMessageHandler {
 	return &iMessageHandler{
 		bridge: bridge,
 		log:    bridge.Log.Sub("iMessage"),

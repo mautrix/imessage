@@ -20,7 +20,9 @@ import (
 	"database/sql"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type UserQuery struct {
@@ -53,7 +55,7 @@ type User struct {
 	SpaceRoom   id.RoomID
 }
 
-func (user *User) Scan(row Scannable) *User {
+func (user *User) Scan(row dbutil.Scannable) *User {
 	err := row.Scan(&user.MXID, &user.AccessToken, &user.NextBatch, &user.SpaceRoom)
 	if err != nil {
 		if err != sql.ErrNoRows {

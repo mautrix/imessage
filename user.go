@@ -24,7 +24,10 @@ import (
 	"sync"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -36,7 +39,7 @@ import (
 type User struct {
 	*database.User
 
-	bridge *Bridge
+	bridge *IMBridge
 	log    log.Logger
 
 	DoublePuppetIntent *appservice.IntentAPI
@@ -49,22 +52,64 @@ type User struct {
 	customTypingLock sync.Mutex
 }
 
-func (bridge *Bridge) loadDBUser() *User {
-	dbUser := bridge.DB.User.GetByMXID(bridge.Config.Bridge.User)
+var _ bridge.User = (*User)(nil)
+
+func (user *User) GetPermissionLevel() bridgeconfig.PermissionLevel {
+	if user == user.bridge.user {
+		return bridgeconfig.PermissionLevelAdmin
+	} else if user.bridge.Config.Bridge.Relay.IsWhitelisted(user.MXID) {
+		return bridgeconfig.PermissionLevelRelay
+	}
+	return bridgeconfig.PermissionLevelBlock
+}
+
+func (user *User) IsLoggedIn() bool {
+	return user == user.bridge.user
+}
+
+func (user *User) GetManagementRoomID() id.RoomID {
+	return ""
+}
+
+func (user *User) SetManagementRoom(roomID id.RoomID) {
+	panic("implement me")
+}
+
+func (user *User) GetMXID() id.UserID {
+	return user.MXID
+}
+
+func (user *User) GetCommandState() map[string]interface{} {
+	return nil
+}
+
+func (user *User) GetIDoublePuppet() bridge.DoublePuppet {
+	if user == user.bridge.user {
+		return user
+	}
+	return nil
+}
+
+func (user *User) GetIGhost() bridge.Ghost {
+	return nil
+}
+
+func (br *IMBridge) loadDBUser() *User {
+	dbUser := br.DB.User.GetByMXID(br.Config.Bridge.User)
 	if dbUser == nil {
-		dbUser = bridge.DB.User.New()
-		dbUser.MXID = bridge.Config.Bridge.User
+		dbUser = br.DB.User.New()
+		dbUser.MXID = br.Config.Bridge.User
 		dbUser.Insert()
 	}
-	user := bridge.NewUser(dbUser)
+	user := br.NewUser(dbUser)
 	return user
 }
 
-func (bridge *Bridge) NewUser(dbUser *database.User) *User {
+func (br *IMBridge) NewUser(dbUser *database.User) *User {
 	user := &User{
 		User:   dbUser,
-		bridge: bridge,
-		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
+		bridge: br,
+		log:    br.Log.Sub("User").Sub(string(dbUser.MXID)),
 	}
 
 	return user

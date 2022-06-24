@@ -18,10 +18,12 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type PortalQuery struct {
@@ -45,20 +47,22 @@ func (pq *PortalQuery) Count() (count int) {
 	return
 }
 
+const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space"
+
 func (pq *PortalQuery) GetAll() []*Portal {
-	return pq.getAll("SELECT * FROM portal")
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
 }
 
 func (pq *PortalQuery) GetByGUID(guid string) *Portal {
-	return pq.get("SELECT * FROM portal WHERE guid=$1", guid)
+	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE guid=$1", portalColumns), guid)
 }
 
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
-	return pq.get("SELECT * FROM portal WHERE mxid=$1", mxid)
+	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
 }
 
 func (pq *PortalQuery) FindPrivateChats() []*Portal {
-	return pq.getAll("SELECT * FROM portal WHERE guid LIKE '%;-;%'")
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE guid LIKE '%;-;%'", portalColumns))
 }
 
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
@@ -103,7 +107,7 @@ func (portal *Portal) avatarHashSlice() []byte {
 	return (*portal.AvatarHash)[:]
 }
 
-func (portal *Portal) Scan(row Scannable) *Portal {
+func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
 	var avatarHashSlice []byte
 	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace)

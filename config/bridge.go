@@ -22,6 +22,7 @@ import (
 	"strings"
 	"text/template"
 
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -49,12 +50,14 @@ type BridgeConfig struct {
 	BackfillDisableNotifs bool    `yaml:"initial_backfill_disable_notifications"`
 	PeriodicSync          bool    `yaml:"periodic_sync"`
 	FindPortalsIfEmpty    bool    `yaml:"find_portals_if_db_empty"`
-	MediaViewerURL        string  `yaml:"media_viewer_url"`
-	MediaViewerSMSMinSize int     `yaml:"media_viewer_sms_min_size"`
-	MediaViewerIMMinSize  int     `yaml:"media_viewer_imessage_min_size"`
-	MediaViewerTemplate   string  `yaml:"media_viewer_template"`
-	ConvertHEIF           bool    `yaml:"convert_heif"`
-	ConvertVideo          struct {
+	MediaViewer           struct {
+		URL        string `yaml:"url"`
+		SMSMinSize int    `yaml:"sms_min_size"`
+		IMMinSize  int    `yaml:"imessage_min_size"`
+		Template   string `yaml:"template"`
+	} `yaml:"media_viewer"`
+	ConvertHEIF  bool `yaml:"convert_heif"`
+	ConvertVideo struct {
 		Enabled    bool     `yaml:"enabled"`
 		FFMPEGArgs []string `yaml:"ffmpeg_args"`
 		MimeType   string   `yaml:"mime_type"`
@@ -67,47 +70,38 @@ type BridgeConfig struct {
 
 	CommandPrefix string `yaml:"command_prefix"`
 
-	Encryption struct {
-		Allow   bool `yaml:"allow"`
-		Default bool `yaml:"default"`
-
-		Appservice bool `yaml:"appservice"`
-
-		KeySharing struct {
-			Allow               bool `yaml:"allow"`
-			RequireCrossSigning bool `yaml:"require_cross_signing"`
-			RequireVerification bool `yaml:"require_verification"`
-		} `yaml:"key_sharing"`
-
-		Rotation struct {
-			EnableCustom bool  `yaml:"enable_custom"`
-			Milliseconds int64 `yaml:"milliseconds"`
-			Messages     int   `yaml:"messages"`
-		} `yaml:"rotation"`
-	} `yaml:"encryption"`
+	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 
 	Relay RelayConfig `yaml:"relay"`
 
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
 	communityTemplate   *template.Template `yaml:"-"`
-
-	OldMediaViewerMinSize  int  `yaml:"media_viewer_min_size"`
-	OldMessageStatusEvents bool `yaml:"send_message_send_status_events"`
 }
 
-func (bc *BridgeConfig) setDefaults() {
-	bc.DeliveryReceipts = false
-	bc.SyncWithCustomPuppets = false
-	bc.LoginSharedSecret = ""
-	bc.ChatSyncMaxAge = 0.5
-	bc.InitialBackfillLimit = 100
-	bc.BackfillDisableNotifs = true
-	bc.PeriodicSync = true
-	bc.FederateRooms = true
-	bc.MediaViewerSMSMinSize = 400 * 1024
-	bc.MediaViewerIMMinSize = 50 * 1024 * 1024
-	bc.MediaViewerTemplate = "Full size attachment: %s"
+func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (bc BridgeConfig) Validate() error {
+	return nil
+}
+
+func (bc BridgeConfig) GetEncryptionConfig() bridgeconfig.EncryptionConfig {
+	return bc.Encryption
+}
+
+func (bc BridgeConfig) EnableMessageStatusEvents() bool {
+	return bc.MessageStatusEvents
+}
+
+func (bc BridgeConfig) EnableMessageErrorNotices() bool {
+	return bc.SendErrorNotices
+}
+
+func (bc BridgeConfig) GetCommandPrefix() string {
+	return bc.CommandPrefix
 }
 
 type umBridgeConfig BridgeConfig
@@ -126,13 +120,6 @@ func (bc *BridgeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	bc.displaynameTemplate, err = template.New("displayname").Parse(bc.DisplaynameTemplate)
 	if err != nil {
 		return err
-	}
-
-	if bc.OldMediaViewerMinSize > 0 {
-		bc.MediaViewerSMSMinSize = bc.OldMediaViewerMinSize
-	}
-	if bc.OldMessageStatusEvents {
-		bc.MessageStatusEvents = true
 	}
 
 	return nil

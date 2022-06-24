@@ -22,6 +22,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type PuppetQuery struct {
@@ -73,7 +74,7 @@ func (puppet *Puppet) avatarHashSlice() []byte {
 	return (*puppet.AvatarHash)[:]
 }
 
-func (puppet *Puppet) Scan(row Scannable) *Puppet {
+func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 	var avatarURL sql.NullString
 	var avatarHashSlice []byte
 	err := row.Scan(&puppet.ID, &puppet.Displayname, &avatarHashSlice, &avatarURL)

@@ -26,6 +26,7 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -33,6 +34,20 @@ import (
 var (
 	ErrMismatchingMXID = errors.New("whoami result does not match custom mxid")
 )
+
+var _ bridge.DoublePuppet = (*User)(nil)
+
+func (user *User) SwitchCustomMXID(accessToken string, mxid id.UserID) error {
+	if mxid != user.MXID {
+		return errors.New("mismatching mxid")
+	}
+	user.AccessToken = accessToken
+	return user.startCustomMXID()
+}
+
+func (user *User) CustomIntent() *appservice.IntentAPI {
+	return user.DoublePuppetIntent
+}
 
 func (user *User) initDoublePuppet() {
 	var err error
@@ -62,7 +77,11 @@ func (user *User) loginWithSharedSecret() error {
 	user.log.Debugfln("Logging in with shared secret")
 	mac := hmac.New(sha512.New, []byte(user.bridge.Config.Bridge.LoginSharedSecret))
 	mac.Write([]byte(user.MXID))
-	client, err := mautrix.NewClient(user.bridge.Config.Bridge.DoublePuppetServerURL, "", "")
+	url := user.bridge.Config.Bridge.DoublePuppetServerURL
+	if url == "" {
+		url = user.bridge.AS.HomeserverURL
+	}
+	client, err := mautrix.NewClient(url, "", "")
 	if err != nil {
 		return err
 	}
@@ -84,7 +103,11 @@ func (user *User) loginWithSharedSecret() error {
 }
 
 func (user *User) newDoublePuppetIntent() (*appservice.IntentAPI, error) {
-	client, err := mautrix.NewClient(user.bridge.Config.Bridge.DoublePuppetServerURL, user.MXID, user.AccessToken)
+	url := user.bridge.Config.Bridge.DoublePuppetServerURL
+	if url == "" {
+		url = user.bridge.AS.HomeserverURL
+	}
+	client, err := mautrix.NewClient(url, user.MXID, user.AccessToken)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +129,6 @@ func (user *User) clearCustomMXID() {
 	user.NextBatch = ""
 	user.DoublePuppetIntent = nil
 }
-
 func (user *User) startCustomMXID() error {
 	if len(user.AccessToken) == 0 {
 		user.clearCustomMXID()
@@ -169,7 +191,7 @@ func (user *User) handleReceiptEvent(portal *Portal, event *event.Event) {
 	for eventID, receipts := range *event.Content.AsReceipt() {
 		if receipt, ok := receipts.Read[user.MXID]; !ok {
 			// Ignore receipt events where this user isn't present.
-		} else if val, ok := receipt.Extra[doublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == doublePuppetValue {
+		} else if val, ok := receipt.Extra[bridge.DoublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == doublePuppetValue {
 			// Ignore double puppeted read receipts.
 		} else if message := user.bridge.DB.Message.GetByMXID(eventID); message != nil {
 			user.log.Debugfln("Marking %s/%s in %s/%s as read", message.GUID, message.MXID, portal.GUID, portal.MXID)
