@@ -27,6 +27,8 @@ func DoUpgrade(helper *up.Helper) {
 	}
 	bridgeconfig.Upgrader.DoUpgrade(helper)
 
+	helper.Copy(up.Int, "revision")
+
 	helper.Copy(up.Str, "logging", "directory")
 	helper.Copy(up.Str|up.Null, "logging", "file_name_format")
 	helper.Copy(up.Str|up.Timestamp, "logging", "file_date_format")
@@ -133,4 +135,5 @@ var SpacedBlocks = [][]string{
 	{"bridge", "encryption"},
 	{"bridge", "relay"},
 	{"logging"},
+	{"revision"},
 }
