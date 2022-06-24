@@ -52,8 +52,16 @@ imessage:
     platform: mac
     # Path to the Barcelona executable for the mac-nosip connector
     imessage_rest_path: darwin-barcelona-mautrix
+    # Additional arguments to pass to the mac-nosip connector
+    imessage_rest_args: []
+    # Whether to log the contents of IPC payloads
+    log_ipc_payloads: false
     # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.
     ping_interval_seconds: 15
+    # Whether to merge iMessage and SMS portals into one
+    chat_merging: true
+    # Whether to tombstone SMS rooms after meging them into iMessage
+    tombstone_old_rooms: true
 
 # Bridge config
 bridge:
