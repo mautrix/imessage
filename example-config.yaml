@@ -236,3 +236,6 @@ logging:
     print_level: debug
     print_json: false
     file_json: false
+
+# This may be used by external config managers. mautrix-imessage does not read it, but will carry it across configuration migrations.
+revision: 0
