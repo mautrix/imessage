@@ -47,9 +47,6 @@ type User struct {
 	mgmtCreateLock sync.Mutex
 
 	spaceMembershipChecked bool
-
-	customTypingIn   map[id.RoomID]bool
-	customTypingLock sync.Mutex
 }
 
 var _ bridge.User = (*User)(nil)

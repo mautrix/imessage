@@ -187,6 +187,9 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
+
+	userIsTyping bool
+	typingLock   sync.Mutex
 }
 
 var _ bridge.Portal = (*Portal)(nil)
@@ -1189,6 +1192,50 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step bridge.Me
 		_, sendErr := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
 		if sendErr != nil {
 			portal.log.Warnln("Failed to send message send status event:", sendErr)
+		}
+	}
+}
+
+var _ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
+var _ bridge.TypingPortal = (*Portal)(nil)
+
+func (portal *Portal) HandleMatrixReadReceipt(_ bridge.User, eventID id.EventID, ts time.Time) {
+	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
+		portal.log.Debugfln("Marking %s/%s as read", message.GUID, message.MXID)
+		err := portal.bridge.IM.SendReadReceipt(portal.GUID, message.GUID)
+		if err != nil {
+			portal.log.Warnln("Error marking message as read:", err)
+		}
+	} else if tapback := portal.bridge.DB.Tapback.GetByMXID(eventID); tapback != nil {
+		portal.log.Debugfln("Marking %s/%s as read", tapback.GUID, tapback.MXID)
+		err := portal.bridge.IM.SendReadReceipt(portal.GUID, tapback.GUID)
+		if err != nil {
+			portal.log.Warnln("Error marking tapback as read:", err)
+		}
+	}
+}
+
+func (portal *Portal) HandleMatrixTyping(userIDs []id.UserID) {
+	portal.typingLock.Lock()
+	defer portal.typingLock.Unlock()
+
+	isTyping := false
+	for _, userID := range userIDs {
+		if userID == portal.bridge.user.MXID {
+			isTyping = true
+			break
+		}
+	}
+	if isTyping != portal.userIsTyping {
+		portal.userIsTyping = isTyping
+		if !isTyping {
+			portal.log.Debugfln("Sending typing stop notification")
+		} else {
+			portal.log.Debugfln("Sending typing start notification")
+		}
+		err := portal.bridge.IM.SendTypingNotification(portal.GUID, isTyping)
+		if err != nil {
+			portal.log.Warnfln("Failed to bridge typing status change: %v", err)
 		}
 	}
 }

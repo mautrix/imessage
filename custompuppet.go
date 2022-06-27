@@ -149,7 +149,6 @@ func (user *User) startCustomMXID() error {
 		return ErrMismatchingMXID
 	}
 	user.DoublePuppetIntent = intent
-	user.customTypingIn = make(map[id.RoomID]bool)
 	user.startSyncing()
 	return nil
 }
@@ -193,42 +192,8 @@ func (user *User) handleReceiptEvent(portal *Portal, event *event.Event) {
 			// Ignore receipt events where this user isn't present.
 		} else if val, ok := receipt.Extra[bridge.DoublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == doublePuppetValue {
 			// Ignore double puppeted read receipts.
-		} else if message := user.bridge.DB.Message.GetByMXID(eventID); message != nil {
-			user.log.Debugfln("Marking %s/%s in %s/%s as read", message.GUID, message.MXID, portal.GUID, portal.MXID)
-			err := user.bridge.IM.SendReadReceipt(portal.GUID, message.GUID)
-			if err != nil {
-				user.log.Warnln("Error marking read:", err)
-			}
-		} else if tapback := user.bridge.DB.Tapback.GetByMXID(eventID); tapback != nil {
-			user.log.Debugfln("Marking %s/%s in %s/%s as read", tapback.GUID, tapback.MXID, portal.GUID, portal.MXID)
-			err := user.bridge.IM.SendReadReceipt(portal.GUID, tapback.GUID)
-			if err != nil {
-				user.log.Warnln("Error marking read:", err)
-			}
-		}
-	}
-}
-
-func (user *User) handleTypingEvent(portal *Portal, evt *event.Event) {
-	isTyping := false
-	for _, userID := range evt.Content.AsTyping().UserIDs {
-		if userID == user.MXID {
-			isTyping = true
-			break
-		}
-	}
-	user.customTypingLock.Lock()
-	defer user.customTypingLock.Unlock()
-	if user.customTypingIn[evt.RoomID] != isTyping {
-		user.customTypingIn[evt.RoomID] = isTyping
-		if !isTyping {
-			user.log.Debugfln("Marking not typing in %s/%s", portal.GUID, portal.MXID)
 		} else {
-			user.log.Debugfln("Marking typing in %s/%s", portal.GUID, portal.MXID)
-		}
-		err := user.bridge.IM.SendTypingNotification(portal.GUID, isTyping)
-		if err != nil {
-			user.log.Warnfln("Failed to bridge typing status change in %s/%s: %v", portal.GUID, portal.MXID, err)
+			portal.HandleMatrixReadReceipt(user, eventID, time.UnixMilli(receipt.Timestamp))
 		}
 	}
 }
@@ -249,7 +214,7 @@ func (user *User) ProcessResponse(resp *mautrix.RespSync, _ string) error {
 				go user.handleReceiptEvent(portal, evt)
 			case event.EphemeralEventTyping:
 				if portal.IsPrivateChat() {
-					go user.handleTypingEvent(portal, evt)
+					go portal.HandleMatrixTyping(evt.Content.AsTyping().UserIDs)
 				}
 			}
 		}
