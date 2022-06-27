@@ -1199,7 +1199,11 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step bridge.Me
 var _ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
 var _ bridge.TypingPortal = (*Portal)(nil)
 
-func (portal *Portal) HandleMatrixReadReceipt(_ bridge.User, eventID id.EventID, ts time.Time) {
+func (portal *Portal) HandleMatrixReadReceipt(user bridge.User, eventID id.EventID, ts time.Time) {
+	if user.GetMXID() != portal.bridge.user.MXID {
+		return
+	}
+
 	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
 		portal.log.Debugfln("Marking %s/%s as read", message.GUID, message.MXID)
 		err := portal.bridge.IM.SendReadReceipt(portal.GUID, message.GUID)
