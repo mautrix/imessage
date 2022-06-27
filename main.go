@@ -112,6 +112,15 @@ func (br *IMBridge) GetIPortal(roomID id.RoomID) bridge.Portal {
 	return nil
 }
 
+func (br *IMBridge) GetAllIPortals() (iportals []bridge.Portal) {
+	portals := br.GetAllPortals()
+	iportals = make([]bridge.Portal, len(portals))
+	for i, portal := range portals {
+		iportals[i] = portal
+	}
+	return iportals
+}
+
 func (br *IMBridge) GetIUser(id id.UserID, create bool) bridge.User {
 	if id == br.user.MXID {
 		return br.user
