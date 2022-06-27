@@ -187,6 +187,9 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
+
+	userIsTyping bool
+	typingLock   sync.Mutex
 }
 
 var _ bridge.Portal = (*Portal)(nil)
@@ -917,7 +920,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 		RoomID:     portal.MXID,
 		Step:       bridge.MsgStepRemote,
 		Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
-		Status:     bridge.MsgStatusSuccesss,
+		Status:     bridge.MsgStatusSuccess,
 		ReportedBy: bridge.MsgReportedByBridge,
 	}
 	go checkpoint.Send(&portal.bridge.Bridge)
@@ -1193,6 +1196,54 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step bridge.Me
 	}
 }
 
+var _ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
+var _ bridge.TypingPortal = (*Portal)(nil)
+
+func (portal *Portal) HandleMatrixReadReceipt(user bridge.User, eventID id.EventID, ts time.Time) {
+	if user.GetMXID() != portal.bridge.user.MXID {
+		return
+	}
+
+	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
+		portal.log.Debugfln("Marking %s/%s as read", message.GUID, message.MXID)
+		err := portal.bridge.IM.SendReadReceipt(portal.GUID, message.GUID)
+		if err != nil {
+			portal.log.Warnln("Error marking message as read:", err)
+		}
+	} else if tapback := portal.bridge.DB.Tapback.GetByMXID(eventID); tapback != nil {
+		portal.log.Debugfln("Marking %s/%s as read", tapback.GUID, tapback.MXID)
+		err := portal.bridge.IM.SendReadReceipt(portal.GUID, tapback.GUID)
+		if err != nil {
+			portal.log.Warnln("Error marking tapback as read:", err)
+		}
+	}
+}
+
+func (portal *Portal) HandleMatrixTyping(userIDs []id.UserID) {
+	portal.typingLock.Lock()
+	defer portal.typingLock.Unlock()
+
+	isTyping := false
+	for _, userID := range userIDs {
+		if userID == portal.bridge.user.MXID {
+			isTyping = true
+			break
+		}
+	}
+	if isTyping != portal.userIsTyping {
+		portal.userIsTyping = isTyping
+		if !isTyping {
+			portal.log.Debugfln("Sending typing stop notification")
+		} else {
+			portal.log.Debugfln("Sending typing start notification")
+		}
+		err := portal.bridge.IM.SendTypingNotification(portal.GUID, isTyping)
+		if err != nil {
+			portal.log.Warnfln("Failed to bridge typing status change: %v", err)
+		}
+	}
+}
+
 func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
 		portal.sendUnsupportedCheckpoint(evt, bridge.MsgStepRemote, errors.New("reactions are not supported"))
@@ -1221,7 +1272,9 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	} else if existing == nil {
 		// TODO should timestamp be stored?
 		portal.log.Debugfln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
-		portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		}
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
 		tapback.GUID = resp.GUID
@@ -1232,7 +1285,9 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		tapback.Insert()
 	} else {
 		portal.log.Debugfln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
-		portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		}
 		_, err = portal.MainIntent().RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to redact old tapback %s to %s: %v", existing.MXID, target.MXID, err)
@@ -1271,7 +1326,9 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.SendMessageErrorCheckpoint(evt, bridge.MsgStepRemote, err, true, 0)
 		} else {
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
-			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+				portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+			}
 		}
 	}
 	portal.sendUnsupportedCheckpoint(evt, bridge.MsgStepRemote, fmt.Errorf("can't redact non-reaction event"))

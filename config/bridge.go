@@ -79,6 +79,10 @@ type BridgeConfig struct {
 	communityTemplate   *template.Template `yaml:"-"`
 }
 
+func (bc BridgeConfig) GetResendBridgeInfo() bool {
+	return false
+}
+
 func (bc BridgeConfig) GetManagementRoomTexts() bridgeconfig.ManagementRoomTexts {
 	return bridgeconfig.ManagementRoomTexts{
 		Welcome:            "Hello, I'm an iMessage bridge bot.",
