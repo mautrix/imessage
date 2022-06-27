@@ -917,7 +917,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 		RoomID:     portal.MXID,
 		Step:       bridge.MsgStepRemote,
 		Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
-		Status:     bridge.MsgStatusSuccesss,
+		Status:     bridge.MsgStatusSuccess,
 		ReportedBy: bridge.MsgReportedByBridge,
 	}
 	go checkpoint.Send(&portal.bridge.Bridge)
@@ -1221,7 +1221,9 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	} else if existing == nil {
 		// TODO should timestamp be stored?
 		portal.log.Debugfln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
-		portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		}
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
 		tapback.GUID = resp.GUID
@@ -1232,7 +1234,9 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		tapback.Insert()
 	} else {
 		portal.log.Debugfln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
-		portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		}
 		_, err = portal.MainIntent().RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to redact old tapback %s to %s: %v", existing.MXID, target.MXID, err)
@@ -1271,7 +1275,9 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.SendMessageErrorCheckpoint(evt, bridge.MsgStepRemote, err, true, 0)
 		} else {
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
-			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+				portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+			}
 		}
 	}
 	portal.sendUnsupportedCheckpoint(evt, bridge.MsgStepRemote, fmt.Errorf("can't redact non-reaction event"))
