@@ -347,7 +347,16 @@ func (portal *Portal) handleMessageLoop() {
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
 		case evt := <-portal.MatrixMessages:
-			portal.HandleMatrixMessage(evt)
+			switch evt.Type {
+			case event.EventMessage, event.EventSticker:
+				portal.HandleMatrixMessage(evt)
+			case event.EventRedaction:
+				portal.HandleMatrixRedaction(evt)
+			case event.EventReaction:
+				portal.HandleMatrixReaction(evt)
+			default:
+				portal.log.Warnln("Unsupported event type %+v in portal message channel", evt.Type)
+			}
 		case status := <-portal.MessageStatuses:
 			portal.HandleiMessageSendMessageStatus(status)
 		}
