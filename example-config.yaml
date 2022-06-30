@@ -59,9 +59,9 @@ imessage:
     # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.
     ping_interval_seconds: 15
     # Whether to merge iMessage and SMS portals into one
-    chat_merging: true
+    chat_merging: false
     # Whether to tombstone SMS rooms after meging them into iMessage
-    tombstone_old_rooms: true
+    tombstone_old_rooms: false
 
 # Bridge config
 bridge:
