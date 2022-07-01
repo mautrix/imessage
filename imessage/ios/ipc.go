@@ -410,7 +410,7 @@ func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, er
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
 	err := ios.IPC.Request(context.Background(), ReqSendMessage, &SendMessageRequest{
 		ChatGUID:    chatID,
@@ -418,6 +418,7 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 		ReplyTo:     replyTo,
 		ReplyToPart: replyToPart,
 		RichLink:    richLink,
+		Metadata:    metadata,
 	}, &resp)
 	if err == nil {
 		resp.Time = floatToTime(resp.UnixTime)
@@ -428,7 +429,7 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
 	err := ios.IPC.Request(context.Background(), ReqSendMedia, &SendMediaRequest{
 		ChatGUID: chatID,
@@ -441,6 +442,7 @@ func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk stri
 		ReplyTo:        replyTo,
 		ReplyToPart:    replyToPart,
 		IsAudioMessage: voiceMemo,
+		Metadata:       metadata,
 	}, &resp)
 	if err == nil {
 		resp.Time = floatToTime(resp.UnixTime)
