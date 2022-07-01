@@ -613,9 +613,11 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		puppet.Sync()
 		if profileOverride != nil {
+			portal.Name = profileOverride.Displayname
 			puppet.SyncWithProfileOverride(*profileOverride)
+		} else {
+			portal.Name = puppet.Displayname
 		}
-		portal.Name = puppet.Displayname
 		portal.AvatarURL = puppet.AvatarURL
 		portal.AvatarHash = puppet.AvatarHash
 	} else {

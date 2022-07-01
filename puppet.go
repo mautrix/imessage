@@ -149,6 +149,8 @@ type Puppet struct {
 
 	MXID   id.UserID
 	Intent *appservice.IntentAPI
+
+	NameOverride string
 }
 
 var _ bridge.Ghost = (*Puppet)(nil)
@@ -183,6 +185,9 @@ func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {
 }
 
 func (puppet *Puppet) UpdateNameDirect(name string) bool {
+	if len(puppet.NameOverride) != 0 {
+		name = puppet.NameOverride
+	}
 	if len(name) == 0 {
 		return false
 	}
@@ -320,6 +325,8 @@ func (puppet *Puppet) backgroundAvatarUpdate(url string) {
 func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
 	if len(override.Displayname) > 0 {
 		puppet.UpdateNameDirect(override.Displayname)
+		puppet.NameOverride = override.Displayname
+		puppet.Update()
 	}
 	if len(override.PhotoURL) > 0 {
 		go puppet.backgroundAvatarUpdate(override.PhotoURL)
