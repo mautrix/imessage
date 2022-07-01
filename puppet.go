@@ -170,7 +170,10 @@ func (puppet *Puppet) GetMXID() id.UserID {
 }
 
 func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {
-	if puppet.Displayname != "" && (contact == nil || !contact.HasName()) {
+	if puppet.NameOverridden {
+		// Never replace custom names with contact list names
+		return false
+	} else if puppet.Displayname != "" && (contact == nil || !contact.HasName()) {
 		// Don't update displayname if there's no contact list name available
 		return false
 	}

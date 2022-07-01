@@ -1,4 +1,4 @@
--- v0 -> v12: Latest schema
+-- v0 -> v13: Latest schema
 
 CREATE TABLE portal (
 	guid        TEXT    PRIMARY KEY,
@@ -12,10 +12,11 @@ CREATE TABLE portal (
 );
 
 CREATE TABLE puppet (
-	id           TEXT PRIMARY KEY,
-	displayname  TEXT NOT NULL,
-	avatar_hash  TEXT,
-	avatar_url   TEXT
+	id              TEXT PRIMARY KEY,
+	displayname     TEXT NOT NULL,
+	name_overridden BOOLEAN,
+	avatar_hash     TEXT,
+	avatar_url      TEXT
 );
 
 CREATE TABLE "user" (
