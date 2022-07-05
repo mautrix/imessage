@@ -112,6 +112,7 @@ Another error response:
   * `target_guid` (str) - The target message ID
   * `target_part` (int) - The target message part index
   * `type` (int) - The type of tapback to send
+  * `metadata` (any) - Metadata to send with the message. Pass any valid JSON
   * Response should contain the sent tapback `guid` and `timestamp`
   * Removing tapbacks is done by sending a 300x type instead of 200x (same as iMessage internally)
 * Send a read receipt (request type `send_read_receipt`)
@@ -200,6 +201,7 @@ Another error response:
     * For avatar changes, 1 = set avatar, 2 = remove avatar
   * `target_guid` (str, optional) - For member change messages, the user identifier of the user being changed.
   * `new_group_title` (str, optional) - New name for group when the message was a group name change
+  * `metadata` (any) - Metadata sent with the message. Any valid JSON may be present here.
 * Incoming read receipts (request type `read_receipt`)
   * `sender_guid` (str) - the user who sent the read receipt. Not required if `is_from_me` is true.
   * `is_from_me` (bool) - True if the read receipt is from the local user (e.g. from another device).

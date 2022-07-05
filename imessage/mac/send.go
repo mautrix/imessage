@@ -176,11 +176,11 @@ func (mac *macOSDatabase) sendMessageWithRetry(script, fallbackScript1, fallback
 	return err
 }
 
-func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int, _ *imessage.RichLink) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int, _ *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	return nil, mac.sendMessageWithRetry(sendMessage, sendMessageWithService, sendMessageBuddy, imessage.ParseIdentifier(chatID), text)
 }
 
-func (mac *macOSDatabase) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	if voiceMemo {
 		mac.log.Warn("received a request to send a file as a voice memo, but mac does not support this. sending as regular attachment.")
 	}

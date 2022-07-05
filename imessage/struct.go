@@ -69,7 +69,11 @@ type Message struct {
 	NewGroupName    string          `json:"new_group_title,omitempty"`
 
 	RichLink *RichLink `json:"rich_link,omitempty"`
+
+	Metadata MessageMetadata `json:"metadata,omitempty"`
 }
+
+type MessageMetadata map[string]interface{}
 
 func (msg *Message) SenderText() string {
 	if msg.IsFromMe {

@@ -1012,6 +1012,10 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	if portal.bridge.IM.Capabilities().RichLinks {
 		imessageRichLink = portal.convertURLPreviewToIMessage(evt)
 	}
+	var metadata imessage.MessageMetadata
+	if incomingMetadata, ok := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata); ok {
+		metadata = incomingMetadata
+	}
 
 	var err error
 	var resp *imessage.SendResponse
@@ -1025,9 +1029,9 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			msg.Body = "/me " + msg.Body
 		}
 		portal.addDedup(evt.ID, msg.Body)
-		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart, imessageRichLink)
+		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart, imessageRichLink, metadata)
 	} else if len(msg.URL) > 0 || msg.File != nil {
-		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart)
+		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart, metadata)
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
@@ -1063,7 +1067,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 }
 
-func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *event.Event, messageReplyID string, messageReplyPart int) (*imessage.SendResponse, error) {
+func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *event.Event, messageReplyID string, messageReplyPart int, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	var url id.ContentURI
 	var file *event.EncryptedFileInfo
 	var err error
@@ -1117,14 +1121,14 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		}
 		if !hasUsableThumbnail {
 			portal.addDedup(evt.ID, caption)
-			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart, nil)
+			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart, nil, metadata)
 		}
 	}
 
-	return portal.handleMatrixMediaDirect(url, file, filename, caption, evt, messageReplyID, messageReplyPart)
+	return portal.handleMatrixMediaDirect(url, file, filename, caption, evt, messageReplyID, messageReplyPart, metadata)
 }
 
-func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.EncryptedFileInfo, filename, caption string, evt *event.Event, messageReplyID string, messageReplyPart int) (resp *imessage.SendResponse, err error) {
+func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.EncryptedFileInfo, filename, caption string, evt *event.Event, messageReplyID string, messageReplyPart int, metadata imessage.MessageMetadata) (resp *imessage.SendResponse, err error) {
 	var data []byte
 	data, err = portal.MainIntent().DownloadBytes(url)
 	if err != nil {
@@ -1161,7 +1165,7 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 		}
 	}
 
-	resp, err = portal.bridge.IM.SendFile(portal.GUID, caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
+	resp, err = portal.bridge.IM.SendFile(portal.GUID, caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo, metadata)
 	portal.bridge.IM.SendFileCleanup(dir)
 	return
 }
@@ -1567,6 +1571,9 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 				Body:    err.Error(),
 			}, extraContent, dbMessage.Timestamp)
 		} else {
+			if msg.Metadata != nil {
+				extraContent["com.beeper.message_metadata"] = msg.Metadata
+			}
 			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, extraContent, dbMessage.Timestamp)
 		}
 		if err != nil {
@@ -1603,6 +1610,9 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 		linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
 		if linkPreview != nil {
 			extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
+		}
+		if msg.Metadata != nil {
+			extraAttrs["com.beeper.message_metadata"] = msg.Metadata
 		}
 		resp, err := portal.sendMessage(intent, event.EventMessage, content, extraAttrs, dbMessage.Timestamp)
 		if err != nil {
