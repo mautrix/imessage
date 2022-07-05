@@ -190,7 +190,7 @@ func (user *User) handleReceiptEvent(portal *Portal, event *event.Event) {
 	for eventID, receipts := range *event.Content.AsReceipt() {
 		if receipt, ok := receipts.Read[user.MXID]; !ok {
 			// Ignore receipt events where this user isn't present.
-		} else if val, ok := receipt.Extra[bridge.DoublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == doublePuppetValue {
+		} else if val, ok := receipt.Extra[appservice.DoublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == portal.bridge.Name {
 			// Ignore double puppeted read receipts.
 		} else {
 			portal.HandleMatrixReadReceipt(user, eventID, time.UnixMilli(receipt.Timestamp))

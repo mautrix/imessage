@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -792,27 +793,16 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, map[string]interface{}{}, 0)
 }
 
-const doublePuppetValue = "mautrix-imessage"
-
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
-	wrappedContent := event.Content{Parsed: content}
+	wrappedContent := &event.Content{Parsed: content}
 	wrappedContent.Raw = extraContent
-	if timestamp != 0 && intent.IsCustomPuppet {
-		wrappedContent.Raw[bridge.DoublePuppetKey] = doublePuppetValue
-	}
+	intent.AddDoublePuppetValue(wrappedContent)
 	if portal.Encrypted && portal.bridge.Crypto != nil {
-		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
+		err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt event: %w", err)
 		}
 		eventType = event.EventEncrypted
-		wrappedContent.Parsed = encrypted
-	}
-
-	if intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{bridge.DoublePuppetKey: doublePuppetValue}
-	} else {
-		wrappedContent.Raw = nil
 	}
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
@@ -1162,7 +1152,7 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 	_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
 	// Only convert when sending to iMessage. SMS users probably don't want CAF.
 	if portal.Identifier.Service == "iMessage" && isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
-		filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
+		filePath, err = ffmpeg.ConvertPath(context.TODO(), filePath, ".caf", []string{}, []string{}, false)
 		mimeType = "audio/x-caf"
 		isVoiceMemo = true
 		if err != nil {
@@ -1475,7 +1465,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	extraContent := map[string]interface{}{}
 
 	if msg.IsAudioMessage {
-		ogg, err := ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
+		ogg, err := ffmpeg.ConvertBytes(context.TODO(), data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
 		if err == nil {
 			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
@@ -1502,7 +1492,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 
 	if portal.bridge.Config.Bridge.ConvertVideo.Enabled && mimeType == "video/quicktime" {
 		conv := portal.bridge.Config.Bridge.ConvertVideo
-		convertedData, err := ffmpeg.ConvertBytes(data, "."+conv.Extension, []string{}, conv.FFMPEGArgs, "video/quicktime")
+		convertedData, err := ffmpeg.ConvertBytes(context.TODO(), data, "."+conv.Extension, []string{}, conv.FFMPEGArgs, "video/quicktime")
 		if err == nil {
 			mimeType = conv.MimeType
 			fileName += "." + conv.Extension
@@ -1751,10 +1741,8 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 	var intent *appservice.IntentAPI
-	redactionReq := mautrix.ReqRedact{Extra: map[string]interface{}{}}
 	if msg.IsFromMe {
 		intent = portal.bridge.user.DoublePuppetIntent
-		redactionReq.Extra[bridge.DoublePuppetKey] = doublePuppetValue
 		if intent == nil {
 			portal.log.Debugfln("Dropping own tapback in %s as double puppeting is not initialized", msg.ChatGUID)
 			return
@@ -1770,7 +1758,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		if existing == nil {
 			return
 		}
-		_, err := intent.RedactEvent(portal.MXID, existing.MXID, redactionReq)
+		_, err := intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to remove tapback from %s: %v", msg.SenderText(), err)
 		}
@@ -1781,20 +1769,16 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 
-	content := event.Content{Parsed: &event.ReactionEventContent{
+	content := &event.ReactionEventContent{
 		RelatesTo: event.RelatesTo{
 			EventID: target.MXID,
 			Type:    event.RelAnnotation,
 			Key:     msg.Tapback.Type.Emoji(),
 		},
-	}}
-
-	if intent.IsCustomPuppet {
-		content.Raw = map[string]interface{}{bridge.DoublePuppetKey: doublePuppetValue}
 	}
 
 	if existing != nil {
-		if _, err := intent.RedactEvent(portal.MXID, existing.MXID, redactionReq); err != nil {
+		if _, err := intent.RedactEvent(portal.MXID, existing.MXID); err != nil {
 			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
 		}
 	}

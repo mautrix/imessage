@@ -168,17 +168,14 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
-	inviteContent := event.Content{
-		Parsed: &event.MemberEventContent{
-			Membership: event.MembershipInvite,
-			IsDirect:   isDirect,
-		},
-		Raw: map[string]interface{}{},
+	extraContent := map[string]interface{}{}
+	if isDirect {
+		extraContent["is_direct"] = true
 	}
 	if user.DoublePuppetIntent != nil {
-		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+		extraContent["fi.mau.will_auto_accept"] = true
 	}
-	_, err := intent.SendStateEvent(roomID, event.StateMember, user.MXID.String(), &inviteContent)
+	_, err := intent.InviteUser(roomID, &mautrix.ReqInviteUser{UserID: user.MXID}, extraContent)
 	var httpErr mautrix.HTTPError
 	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
 		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)

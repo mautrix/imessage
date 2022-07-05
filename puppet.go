@@ -152,6 +152,15 @@ type Puppet struct {
 }
 
 var _ bridge.Ghost = (*Puppet)(nil)
+var _ bridge.GhostWithProfile = (*Puppet)(nil)
+
+func (puppet *Puppet) GetDisplayname() string {
+	return puppet.Displayname
+}
+
+func (puppet *Puppet) GetAvatarURL() id.ContentURI {
+	return puppet.AvatarURL
+}
 
 func (puppet *Puppet) CustomIntent() *appservice.IntentAPI {
 	return nil
