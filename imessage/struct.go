@@ -73,7 +73,7 @@ type Message struct {
 	Metadata MessageMetadata `json:"metadata,omitempty"`
 }
 
-type MessageMetadata map[string]interface{}
+type MessageMetadata = map[string]interface{}
 
 func (msg *Message) SenderText() string {
 	if msg.IsFromMe {

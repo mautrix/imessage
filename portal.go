@@ -1012,10 +1012,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	if portal.bridge.IM.Capabilities().RichLinks {
 		imessageRichLink = portal.convertURLPreviewToIMessage(evt)
 	}
-	var metadata imessage.MessageMetadata
-	if incomingMetadata, ok := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata); ok {
-		metadata = incomingMetadata
-	}
+	metadata, _ := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata)
 
 	var err error
 	var resp *imessage.SendResponse
