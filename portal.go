@@ -784,9 +784,16 @@ func (portal *Portal) IsPrivateChat() bool {
 	return !portal.Identifier.IsGroup
 }
 
+func (portal *Portal) GetDMPuppet() *Puppet {
+	if portal.IsPrivateChat() {
+		return portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
+	}
+	return nil
+}
+
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	if portal.IsPrivateChat() {
-		return portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID).Intent
+		return portal.GetDMPuppet().Intent
 	}
 	return portal.bridge.Bot
 }

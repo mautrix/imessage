@@ -57,6 +57,7 @@ func NewWebsocketCommandHandler(br *IMBridge) *WebsocketCommandHandler {
 	br.AS.SetWebsocketCommandHandler("start_dm", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("resolve_identifier", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("list_contacts", handler.handleWSGetContacts)
+	br.AS.SetWebsocketCommandHandler("edit_ghost", handler.handleWSEditGhost)
 	return handler
 }
 
@@ -98,6 +99,54 @@ func (mx *WebsocketCommandHandler) handleWSSyncProxyError(cmd appservice.Websock
 type ProfileOverride struct {
 	Displayname string `json:"displayname,omitempty"`
 	PhotoURL    string `json:"photo_url,omitempty"`
+}
+
+type EditGhostRequest struct {
+	UserID id.UserID `json:"user_id"`
+	RoomID id.RoomID `json:"room_id"`
+	Reset  bool      `json:"reset"`
+	ProfileOverride
+}
+
+func (mx *WebsocketCommandHandler) handleWSEditGhost(cmd appservice.WebsocketCommand) (bool, interface{}) {
+	var req EditGhostRequest
+	if err := json.Unmarshal(cmd.Data, &req); err != nil {
+		return false, fmt.Errorf("failed to parse request: %w", err)
+	}
+	var puppet *Puppet
+	if req.UserID != "" {
+		puppet = mx.bridge.GetPuppetByMXID(req.UserID)
+		if puppet == nil {
+			return false, fmt.Errorf("user is not a bridge ghost")
+		}
+	} else if req.RoomID != "" {
+		portal := mx.bridge.GetPortalByMXID(req.RoomID)
+		if portal == nil {
+			return false, fmt.Errorf("unknown room ID provided")
+		} else if !portal.IsPrivateChat() {
+			return false, fmt.Errorf("provided room is not a direct chat")
+		} else if puppet = portal.GetDMPuppet(); puppet == nil {
+			return false, fmt.Errorf("unexpected error: private chat portal doesn't have ghost")
+		}
+	} else {
+		return false, fmt.Errorf("neither room nor user ID were provided")
+	}
+	if req.Reset {
+		puppet.log.Debugfln("Marking name as not overridden and resyncing profile")
+		puppet.NameOverridden = false
+		puppet.Update()
+		puppet.Sync()
+	} else {
+		puppet.log.Debugfln("Updating profile with %+v", req.ProfileOverride)
+		if req.Displayname != "" {
+			puppet.NameOverridden = true
+			puppet.UpdateNameDirect(req.Displayname)
+		}
+		if req.PhotoURL != "" {
+			go puppet.backgroundAvatarUpdate(req.PhotoURL)
+		}
+	}
+	return true, struct{}{}
 }
 
 type StartDMRequest struct {

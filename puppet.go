@@ -275,6 +275,7 @@ func (puppet *Puppet) updatePortalAvatar() {
 		portal.AvatarURL = puppet.AvatarURL
 		portal.AvatarHash = puppet.AvatarHash
 		portal.Update()
+		portal.UpdateBridgeInfo()
 	})
 }
 
@@ -288,6 +289,7 @@ func (puppet *Puppet) updatePortalName() {
 		}
 		portal.Name = puppet.Displayname
 		portal.Update()
+		portal.UpdateBridgeInfo()
 	})
 }
 
@@ -312,6 +314,7 @@ var avatarDownloadClient = http.Client{
 }
 
 func (puppet *Puppet) backgroundAvatarUpdate(url string) {
+	puppet.log.Debugfln("Updating avatar from remote URL in background")
 	var resp *http.Response
 	var body []byte
 	var err error
