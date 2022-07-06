@@ -300,6 +300,39 @@ func (portal *Portal) Sync(backfill bool) {
 	}
 }
 
+type CustomReadReceipt struct {
+	Timestamp          int64  `json:"ts,omitempty"`
+	DoublePuppetSource string `json:"fi.mau.double_puppet_source,omitempty"`
+}
+
+type CustomReadMarkers struct {
+	mautrix.ReqSetReadMarkers
+	ReadExtra      CustomReadReceipt `json:"com.beeper.read.extra"`
+	FullyReadExtra CustomReadReceipt `json:"com.beeper.fully_read.extra"`
+}
+
+func (portal *Portal) markRead(intent *appservice.IntentAPI, eventID id.EventID, readAt time.Time) error {
+	if intent == nil {
+		return nil
+	}
+	var extra CustomReadReceipt
+	if intent == portal.bridge.user.DoublePuppetIntent {
+		extra.DoublePuppetSource = portal.bridge.Name
+	}
+	if !readAt.IsZero() {
+		extra.Timestamp = readAt.UnixMilli()
+	}
+	content := CustomReadMarkers{
+		ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
+			Read:      eventID,
+			FullyRead: eventID,
+		},
+		ReadExtra:      extra,
+		FullyReadExtra: extra,
+	}
+	return intent.SetReadMarkers(portal.MXID, &content)
+}
+
 func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 	if len(portal.MXID) == 0 {
 		return
@@ -316,22 +349,19 @@ func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 	if intent == nil {
 		return
 	}
-	message := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, rr.ReadUpTo)
-	if message == nil {
-		tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, rr.ReadUpTo)
-		if tapback == nil {
-			portal.log.Debugfln("Dropping read receipt for %s: not found in db messages or tapbacks", rr.ReadUpTo)
-			return
+
+	if message := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, rr.ReadUpTo); message != nil {
+		err := portal.markRead(intent, message.MXID, rr.ReadAt)
+		if err != nil {
+			portal.log.Warnln("Failed to send read receipt for %s from %s: %v", message.MXID, intent.UserID)
 		}
-		err := intent.MarkRead(portal.MXID, tapback.MXID)
+	} else if tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, rr.ReadUpTo); tapback != nil {
+		err := portal.markRead(intent, tapback.MXID, rr.ReadAt)
 		if err != nil {
 			portal.log.Warnln("Failed to send read receipt for %s from %s: %v", tapback.MXID, intent.UserID)
 		}
-		return
-	}
-	err := intent.MarkRead(portal.MXID, message.MXID)
-	if err != nil {
-		portal.log.Warnln("Failed to send read receipt for %s from %s: %v", message.MXID, intent.UserID)
+	} else {
+		portal.log.Debugfln("Dropping read receipt for %s: not found in db messages or tapbacks", rr.ReadUpTo)
 	}
 }
 
@@ -446,8 +476,8 @@ func (portal *Portal) backfill() {
 			}
 		}
 		portal.log.Infoln("Backfill finished")
-		if len(lastReadEvent) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
-			err = portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, lastReadEvent)
+		if len(lastReadEvent) > 0 {
+			err = portal.markRead(portal.bridge.user.DoublePuppetIntent, lastReadEvent, time.Time{})
 			if err != nil {
 				portal.log.Warnfln("Failed to mark %s as read with double puppet: %v", lastReadEvent, err)
 			}
@@ -1728,8 +1758,8 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	if len(dbMessage.MXID) > 0 {
 		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, false)
-		if !isBackfill && !msg.IsFromMe && msg.IsRead && portal.bridge.user.DoublePuppetIntent != nil {
-			err := portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, dbMessage.MXID)
+		if !isBackfill && !msg.IsFromMe && msg.IsRead {
+			err := portal.markRead(portal.bridge.user.DoublePuppetIntent, dbMessage.MXID, time.Time{})
 			if err != nil {
 				portal.log.Warnln("Failed to mark %s as read after bridging: %v", dbMessage.MXID, err)
 			}
