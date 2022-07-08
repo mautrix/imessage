@@ -1367,6 +1367,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 				portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
 			}
 		}
+		return
 	}
 	portal.sendUnsupportedCheckpoint(evt, bridge.MsgStepRemote, fmt.Errorf("can't redact non-reaction event"))
 }
