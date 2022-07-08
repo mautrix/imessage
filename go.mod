@@ -11,7 +11,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.3.2
-	maunium.net/go/mautrix v0.11.1-0.20220708151043-cc426da873f7
+	maunium.net/go/mautrix v0.11.1-0.20220708152210-84b367ef7282
 )
 
 require (
