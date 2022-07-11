@@ -489,10 +489,9 @@ func (br *IMBridge) Start() {
 
 	br.Log.Debugln("Starting iMessage handler")
 	go br.IMHandler.Start()
+	startupGroup.Wait()
 	br.Log.Debugln("Starting IPC loop")
 	go br.IPC.Loop()
-
-	startupGroup.Wait()
 
 	go br.StartupSync()
 	br.Log.Infoln("Initialization complete")

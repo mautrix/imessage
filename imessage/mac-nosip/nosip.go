@@ -90,6 +90,8 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	}
 
 	ipcProc := ipc.NewCustomProcessor(stdin, stdout, mac.log, mac.printPayloadContent)
+	mac.SetIPC(ipcProc)
+	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
 	go func() {
 		ipcProc.Loop()
 		if mac.proc.ProcessState.Exited() {
@@ -97,14 +99,12 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 			os.Exit(mac.proc.ProcessState.ExitCode())
 		}
 	}()
-	mac.SetIPC(ipcProc)
 
 	err = mac.proc.Start()
 	if err != nil {
 		return fmt.Errorf("failed to start imessage-rest: %w", err)
 	}
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
-	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
 
 	go mac.pingLoop(ipcProc)
 
