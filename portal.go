@@ -1828,7 +1828,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		}
 	}
 
-	resp, err := intent.Client.SendMessageEvent(portal.MXID, event.EventReaction, &content)
+	resp, err := intent.SendMessageEvent(portal.MXID, event.EventReaction, &content)
 
 	if err != nil {
 		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.SenderText(), err)
