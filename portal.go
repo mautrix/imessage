@@ -863,21 +863,6 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) (string, *event.
 	return "application/octet-stream", file
 }
 
-var EventMessageSendStatus = event.Type{Type: "com.beeper.message_send_status", Class: event.MessageEventType}
-
-type MessageSendStatusEventContent struct {
-	Network   string           `json:"network"`
-	RelatesTo *event.RelatesTo `json:"m.relates_to"`
-	Success   bool             `json:"success"`
-	Reason    string           `json:"reason,omitempty"`
-	Error     string           `json:"error,omitempty"`
-	Message   string           `json:"message,omitempty"`
-	CanRetry  bool             `json:"can_retry,omitempty"`
-	IsCertain bool             `json:"is_certain,omitempty"`
-
-	Service string `json:"fi.mau.imessage.service,omitempty"`
-}
-
 func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, status bridge.MessageCheckpointStatus) {
 	portal.bridge.SendMessageCheckpoint(evt, bridge.MsgStepRemote, rootErr, status, 0)
 
@@ -893,30 +878,29 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 	}
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		reason := "m.event_not_handled"
-		canRetry := true
+		reason := event.MessageStatusGenericError
+		msgStatus := event.MessageStatusRetriable
 		switch status {
 		case bridge.MsgStatusUnsupported:
-			reason = "com.beeper.unsupported_event"
-			canRetry = false
+			reason = event.MessageStatusUnsupported
+			msgStatus = event.MessageStatusFail
 		case bridge.MsgStatusTimeout:
-			reason = "m.event_too_old"
+			reason = event.MessageStatusTooOld
 		}
 
-		content := MessageSendStatusEventContent{
+		content := event.BeeperMessageStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			RelatesTo: &event.RelatesTo{
+			RelatesTo: event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
-			Success:   false,
-			Reason:    reason,
-			Error:     rootErr.Error(),
-			CanRetry:  canRetry,
-			IsCertain: isCertain,
+			Reason: reason,
+			Status: msgStatus,
+			Error:  rootErr.Error(),
 		}
+		content.FillLegacyBooleans()
 
-		_, err := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
+		_, err := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 			return
@@ -962,21 +946,27 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 	go checkpoint.Send(&portal.bridge.Bridge)
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		content := MessageSendStatusEventContent{
-			Service: service,
+		mainContent := &event.BeeperMessageStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			RelatesTo: &event.RelatesTo{
+			RelatesTo: event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: eventID,
 			},
-			Success: true,
+			Status: event.MessageStatusSuccess,
+		}
+		mainContent.FillLegacyBooleans()
+		content := &event.Content{
+			Parsed: mainContent,
+			Raw: map[string]interface{}{
+				bridgeInfoService: service,
+			},
 		}
 
 		statusIntent := portal.bridge.Bot
 		if !portal.Encrypted {
 			statusIntent = portal.MainIntent()
 		}
-		_, err := statusIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
+		_, err := statusIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 		}
@@ -1209,24 +1199,23 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step bridge.Me
 	portal.bridge.SendMessageCheckpoint(evt, step, err, bridge.MsgStatusUnsupported, 0)
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		content := MessageSendStatusEventContent{
+		content := event.BeeperMessageStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			RelatesTo: &event.RelatesTo{
+			RelatesTo: event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
-			Success:   false,
-			Reason:    "com.beeper.unsupported_event",
-			Error:     err.Error(),
-			CanRetry:  false, // There is no point in retrying a message that is unsupported.
-			IsCertain: true,
+			Status: event.MessageStatusFail,
+			Reason: event.MessageStatusUnsupported,
+			Error:  err.Error(),
 		}
+		content.FillLegacyBooleans()
 
 		errorIntent := portal.bridge.Bot
 		if !portal.Encrypted {
 			errorIntent = portal.MainIntent()
 		}
-		_, sendErr := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
+		_, sendErr := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)
 		if sendErr != nil {
 			portal.log.Warnln("Failed to send message send status event:", sendErr)
 		}
