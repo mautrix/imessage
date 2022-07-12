@@ -41,19 +41,22 @@ const (
 )
 
 type SendMessageRequest struct {
-	ChatGUID    string `json:"chat_guid"`
-	Text        string `json:"text"`
-	ReplyTo     string `json:"reply_to"`
-	ReplyToPart int    `json:"reply_to_part"`
+	ChatGUID    string                   `json:"chat_guid"`
+	Text        string                   `json:"text"`
+	ReplyTo     string                   `json:"reply_to"`
+	ReplyToPart int                      `json:"reply_to_part"`
+	RichLink    *imessage.RichLink       `json:"rich_link,omitempty"`
+	Metadata    imessage.MessageMetadata `json:"metadata,omitempty"`
 }
 
 type SendMediaRequest struct {
 	ChatGUID string `json:"chat_guid"`
 	Text     string `json:"text"`
 	imessage.Attachment
-	ReplyTo        string `json:"reply_to"`
-	ReplyToPart    int    `json:"reply_to_part"`
-	IsAudioMessage bool   `json:"is_audio_message"`
+	ReplyTo        string                   `json:"reply_to"`
+	ReplyToPart    int                      `json:"reply_to_part"`
+	IsAudioMessage bool                     `json:"is_audio_message"`
+	Metadata       imessage.MessageMetadata `json:"metadata,omitempty"`
 }
 
 type SendTapbackRequest struct {

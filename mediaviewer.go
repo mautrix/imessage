@@ -31,6 +31,7 @@ import (
 	"path"
 
 	"golang.org/x/crypto/hkdf"
+
 	"maunium.net/go/mautrix/event"
 )
 
@@ -61,17 +62,17 @@ func extractKeys(mediaKey []byte) (encryption, iv, auth []byte, err error) {
 	return
 }
 
-func (bridge *Bridge) createMediaViewerURL(content *event.Content) (string, error) {
+func (br *IMBridge) createMediaViewerURL(content *event.Content) (string, error) {
 	msg := content.AsMessage()
 	if msg.File == nil {
 		if len(msg.URL) > 0 {
 			parsedMXC, err := msg.URL.Parse()
-			return bridge.Bot.GetDownloadURL(parsedMXC), err
+			return br.Bot.GetDownloadURL(parsedMXC), err
 		}
 		return "", fmt.Errorf("no URL in message")
 	}
 
-	parsedURL, err := url.Parse(bridge.Config.Bridge.MediaViewerURL)
+	parsedURL, err := url.Parse(br.Config.Bridge.MediaViewer.URL)
 	if err != nil {
 		return "", fmt.Errorf("invalid media viewer URL in config: %w", err)
 	}
@@ -98,7 +99,7 @@ func (bridge *Bridge) createMediaViewerURL(content *event.Content) (string, erro
 	reqData := mediaViewerCreateRequest{
 		Ciphertext: base64.RawStdEncoding.EncodeToString(ciphertext),
 		AuthToken:  base64.RawStdEncoding.EncodeToString(authToken),
-		Homeserver: bridge.Config.Homeserver.Domain,
+		Homeserver: br.Config.Homeserver.Domain,
 	}
 	var respData mediaViewerCreateResponse
 

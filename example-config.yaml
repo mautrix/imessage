@@ -3,16 +3,24 @@ homeserver:
     # The address that this appservice can use to connect to the homeserver.
     address: https://example.com
     websocket_proxy: ws://localhost:29331
+    ping_interval_seconds: 0
     # The domain of the homeserver (for MXIDs, etc).
     domain: example.com
+
+    # Is the homeserver actually mautrix-asmux?
+    asmux: false
     # Does the homeserver support https://github.com/matrix-org/matrix-spec-proposals/pull/2246?
     async_media: false
 
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
 appservice:
-    # SQLite database path
-    database: mautrix-imessage.db
+    # Database config.
+    database:
+        # The database type. Only sqlite3 is supported.
+        type: sqlite3
+        # SQLite database path
+        uri: mautrix-imessage.db
 
     # The unique ID of this appservice.
     id: imessage
@@ -40,12 +48,20 @@ imessage:
     # * mac: Standard Mac connector, requires full disk access and will ask for AppleScript and contacts permission.
     # * ios: Jailbreak iOS connector when using with Brooklyn.
     # * android: Equivalent to ios, but for use with the Android SMS wrapper app.
-    # * mac-nosip: Mac without SIP connector, runs imessage-rest as a subprocess.
+    # * mac-nosip: Mac without SIP connector, runs Barcelona as a subprocess.
     platform: mac
-    # imessage-rest executable for mac-nosip connector
-    #imessage_rest_path: ...
-    # override the seconds barcelona has to ping before terminating
-    #ping_interval_seconds: ...
+    # Path to the Barcelona executable for the mac-nosip connector
+    imessage_rest_path: darwin-barcelona-mautrix
+    # Additional arguments to pass to the mac-nosip connector
+    imessage_rest_args: []
+    # Whether to log the contents of IPC payloads
+    log_ipc_payloads: false
+    # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.
+    ping_interval_seconds: 15
+    # Whether to merge iMessage and SMS portals into one
+    chat_merging: false
+    # Whether to tombstone SMS rooms after meging them into iMessage
+    tombstone_old_rooms: false
 
 # Bridge config
 bridge:
@@ -70,14 +86,12 @@ bridge:
     # Whether or not the bridge should send error notices via m.notice events
     # when a message fails to bridge.
     send_error_notices: true
-
     # The maximum number of seconds between the message arriving at the
     # homeserver and the bridge attempting to send the message. This can help
     # prevent messages from being bridged a long time after arriving at the
     # homeserver which could cause confusion in the chat history on the remote
     # network. Set to 0 to disable.
     max_handle_seconds: 0
-
     # Whether or not to sync with custom puppets to receive EDUs that are not normally sent to appservices.
     sync_with_custom_puppets: false
     # Whether or not to update the m.direct account data event when double puppeting is enabled.
@@ -103,18 +117,26 @@ bridge:
     # Should the bridge look through joined rooms to find existing portals if the database has none?
     # This can be used to recover from bridge database loss.
     find_portals_if_db_empty: false
-    # The address to an instance of https://gitlab.com/beeper/media-viewer
+    # Media viewer settings. See https://gitlab.com/beeper/media-viewer for more info.
     # Used to send media viewer links instead of full files for attachments that are too big for MMS.
-    media_viewer_url: null
-    # The minimum number of bytes in a file before the bridge switches to using the media viewer when sending MMS.
-    # Note that for unencrypted files, this will use a direct link to the homeserver rather than the media viewer.
-    media_viewer_sms_min_size: 409600
-    # Same as above, but for iMessages.
-    media_viewer_imessage_min_size: 52428800
+    media_viewer:
+        # The address to the media viewer. If null, media viewer links will not be used.
+        url: null
+        # The minimum number of bytes in a file before the bridge switches to using the media viewer when sending MMS.
+        # Note that for unencrypted files, this will use a direct link to the homeserver rather than the media viewer.
+        sms_min_size: 409600
+        # Same as above, but for iMessages.
+        imessage_min_size: 52428800
+        # Template text when inserting media viewer URLs.
+        # %s is replaced with the actual URL.
+        template: "Full size attachment: %s"
     # Should we rewrite the sender in a DM to match the chat GUID?
     # This is helpful when the sender ID shifts depending on the device they use, since
     # the bridge is unable to add participants to the chat post-creation.
     force_uniform_dm_senders: true
+    # Whether or not created rooms should have federation enabled.
+    # If false, created portal rooms will never be federated.
+    federate_rooms: true
     # Should we convert heif images to jpeg before re-uploading? This increases
     # compatibility, but adds generation loss (reduces quality).
     convert_heif: true
@@ -128,13 +150,8 @@ bridge:
         ffmpeg_args: ["-c:v", "libx264", "-preset", "faster", "-crf", "22", "-c:a", "copy"]
         extension: "mp4"
         mime_type: "video/mp4"
-
     # The prefix for commands.
     command_prefix: "!im"
-
-    # Whether or not created rooms should have federation enabled.
-    # If false, created portal rooms will never be federated.
-    federate_rooms: true
 
     # End-to-bridge encryption support options.
     # See https://docs.mau.fi/bridges/general/end-to-bridge-encryption.html
@@ -146,18 +163,45 @@ bridge:
         default: false
         # Whether or not to use MSC2409/MSC3202 instead of /sync long polling for receiving encryption-related data.
         appservice: false
-        # Options for automatic key sharing.
-        key_sharing:
-            # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
-            # You must use a client that supports requesting keys from other users to use this feature.
-            allow: false
-            # Require the requesting device to have a valid cross-signing signature?
-            # This doesn't require that the bridge has verified the device, only that the user has verified it.
-            # Not yet implemented.
-            require_cross_signing: false
-            # Require devices to be verified by the bridge?
-            # Verification by the bridge is not yet implemented.
-            require_verification: true
+        # Require encryption, drop any unencrypted messages.
+        require: false
+        # Enable key sharing? If enabled, key requests for rooms where users are in will be fulfilled.
+        # You must use a client that supports requesting keys from other users to use this feature.
+        allow_key_sharing: false
+        # What level of device verification should be required from users?
+        #
+        # Valid levels:
+        #   unverified - Send keys to all device in the room.
+        #   cross-signed-untrusted - Require valid cross-signing, but trust all cross-signing keys.
+        #   cross-signed-tofu - Require valid cross-signing, trust cross-signing keys on first use (and reject changes).
+        #   cross-signed-verified - Require valid cross-signing, plus a valid user signature from the bridge bot.
+        #                           Note that creating user signatures from the bridge bot is not currently possible.
+        #   verified - Require manual per-device verification
+        #              (currently only possible by modifying the `trust` column in the `crypto_device` database table).
+        verification_levels:
+            # Minimum level for which the bridge should send keys to when bridging messages from WhatsApp to Matrix.
+            receive: unverified
+            # Minimum level that the bridge should accept for incoming Matrix messages.
+            send: unverified
+            # Minimum level that the bridge should require for accepting key requests.
+            share: cross-signed-tofu
+        # Options for Megolm room key rotation. These options allow you to
+        # configure the m.room.encryption event content. See:
+        # https://spec.matrix.org/v1.3/client-server-api/#mroomencryption for
+        # more information about that event.
+        rotation:
+            # Enable custom Megolm room key rotation settings. Note that these
+            # settings will only apply to rooms created after this option is
+            # set.
+            enable_custom: false
+            # The maximum number of milliseconds a session should be used
+            # before changing it. The Matrix spec recommends 604800000 (a week)
+            # as the default.
+            milliseconds: 604800000
+            # The maximum number of messages that should be sent with a given a
+            # session before changing it. The Matrix spec recommends 100 as the
+            # default.
+            messages: 100
 
     # Settings for relay mode
     relay:
@@ -194,3 +238,8 @@ logging:
     # Minimum severity for log messages.
     # Options: debug, info, warn, error, fatal
     print_level: debug
+    print_json: false
+    file_json: false
+
+# This may be used by external config managers. mautrix-imessage does not read it, but will carry it across configuration migrations.
+revision: 0

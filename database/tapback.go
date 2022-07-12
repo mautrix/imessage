@@ -20,7 +20,9 @@ import (
 	"database/sql"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
@@ -75,7 +77,7 @@ type Tapback struct {
 	MXID        id.EventID
 }
 
-func (tapback *Tapback) Scan(row Scannable) *Tapback {
+func (tapback *Tapback) Scan(row dbutil.Scannable) *Tapback {
 	var nullishGUID sql.NullString
 	err := row.Scan(&tapback.ChatGUID, &nullishGUID, &tapback.MessageGUID, &tapback.MessagePart, &tapback.SenderGUID, &tapback.Type, &tapback.MXID)
 	if err != nil {

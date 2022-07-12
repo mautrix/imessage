@@ -17,19 +17,14 @@
 package database
 
 import (
-	"database/sql"
-
 	_ "github.com/mattn/go-sqlite3"
 
-	log "maunium.net/go/maulogger/v2"
-
 	"go.mau.fi/mautrix-imessage/database/upgrades"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type Database struct {
-	*sql.DB
-	log     log.Logger
-	dialect string
+	*dbutil.Database
 
 	User    *UserQuery
 	Portal  *PortalQuery
@@ -39,55 +34,39 @@ type Database struct {
 	KV      *KeyValueQuery
 }
 
-func New(dbType string, uri string, baseLog log.Logger) (*Database, error) {
-	conn, err := sql.Open(dbType, uri)
-	if err != nil {
-		return nil, err
-	}
-
+func New(parent *dbutil.Database) *Database {
 	db := &Database{
-		DB:      conn,
-		log:     baseLog.Sub("Database"),
-		dialect: dbType,
+		Database: parent,
 	}
-	if dbType == "sqlite3" {
-		_, err = conn.Exec("PRAGMA foreign_keys = ON")
-		if err != nil {
-			db.log.Warnln("Failed to enable foreign keys:", err)
-		}
+	db.UpgradeTable = upgrades.Table
+	_, err := db.Exec("PRAGMA foreign_keys = ON")
+	if err != nil {
+		db.Log.Warnln("Failed to enable foreign keys:", err)
 	}
 
 	db.User = &UserQuery{
 		db:  db,
-		log: db.log.Sub("User"),
+		log: db.Log.Sub("User"),
 	}
 	db.Portal = &PortalQuery{
 		db:  db,
-		log: db.log.Sub("Portal"),
+		log: db.Log.Sub("Portal"),
 	}
 	db.Puppet = &PuppetQuery{
 		db:  db,
-		log: db.log.Sub("Puppet"),
+		log: db.Log.Sub("Puppet"),
 	}
 	db.Message = &MessageQuery{
 		db:  db,
-		log: db.log.Sub("Message"),
+		log: db.Log.Sub("Message"),
 	}
 	db.Tapback = &TapbackQuery{
 		db:  db,
-		log: db.log.Sub("Tapback"),
+		log: db.Log.Sub("Tapback"),
 	}
 	db.KV = &KeyValueQuery{
 		db:  db,
-		log: db.log.Sub("KeyValue"),
+		log: db.Log.Sub("KeyValue"),
 	}
-	return db, nil
-}
-
-func (db *Database) Init() error {
-	return upgrades.Run(db.log.Sub("Upgrade"), db.dialect, db.DB)
-}
-
-type Scannable interface {
-	Scan(...interface{}) error
+	return db
 }

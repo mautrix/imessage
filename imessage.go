@@ -17,18 +17,20 @@
 package main
 
 import (
+	"time"
+
 	log "maunium.net/go/maulogger/v2"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 type iMessageHandler struct {
-	bridge *Bridge
+	bridge *IMBridge
 	log    log.Logger
 	stop   chan struct{}
 }
 
-func NewiMessageHandler(bridge *Bridge) *iMessageHandler {
+func NewiMessageHandler(bridge *IMBridge) *iMessageHandler {
 	return &iMessageHandler{
 		bridge: bridge,
 		log:    bridge.Log.Sub("iMessage"),
@@ -100,7 +102,7 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 	if len(portal.MXID) == 0 {
 		return
 	}
-	_, err := portal.MainIntent().UserTyping(portal.MXID, notif.Typing, 60*1000)
+	_, err := portal.MainIntent().UserTyping(portal.MXID, notif.Typing, 60*time.Second)
 	if err != nil {
 		action := "typing"
 		if !notif.Typing {

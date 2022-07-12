@@ -17,86 +17,13 @@
 package config
 
 import (
-	"os"
-
-	"gopkg.in/yaml.v2"
-
-	"maunium.net/go/mautrix/appservice"
-	"maunium.net/go/mautrix/id"
-
 	"go.mau.fi/mautrix-imessage/imessage"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 )
 
 type Config struct {
-	Homeserver struct {
-		Address    string `yaml:"address"`
-		WSProxy    string `yaml:"websocket_proxy"`
-		Domain     string `yaml:"domain"`
-		Asmux      bool   `yaml:"asmux"`
-		AsyncMedia bool   `yaml:"async_media"`
-
-		PingInterval int `yaml:"ping_interval_seconds"`
-	} `yaml:"homeserver"`
-
-	AppService struct {
-		Database string `yaml:"database"`
-
-		ID  string `yaml:"id"`
-		Bot struct {
-			Username    string `yaml:"username"`
-			Displayname string `yaml:"displayname"`
-			Avatar      string `yaml:"avatar"`
-
-			ParsedAvatar id.ContentURI `yaml:"-"`
-		} `yaml:"bot"`
-
-		ASToken string `yaml:"as_token"`
-		HSToken string `yaml:"hs_token"`
-
-		EphemeralEvents bool `yaml:"ephemeral_events"`
-	} `yaml:"appservice"`
+	*bridgeconfig.BaseConfig `yaml:",inline"`
 
 	IMessage imessage.PlatformConfig `yaml:"imessage"`
-
-	Bridge BridgeConfig `yaml:"bridge"`
-
-	Logging appservice.LogConfig `yaml:"logging"`
-}
-
-func (config *Config) setDefaults() {
-	config.IMessage.PingInterval = 15
-	config.Bridge.setDefaults()
-}
-
-func Load(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var config = &Config{}
-	config.setDefaults()
-	err = yaml.Unmarshal(data, config)
-	if len(config.Bridge.DoublePuppetServerURL) == 0 {
-		config.Bridge.DoublePuppetServerURL = config.Homeserver.Address
-	}
-	return config, err
-}
-
-func (config *Config) Save(path string) error {
-	data, err := yaml.Marshal(config)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
-}
-
-func (config *Config) MakeAppService() (*appservice.AppService, error) {
-	as := appservice.Create()
-	as.HomeserverDomain = config.Homeserver.Domain
-	as.HomeserverURL = config.Homeserver.Address
-	as.DefaultHTTPRetries = 4
-	var err error
-	as.Registration, err = config.GetRegistration()
-	return as, err
+	Bridge   BridgeConfig            `yaml:"bridge"`
 }
