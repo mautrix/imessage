@@ -99,7 +99,7 @@ func (mx *WebsocketCommandHandler) handleWSSyncProxyError(cmd appservice.Websock
 type ProfileOverride struct {
 	Displayname string `json:"displayname,omitempty"`
 	PhotoURL    string `json:"photo_url,omitempty"`
-	PhotoMXC    string `json:"photo_mxc,omitempty"`
+	PhotoMXC    id.ContentURI `json:"photo_mxc,omitempty"`
 }
 
 type EditGhostRequest struct {

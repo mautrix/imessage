@@ -342,13 +342,8 @@ func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
 	}
 	if len(override.PhotoURL) > 0 {
 		go puppet.backgroundAvatarUpdate(override.PhotoURL)
-	} else if len(override.PhotoMXC) > 0 {
-		mxc, err := id.ParseContentURI(override.PhotoMXC)
-		if err != nil {
-			puppet.log.Warnfln("Failed to parse mxc %s: %v", override.PhotoMXC, err)
-		} else {
-			go puppet.UpdateAvatarFromMXC(mxc)
-		}
+	} else if !override.PhotoMXC.IsEmpty() {
+		puppet.UpdateAvatarFromMXC(override.PhotoMXC)
 	}
 }
 
