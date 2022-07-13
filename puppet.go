@@ -336,14 +336,21 @@ func (puppet *Puppet) backgroundAvatarUpdate(url string) {
 	}
 }
 
+func (puppet *Puppet) syncAvatarWithRawURL(rawURL string) {
+	mxc, err := id.ParseContentURI(rawURL)
+	if err != nil {
+		go puppet.backgroundAvatarUpdate(rawURL)
+		return
+	}
+	puppet.UpdateAvatarFromMXC(mxc)
+}
+
 func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
 	if len(override.Displayname) > 0 {
 		puppet.UpdateNameDirect(override.Displayname)
 	}
 	if len(override.PhotoURL) > 0 {
-		go puppet.backgroundAvatarUpdate(override.PhotoURL)
-	} else if !override.PhotoMXC.IsEmpty() {
-		puppet.UpdateAvatarFromMXC(override.PhotoMXC)
+		puppet.syncAvatarWithRawURL(override.PhotoURL)
 	}
 }
 
