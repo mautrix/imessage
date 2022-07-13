@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -336,14 +337,30 @@ func (puppet *Puppet) backgroundAvatarUpdate(url string) {
 	}
 }
 
+func (puppet *Puppet) syncAvatarWithRawURL(rawUrl string) {
+	photoUrl, err := url.Parse(rawUrl)
+	if err != nil {
+		puppet.log.Warnfln("Error while parsing photo url %s: %v", rawUrl, err)
+		return
+	}
+	if photoUrl.Scheme == "mxc" {
+		mxc, err := id.ParseContentURI(rawUrl)
+		if err != nil {
+			puppet.log.Warnfln("Error while parsing mxc %s: %v", photoUrl, err)
+			return
+		}
+		puppet.UpdateAvatarFromMXC(mxc)
+	} else {
+		go puppet.backgroundAvatarUpdate(rawUrl)
+	}
+}
+
 func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
 	if len(override.Displayname) > 0 {
 		puppet.UpdateNameDirect(override.Displayname)
 	}
 	if len(override.PhotoURL) > 0 {
-		go puppet.backgroundAvatarUpdate(override.PhotoURL)
-	} else if !override.PhotoMXC.IsEmpty() {
-		puppet.UpdateAvatarFromMXC(override.PhotoMXC)
+		puppet.syncAvatarWithRawURL(override.PhotoURL)
 	}
 }
 
