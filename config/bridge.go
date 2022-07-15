@@ -57,6 +57,7 @@ type BridgeConfig struct {
 		Template   string `yaml:"template"`
 	} `yaml:"media_viewer"`
 	ConvertHEIF  bool `yaml:"convert_heif"`
+	ConvertTIFF  bool `yaml:"convert_tiff"`
 	ConvertVideo struct {
 		Enabled    bool     `yaml:"enabled"`
 		FFMPEGArgs []string `yaml:"ffmpeg_args"`
