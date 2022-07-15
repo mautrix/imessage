@@ -138,13 +138,7 @@ func (mx *WebsocketCommandHandler) handleWSEditGhost(cmd appservice.WebsocketCom
 		puppet.Sync()
 	} else {
 		puppet.log.Debugfln("Updating profile with %+v", req.ProfileOverride)
-		if req.Displayname != "" {
-			puppet.NameOverridden = true
-			puppet.UpdateNameDirect(req.Displayname)
-		}
-		if req.PhotoURL != "" {
-			go puppet.backgroundAvatarUpdate(req.PhotoURL)
-		}
+		puppet.SyncWithProfileOverride(req.ProfileOverride)
 	}
 	return true, struct{}{}
 }

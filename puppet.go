@@ -233,17 +233,21 @@ func (puppet *Puppet) UpdateAvatarFromBytes(avatar []byte) bool {
 			puppet.log.Warnln("Failed to upload avatar:", err)
 			return false
 		}
-		puppet.AvatarURL = resp.ContentURI
-		err = puppet.Intent.SetAvatarURL(puppet.AvatarURL)
-		if err != nil {
-			puppet.AvatarHash = nil
-			puppet.log.Warnln("Failed to set avatar:", err)
-			return false
-		}
-		go puppet.updatePortalAvatar()
-		return true
+		return puppet.UpdateAvatarFromMXC(resp.ContentURI)
 	}
 	return false
+}
+
+func (puppet *Puppet) UpdateAvatarFromMXC(mxc id.ContentURI) bool {
+	puppet.AvatarURL = mxc
+	err := puppet.Intent.SetAvatarURL(puppet.AvatarURL)
+	if err != nil {
+		puppet.AvatarHash = nil
+		puppet.log.Warnln("Failed to set avatar:", err)
+		return false
+	}
+	go puppet.updatePortalAvatar()
+	return true
 }
 
 func applyMeta(portal *Portal, meta func(portal *Portal)) {
@@ -332,12 +336,21 @@ func (puppet *Puppet) backgroundAvatarUpdate(url string) {
 	}
 }
 
+func (puppet *Puppet) syncAvatarWithRawURL(rawURL string) {
+	mxc, err := id.ParseContentURI(rawURL)
+	if err != nil {
+		go puppet.backgroundAvatarUpdate(rawURL)
+		return
+	}
+	puppet.UpdateAvatarFromMXC(mxc)
+}
+
 func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
 	if len(override.Displayname) > 0 {
 		puppet.UpdateNameDirect(override.Displayname)
 	}
 	if len(override.PhotoURL) > 0 {
-		go puppet.backgroundAvatarUpdate(override.PhotoURL)
+		puppet.syncAvatarWithRawURL(override.PhotoURL)
 	}
 }
 
