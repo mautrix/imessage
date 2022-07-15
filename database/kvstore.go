@@ -33,7 +33,7 @@ const (
 	KVSendStatusStart   = "com.beeper.send_status_start"
 	KVBridgeInfoVersion = "bridge_info_version"
 
-	ExpectedBridgeInfoVersion = ""
+	ExpectedBridgeInfoVersion = "1"
 )
 
 func (kvq *KeyValueQuery) Get(key string) (value string) {

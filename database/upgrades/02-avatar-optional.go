@@ -2,6 +2,8 @@ package upgrades
 
 import (
 	"database/sql"
+
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 const createPortalTable2 = `CREATE TABLE portal (
@@ -20,8 +22,27 @@ const createPuppetTable2 = `CREATE TABLE puppet (
 	avatar_url   TEXT
 )`
 
+const createMessageTable = `CREATE TABLE message (
+	chat_guid     TEXT REFERENCES portal(guid) ON DELETE CASCADE,
+	guid          TEXT,
+	mxid          TEXT NOT NULL UNIQUE,
+	sender_guid   TEXT NOT NULL,
+	timestamp     BIGINT NOT NULL,
+	PRIMARY KEY (chat_guid, guid)
+)`
+
+const createTapbackTable = `CREATE TABLE tapback (
+	chat_guid    TEXT,
+	message_guid TEXT,
+	sender_guid  TEXT,
+    type         INTEGER NOT NULL,
+	mxid         TEXT NOT NULL UNIQUE,
+	PRIMARY KEY (chat_guid, message_guid, sender_guid),
+	FOREIGN KEY (chat_guid, message_guid) REFERENCES message(chat_guid, guid) ON DELETE CASCADE
+)`
+
 func init() {
-	upgrades[1] = upgrade{"Make avatar fields optional", func(tx *sql.Tx, ctx context) error {
+	Table.Register(-1, 2, "Make avatar fields optional", func(tx *sql.Tx, db *dbutil.Database) error {
 		_, err := tx.Exec("PRAGMA defer_foreign_keys = ON")
 		if err != nil {
 			return err
@@ -91,5 +112,5 @@ func init() {
 			return err
 		}
 		return nil
-	}}
+	})
 }

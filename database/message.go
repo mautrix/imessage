@@ -21,7 +21,9 @@ import (
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type MessageQuery struct {
@@ -104,7 +106,7 @@ func (msg *Message) Time() time.Time {
 	return time.Unix(msg.Timestamp/1000, ((msg.Timestamp%1000)+1)*int64(time.Millisecond))
 }
 
-func (msg *Message) Scan(row Scannable) *Message {
+func (msg *Message) Scan(row dbutil.Scannable) *Message {
 	err := row.Scan(&msg.ChatGUID, &msg.GUID, &msg.Part, &msg.MXID, &msg.SenderGUID, &msg.Timestamp)
 	if err != nil {
 		if err != sql.ErrNoRows {

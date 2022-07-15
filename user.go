@@ -24,7 +24,10 @@ import (
 	"sync"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/event"
@@ -36,7 +39,7 @@ import (
 type User struct {
 	*database.User
 
-	bridge *Bridge
+	bridge *IMBridge
 	log    log.Logger
 
 	DoublePuppetIntent *appservice.IntentAPI
@@ -44,27 +47,67 @@ type User struct {
 	mgmtCreateLock sync.Mutex
 
 	spaceMembershipChecked bool
-
-	customTypingIn   map[id.RoomID]bool
-	customTypingLock sync.Mutex
 }
 
-func (bridge *Bridge) loadDBUser() *User {
-	dbUser := bridge.DB.User.GetByMXID(bridge.Config.Bridge.User)
+var _ bridge.User = (*User)(nil)
+
+func (user *User) GetPermissionLevel() bridgeconfig.PermissionLevel {
+	if user == user.bridge.user {
+		return bridgeconfig.PermissionLevelAdmin
+	} else if user.bridge.Config.Bridge.Relay.IsWhitelisted(user.MXID) {
+		return bridgeconfig.PermissionLevelRelay
+	}
+	return bridgeconfig.PermissionLevelBlock
+}
+
+func (user *User) IsLoggedIn() bool {
+	return user == user.bridge.user
+}
+
+func (user *User) GetManagementRoomID() id.RoomID {
+	return user.ManagementRoom
+}
+
+func (user *User) SetManagementRoom(roomID id.RoomID) {
+	user.ManagementRoom = roomID
+	user.Update()
+}
+
+func (user *User) GetMXID() id.UserID {
+	return user.MXID
+}
+
+func (user *User) GetCommandState() map[string]interface{} {
+	return nil
+}
+
+func (user *User) GetIDoublePuppet() bridge.DoublePuppet {
+	if user == user.bridge.user {
+		return user
+	}
+	return nil
+}
+
+func (user *User) GetIGhost() bridge.Ghost {
+	return nil
+}
+
+func (br *IMBridge) loadDBUser() *User {
+	dbUser := br.DB.User.GetByMXID(br.Config.Bridge.User)
 	if dbUser == nil {
-		dbUser = bridge.DB.User.New()
-		dbUser.MXID = bridge.Config.Bridge.User
+		dbUser = br.DB.User.New()
+		dbUser.MXID = br.Config.Bridge.User
 		dbUser.Insert()
 	}
-	user := bridge.NewUser(dbUser)
+	user := br.NewUser(dbUser)
 	return user
 }
 
-func (bridge *Bridge) NewUser(dbUser *database.User) *User {
+func (br *IMBridge) NewUser(dbUser *database.User) *User {
 	user := &User{
 		User:   dbUser,
-		bridge: bridge,
-		log:    bridge.Log.Sub("User").Sub(string(dbUser.MXID)),
+		bridge: br,
+		log:    br.Log.Sub("User").Sub(string(dbUser.MXID)),
 	}
 
 	return user
@@ -125,17 +168,14 @@ func (user *User) UpdateDirectChats(chats map[id.UserID][]id.RoomID) {
 }
 
 func (user *User) ensureInvited(intent *appservice.IntentAPI, roomID id.RoomID, isDirect bool) (ok bool) {
-	inviteContent := event.Content{
-		Parsed: &event.MemberEventContent{
-			Membership: event.MembershipInvite,
-			IsDirect:   isDirect,
-		},
-		Raw: map[string]interface{}{},
+	extraContent := map[string]interface{}{}
+	if isDirect {
+		extraContent["is_direct"] = true
 	}
 	if user.DoublePuppetIntent != nil {
-		inviteContent.Raw["fi.mau.will_auto_accept"] = true
+		extraContent["fi.mau.will_auto_accept"] = true
 	}
-	_, err := intent.SendStateEvent(roomID, event.StateMember, user.MXID.String(), &inviteContent)
+	_, err := intent.InviteUser(roomID, &mautrix.ReqInviteUser{UserID: user.MXID}, extraContent)
 	var httpErr mautrix.HTTPError
 	if err != nil && errors.As(err, &httpErr) && httpErr.RespError != nil && strings.Contains(httpErr.RespError.Err, "is already in the room") {
 		user.bridge.StateStore.SetMembership(roomID, user.MXID, event.MembershipJoin)

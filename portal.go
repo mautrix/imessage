@@ -17,6 +17,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ import (
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
+	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -42,49 +44,49 @@ import (
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
-func (bridge *Bridge) GetPortalByMXID(mxid id.RoomID) *Portal {
-	bridge.portalsLock.Lock()
-	defer bridge.portalsLock.Unlock()
-	portal, ok := bridge.portalsByMXID[mxid]
+func (br *IMBridge) GetPortalByMXID(mxid id.RoomID) *Portal {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
+	portal, ok := br.portalsByMXID[mxid]
 	if !ok {
-		return bridge.loadDBPortal(bridge.DB.Portal.GetByMXID(mxid), "")
+		return br.loadDBPortal(br.DB.Portal.GetByMXID(mxid), "")
 	}
 	return portal
 }
 
-func (bridge *Bridge) GetPortalByGUID(guid string) *Portal {
-	bridge.portalsLock.Lock()
-	defer bridge.portalsLock.Unlock()
-	portal, ok := bridge.portalsByGUID[guid]
+func (br *IMBridge) GetPortalByGUID(guid string) *Portal {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
+	portal, ok := br.portalsByGUID[guid]
 	if !ok {
-		return bridge.loadDBPortal(bridge.DB.Portal.GetByGUID(guid), guid)
+		return br.loadDBPortal(br.DB.Portal.GetByGUID(guid), guid)
 	}
 	return portal
 }
 
-func (bridge *Bridge) GetMessagesSince(chatGUID string, since time.Time) (out []string) {
-	return bridge.DB.Message.GetIDsSince(chatGUID, since)
+func (br *IMBridge) GetMessagesSince(chatGUID string, since time.Time) (out []string) {
+	return br.DB.Message.GetIDsSince(chatGUID, since)
 }
 
-func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) bool {
-	bridge.portalsLock.Lock()
-	defer bridge.portalsLock.Unlock()
+func (br *IMBridge) ReIDPortal(oldGUID, newGUID string) bool {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
 
-	portal, ok := bridge.portalsByGUID[oldGUID]
+	portal, ok := br.portalsByGUID[oldGUID]
 	if !ok {
-		portal = bridge.loadDBPortal(bridge.DB.Portal.GetByGUID(oldGUID), "")
+		portal = br.loadDBPortal(br.DB.Portal.GetByGUID(oldGUID), "")
 		if portal == nil {
-			bridge.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
+			br.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
 			return false
 		}
 	}
 
-	newPortal, ok := bridge.portalsByGUID[newGUID]
+	newPortal, ok := br.portalsByGUID[newGUID]
 	if !ok {
-		newPortal = bridge.loadDBPortal(bridge.DB.Portal.GetByGUID(newGUID), "")
+		newPortal = br.loadDBPortal(br.DB.Portal.GetByGUID(newGUID), "")
 	}
 	if newPortal != nil {
-		bridge.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", oldGUID, newGUID)
+		br.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", oldGUID, newGUID)
 		portal.Delete()
 		if len(portal.MXID) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
 			_, _ = portal.bridge.user.DoublePuppetIntent.LeaveRoom(portal.MXID)
@@ -94,11 +96,11 @@ func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) bool {
 	}
 
 	portal.log.Infoln("Changing chat ID to", newGUID)
-	delete(bridge.portalsByGUID, portal.GUID)
+	delete(br.portalsByGUID, portal.GUID)
 	portal.Portal.ReID(newGUID)
 	portal.Identifier = imessage.ParseIdentifier(portal.GUID)
 	portal.log = portal.bridge.Log.Sub(fmt.Sprintf("Portal/%s", portal.GUID))
-	bridge.portalsByGUID[portal.GUID] = portal
+	br.portalsByGUID[portal.GUID] = portal
 	if len(portal.MXID) > 0 {
 		portal.UpdateBridgeInfo()
 	}
@@ -106,49 +108,49 @@ func (bridge *Bridge) ReIDPortal(oldGUID, newGUID string) bool {
 	return true
 }
 
-func (bridge *Bridge) GetAllPortals() []*Portal {
-	return bridge.dbPortalsToPortals(bridge.DB.Portal.GetAll())
+func (br *IMBridge) GetAllPortals() []*Portal {
+	return br.dbPortalsToPortals(br.DB.Portal.GetAll())
 }
 
-func (bridge *Bridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {
-	bridge.portalsLock.Lock()
-	defer bridge.portalsLock.Unlock()
+func (br *IMBridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
 	output := make([]*Portal, len(dbPortals))
 	for index, dbPortal := range dbPortals {
 		if dbPortal == nil {
 			continue
 		}
-		portal, ok := bridge.portalsByGUID[dbPortal.GUID]
+		portal, ok := br.portalsByGUID[dbPortal.GUID]
 		if !ok {
-			portal = bridge.loadDBPortal(dbPortal, "")
+			portal = br.loadDBPortal(dbPortal, "")
 		}
 		output[index] = portal
 	}
 	return output
 }
 
-func (bridge *Bridge) loadDBPortal(dbPortal *database.Portal, guid string) *Portal {
+func (br *IMBridge) loadDBPortal(dbPortal *database.Portal, guid string) *Portal {
 	if dbPortal == nil {
 		if guid == "" {
 			return nil
 		}
-		dbPortal = bridge.DB.Portal.New()
+		dbPortal = br.DB.Portal.New()
 		dbPortal.GUID = guid
 		dbPortal.Insert()
 	}
-	portal := bridge.NewPortal(dbPortal)
-	bridge.portalsByGUID[portal.GUID] = portal
+	portal := br.NewPortal(dbPortal)
+	br.portalsByGUID[portal.GUID] = portal
 	if len(portal.MXID) > 0 {
-		bridge.portalsByMXID[portal.MXID] = portal
+		br.portalsByMXID[portal.MXID] = portal
 	}
 	return portal
 }
 
-func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
+func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 	portal := &Portal{
 		Portal: dbPortal,
-		bridge: bridge,
-		log:    bridge.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
+		bridge: br,
+		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
 
 		Identifier:      imessage.ParseIdentifier(dbPortal.GUID),
 		Messages:        make(chan *imessage.Message, 100),
@@ -157,7 +159,7 @@ func (bridge *Bridge) NewPortal(dbPortal *database.Portal) *Portal {
 		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
 	}
-	if !bridge.IM.Capabilities().MessageSendResponses {
+	if !br.IM.Capabilities().MessageSendResponses {
 		portal.messageDedup = make(map[string]SentMessage)
 	}
 	go portal.handleMessageLoop()
@@ -172,7 +174,7 @@ type SentMessage struct {
 type Portal struct {
 	*database.Portal
 
-	bridge *Bridge
+	bridge *IMBridge
 	log    log.Logger
 
 	Messages         chan *imessage.Message
@@ -186,6 +188,24 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
+
+	userIsTyping bool
+	typingLock   sync.Mutex
+}
+
+var _ bridge.Portal = (*Portal)(nil)
+
+func (portal *Portal) IsEncrypted() bool {
+	return portal.Encrypted
+}
+
+func (portal *Portal) MarkEncrypted() {
+	portal.Encrypted = true
+	portal.Update()
+}
+
+func (portal *Portal) ReceiveMatrixEvent(_ bridge.User, evt *event.Event) {
+	portal.MatrixMessages <- evt
 }
 
 func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
@@ -280,6 +300,39 @@ func (portal *Portal) Sync(backfill bool) {
 	}
 }
 
+type CustomReadReceipt struct {
+	Timestamp          int64  `json:"ts,omitempty"`
+	DoublePuppetSource string `json:"fi.mau.double_puppet_source,omitempty"`
+}
+
+type CustomReadMarkers struct {
+	mautrix.ReqSetReadMarkers
+	ReadExtra      CustomReadReceipt `json:"com.beeper.read.extra"`
+	FullyReadExtra CustomReadReceipt `json:"com.beeper.fully_read.extra"`
+}
+
+func (portal *Portal) markRead(intent *appservice.IntentAPI, eventID id.EventID, readAt time.Time) error {
+	if intent == nil {
+		return nil
+	}
+	var extra CustomReadReceipt
+	if intent == portal.bridge.user.DoublePuppetIntent {
+		extra.DoublePuppetSource = portal.bridge.Name
+	}
+	if !readAt.IsZero() {
+		extra.Timestamp = readAt.UnixMilli()
+	}
+	content := CustomReadMarkers{
+		ReqSetReadMarkers: mautrix.ReqSetReadMarkers{
+			Read:      eventID,
+			FullyRead: eventID,
+		},
+		ReadExtra:      extra,
+		FullyReadExtra: extra,
+	}
+	return intent.SetReadMarkers(portal.MXID, &content)
+}
+
 func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 	if len(portal.MXID) == 0 {
 		return
@@ -296,22 +349,19 @@ func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 	if intent == nil {
 		return
 	}
-	message := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, rr.ReadUpTo)
-	if message == nil {
-		tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, rr.ReadUpTo)
-		if tapback == nil {
-			portal.log.Debugfln("Dropping read receipt for %s: not found in db messages or tapbacks", rr.ReadUpTo)
-			return
+
+	if message := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, rr.ReadUpTo); message != nil {
+		err := portal.markRead(intent, message.MXID, rr.ReadAt)
+		if err != nil {
+			portal.log.Warnln("Failed to send read receipt for %s from %s: %v", message.MXID, intent.UserID)
 		}
-		err := intent.MarkRead(portal.MXID, tapback.MXID)
+	} else if tapback := portal.bridge.DB.Tapback.GetByTapbackGUID(portal.GUID, rr.ReadUpTo); tapback != nil {
+		err := portal.markRead(intent, tapback.MXID, rr.ReadAt)
 		if err != nil {
 			portal.log.Warnln("Failed to send read receipt for %s from %s: %v", tapback.MXID, intent.UserID)
 		}
-		return
-	}
-	err := intent.MarkRead(portal.MXID, message.MXID)
-	if err != nil {
-		portal.log.Warnln("Failed to send read receipt for %s from %s: %v", message.MXID, intent.UserID)
+	} else {
+		portal.log.Debugfln("Dropping read receipt for %s: not found in db messages or tapbacks", rr.ReadUpTo)
 	}
 }
 
@@ -328,7 +378,16 @@ func (portal *Portal) handleMessageLoop() {
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
 		case evt := <-portal.MatrixMessages:
-			portal.HandleMatrixMessage(evt)
+			switch evt.Type {
+			case event.EventMessage, event.EventSticker:
+				portal.HandleMatrixMessage(evt)
+			case event.EventRedaction:
+				portal.HandleMatrixRedaction(evt)
+			case event.EventReaction:
+				portal.HandleMatrixReaction(evt)
+			default:
+				portal.log.Warnln("Unsupported event type %+v in portal message channel", evt.Type)
+			}
 		case status := <-portal.MessageStatuses:
 			portal.HandleiMessageSendMessageStatus(status)
 		}
@@ -360,7 +419,7 @@ func (portal *Portal) HandleiMessageSendMessageStatus(status *imessage.SendMessa
 		} else if len(status.StatusCode) != 0 {
 			errString = status.StatusCode
 		}
-		portal.sendErrorMessage(evt, errors.New(errString), true, appservice.StatusPermFailure)
+		portal.sendErrorMessage(evt, errors.New(errString), true, bridge.MsgStatusPermFailure)
 	} else {
 		portal.log.Infofln("Ignoring unused message status type %v for event %s/%s %s/%s", status.Status, string(eventID), portal.MXID, status.GUID, portal.GUID)
 		return
@@ -417,8 +476,8 @@ func (portal *Portal) backfill() {
 			}
 		}
 		portal.log.Infoln("Backfill finished")
-		if len(lastReadEvent) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
-			err = portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, lastReadEvent)
+		if len(lastReadEvent) > 0 {
+			err = portal.markRead(portal.bridge.user.DoublePuppetIntent, lastReadEvent, time.Time{})
 			if err != nil {
 				portal.log.Warnfln("Failed to mark %s as read with double puppet: %v", lastReadEvent, err)
 			}
@@ -545,6 +604,15 @@ func (portal *Portal) UpdateBridgeInfo() {
 	}
 }
 
+func (portal *Portal) GetEncryptionEventContent() (evt *event.EncryptionEventContent) {
+	evt = &event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1}
+	if rot := portal.bridge.Config.Bridge.Encryption.Rotation; rot.EnableCustom {
+		evt.RotationPeriodMillis = rot.Milliseconds
+		evt.RotationPeriodMessages = rot.Messages
+	}
+	return
+}
+
 func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverride *ProfileOverride) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
@@ -622,7 +690,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 		initialState = append(initialState, &event.Event{
 			Type: event.StateEncryption,
 			Content: event.Content{
-				Parsed: event.EncryptionEventContent{Algorithm: id.AlgorithmMegolmV1},
+				Parsed: portal.GetEncryptionEventContent(),
 			},
 		})
 		portal.Encrypted = true
@@ -716,9 +784,16 @@ func (portal *Portal) IsPrivateChat() bool {
 	return !portal.Identifier.IsGroup
 }
 
+func (portal *Portal) GetDMPuppet() *Puppet {
+	if portal.IsPrivateChat() {
+		return portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
+	}
+	return nil
+}
+
 func (portal *Portal) MainIntent() *appservice.IntentAPI {
 	if portal.IsPrivateChat() {
-		return portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID).Intent
+		return portal.GetDMPuppet().Intent
 	}
 	return portal.bridge.Bot
 }
@@ -755,28 +830,16 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, map[string]interface{}{}, 0)
 }
 
-const doublePuppetKey = "fi.mau.double_puppet_source"
-const doublePuppetValue = "mautrix-imessage"
-
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
-	wrappedContent := event.Content{Parsed: content}
+	wrappedContent := &event.Content{Parsed: content}
 	wrappedContent.Raw = extraContent
-	if timestamp != 0 && intent.IsCustomPuppet {
-		wrappedContent.Raw[doublePuppetKey] = doublePuppetValue
-	}
+	intent.AddDoublePuppetValue(wrappedContent)
 	if portal.Encrypted && portal.bridge.Crypto != nil {
-		encrypted, err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
+		err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
 		if err != nil {
 			return nil, fmt.Errorf("failed to encrypt event: %w", err)
 		}
 		eventType = event.EventEncrypted
-		wrappedContent.Parsed = encrypted
-	}
-
-	if intent.IsCustomPuppet {
-		wrappedContent.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
-	} else {
-		wrappedContent.Raw = nil
 	}
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
@@ -787,37 +850,21 @@ func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.
 	}
 }
 
-func (portal *Portal) encryptFile(data []byte, mimeType string) ([]byte, string, *event.EncryptedFileInfo) {
+func (portal *Portal) encryptFile(data []byte, mimeType string) (string, *event.EncryptedFileInfo) {
 	if !portal.Encrypted {
-		return data, mimeType, nil
+		return mimeType, nil
 	}
 
 	file := &event.EncryptedFileInfo{
 		EncryptedFile: *attachment.NewEncryptedFile(),
 		URL:           "",
 	}
-	return file.Encrypt(data), "application/octet-stream", file
+	file.EncryptInPlace(data)
+	return "application/octet-stream", file
 }
 
-var EventMessageSendStatus = event.Type{Type: "com.beeper.message_send_status", Class: event.MessageEventType}
-
-type MessageSendStatusEventContent struct {
-	Network   string           `json:"network"`
-	RelatesTo *event.RelatesTo `json:"m.relates_to"`
-	Success   bool             `json:"success"`
-	Reason    string           `json:"reason,omitempty"`
-	Error     string           `json:"error,omitempty"`
-	Message   string           `json:"message,omitempty"`
-	CanRetry  bool             `json:"can_retry,omitempty"`
-	IsCertain bool             `json:"is_certain,omitempty"`
-
-	Service string `json:"fi.mau.imessage.service,omitempty"`
-}
-
-func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, status appservice.MessageSendCheckpointStatus) {
-	checkpoint := appservice.NewMessageSendCheckpoint(evt, appservice.StepRemote, status, 0)
-	checkpoint.Info = rootErr.Error()
-	go checkpoint.Send(portal.bridge.AS)
+func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, status bridge.MessageCheckpointStatus) {
+	portal.bridge.SendMessageCheckpoint(evt, bridge.MsgStepRemote, rootErr, status, 0)
 
 	possibility := "may not have been"
 	if isCertain {
@@ -831,31 +878,29 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 	}
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		reason := "m.event_not_handled"
-		canRetry := true
+		reason := event.MessageStatusGenericError
+		msgStatus := event.MessageStatusRetriable
 		switch status {
-		case appservice.StatusUnsupported:
-			reason = "com.beeper.unsupported_event"
-			canRetry = false
-		case appservice.StatusTimeout:
-			reason = "m.event_too_old"
+		case bridge.MsgStatusUnsupported:
+			reason = event.MessageStatusUnsupported
+			msgStatus = event.MessageStatusFail
+		case bridge.MsgStatusTimeout:
+			reason = event.MessageStatusTooOld
 		}
 
-		content := MessageSendStatusEventContent{
+		content := event.BeeperMessageStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			RelatesTo: &event.RelatesTo{
+			RelatesTo: event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
-			Success:   false,
-			Reason:    reason,
-			Error:     rootErr.Error(),
-			Message:   fmt.Sprintf("Your message %s bridged.", possibility),
-			CanRetry:  canRetry,
-			IsCertain: isCertain,
+			Reason: reason,
+			Status: msgStatus,
+			Error:  rootErr.Error(),
 		}
+		content.FillLegacyBooleans()
 
-		_, err := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
+		_, err := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 			return
@@ -890,32 +935,38 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 	// We don't have access to the entire event, so we are omitting some
 	// metadata here. However, that metadata can be inferred from previous
 	// checkpoints.
-	checkpoint := appservice.MessageSendCheckpoint{
+	checkpoint := bridge.MessageCheckpoint{
 		EventID:    eventID,
 		RoomID:     portal.MXID,
-		Step:       appservice.StepRemote,
+		Step:       bridge.MsgStepRemote,
 		Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
-		Status:     appservice.StatusSuccesss,
-		ReportedBy: appservice.ReportedByBridge,
+		Status:     bridge.MsgStatusSuccess,
+		ReportedBy: bridge.MsgReportedByBridge,
 	}
-	go checkpoint.Send(portal.bridge.AS)
+	go checkpoint.Send(&portal.bridge.Bridge)
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		content := MessageSendStatusEventContent{
-			Service: service,
+		mainContent := &event.BeeperMessageStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			RelatesTo: &event.RelatesTo{
+			RelatesTo: event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: eventID,
 			},
-			Success: true,
+			Status: event.MessageStatusSuccess,
+		}
+		mainContent.FillLegacyBooleans()
+		content := &event.Content{
+			Parsed: mainContent,
+			Raw: map[string]interface{}{
+				bridgeInfoService: service,
+			},
 		}
 
 		statusIntent := portal.bridge.Bot
 		if !portal.Encrypted {
 			statusIntent = portal.MainIntent()
 		}
-		_, err := statusIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
+		_, err := statusIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, content)
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 		}
@@ -983,9 +1034,15 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, true, appservice.StatusTimeout)
+		portal.sendErrorMessage(evt, err, true, bridge.MsgStatusTimeout)
 		return
 	}
+
+	var imessageRichLink *imessage.RichLink
+	if portal.bridge.IM.Capabilities().RichLinks {
+		imessageRichLink = portal.convertURLPreviewToIMessage(evt)
+	}
+	metadata, _ := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata)
 
 	var err error
 	var resp *imessage.SendResponse
@@ -999,17 +1056,17 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			msg.Body = "/me " + msg.Body
 		}
 		portal.addDedup(evt.ID, msg.Body)
-		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart)
+		resp, err = portal.bridge.IM.SendMessage(portal.GUID, msg.Body, messageReplyID, messageReplyPart, imessageRichLink, metadata)
 	} else if len(msg.URL) > 0 || msg.File != nil {
-		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart)
+		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart, metadata)
 	}
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
-		status := appservice.StatusPermFailure
+		status := bridge.MsgStatusPermFailure
 		certain := false
 		if errors.Is(err, ipc.ErrSizeLimitExceeded) {
 			certain = true
-			status = appservice.StatusUnsupported
+			status = bridge.MsgStatusUnsupported
 		}
 		var ipcErr ipc.Error
 		if errors.As(err, &ipcErr) {
@@ -1017,9 +1074,9 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			err = errors.New(ipcErr.Message)
 			switch ipcErr.Code {
 			case ipc.ErrUnsupportedError.Code:
-				status = appservice.StatusUnsupported
+				status = bridge.MsgStatusUnsupported
 			case ipc.ErrTimeoutError.Code:
-				status = appservice.StatusTimeout
+				status = bridge.MsgStatusTimeout
 			}
 		}
 		portal.sendErrorMessage(evt, err, certain, status)
@@ -1037,7 +1094,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 }
 
-func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *event.Event, messageReplyID string, messageReplyPart int) (*imessage.SendResponse, error) {
+func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *event.Event, messageReplyID string, messageReplyPart int, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	var url id.ContentURI
 	var file *event.EncryptedFileInfo
 	var err error
@@ -1048,7 +1105,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		url, err = msg.URL.Parse()
 	}
 	if err != nil {
-		portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true, appservice.StatusPermFailure)
+		portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true, bridge.MsgStatusPermFailure)
 		portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
 		return nil, nil
 	}
@@ -1060,11 +1117,11 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		caption = msg.Body
 	}
 
-	mediaViewerMinSize := portal.bridge.Config.Bridge.MediaViewerIMMinSize
+	mediaViewerMinSize := portal.bridge.Config.Bridge.MediaViewer.IMMinSize
 	if portal.Identifier.Service == "SMS" {
-		mediaViewerMinSize = portal.bridge.Config.Bridge.MediaViewerSMSMinSize
+		mediaViewerMinSize = portal.bridge.Config.Bridge.MediaViewer.SMSMinSize
 	}
-	if len(portal.bridge.Config.Bridge.MediaViewerURL) > 0 && mediaViewerMinSize > 0 && msg.Info != nil && msg.Info.Size >= mediaViewerMinSize {
+	if len(portal.bridge.Config.Bridge.MediaViewer.URL) > 0 && mediaViewerMinSize > 0 && msg.Info != nil && msg.Info.Size >= mediaViewerMinSize {
 		// SMS chat and the file is too big, make a media viewer URL
 		var mediaURL string
 		mediaURL, err = portal.bridge.createMediaViewerURL(&evt.Content)
@@ -1074,7 +1131,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		if len(caption) > 0 {
 			caption += ": "
 		}
-		caption += mediaURL
+		caption += fmt.Sprintf(portal.bridge.Config.Bridge.MediaViewer.Template, mediaURL)
 
 		// Check if there's a thumbnail we can bridge.
 		// If not, just send the link. If yes, send the thumbnail and the link as a caption.
@@ -1091,25 +1148,25 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		}
 		if !hasUsableThumbnail {
 			portal.addDedup(evt.ID, caption)
-			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart)
+			return portal.bridge.IM.SendMessage(portal.GUID, caption, messageReplyID, messageReplyPart, nil, metadata)
 		}
 	}
 
-	return portal.handleMatrixMediaDirect(url, file, filename, caption, evt, messageReplyID, messageReplyPart)
+	return portal.handleMatrixMediaDirect(url, file, filename, caption, evt, messageReplyID, messageReplyPart, metadata)
 }
 
-func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.EncryptedFileInfo, filename, caption string, evt *event.Event, messageReplyID string, messageReplyPart int) (resp *imessage.SendResponse, err error) {
+func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.EncryptedFileInfo, filename, caption string, evt *event.Event, messageReplyID string, messageReplyPart int, metadata imessage.MessageMetadata) (resp *imessage.SendResponse, err error) {
 	var data []byte
 	data, err = portal.MainIntent().DownloadBytes(url)
 	if err != nil {
-		portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true, appservice.StatusPermFailure)
+		portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true, bridge.MsgStatusPermFailure)
 		portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
 		return
 	}
 	if file != nil {
 		data, err = file.Decrypt(data)
 		if err != nil {
-			portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true, appservice.StatusPermFailure)
+			portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true, bridge.MsgStatusPermFailure)
 			portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
 			return
 		}
@@ -1126,7 +1183,7 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 	_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
 	// Only convert when sending to iMessage. SMS users probably don't want CAF.
 	if portal.Identifier.Service == "iMessage" && isMSC3245Voice && strings.HasPrefix(mimeType, "audio/") {
-		filePath, err = ffmpeg.ConvertPath(filePath, ".caf", []string{}, []string{}, false)
+		filePath, err = ffmpeg.ConvertPath(context.TODO(), filePath, ".caf", []string{}, []string{}, false)
 		mimeType = "audio/x-caf"
 		isVoiceMemo = true
 		if err != nil {
@@ -1135,53 +1192,97 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 		}
 	}
 
-	resp, err = portal.bridge.IM.SendFile(portal.GUID, caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo)
+	resp, err = portal.bridge.IM.SendFile(portal.GUID, caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo, metadata)
 	portal.bridge.IM.SendFileCleanup(dir)
 	return
 }
 
-func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step appservice.MessageSendCheckpointStep, err error) {
-	portal.log.Errorf("Sending unsupported checkpoint. Error: %+v", err)
-	checkpoint := appservice.NewMessageSendCheckpoint(evt, step, appservice.StatusUnsupported, 0)
-	checkpoint.Info = err.Error()
-	go checkpoint.Send(portal.bridge.AS)
+func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step bridge.MessageCheckpointStep, err error) {
+	portal.log.Errorf("Sending unsupported checkpoint for %s: %+v", evt.ID, err)
+	portal.bridge.SendMessageCheckpoint(evt, step, err, bridge.MsgStatusUnsupported, 0)
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		content := MessageSendStatusEventContent{
+		content := event.BeeperMessageStatusEventContent{
 			Network: portal.getBridgeInfoStateKey(),
-			RelatesTo: &event.RelatesTo{
+			RelatesTo: event.RelatesTo{
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
-			Success:   false,
-			Reason:    "com.beeper.unsupported_event",
-			Error:     err.Error(),
-			Message:   "Message type is not supported",
-			CanRetry:  false, // There is no point in retrying a message that is unsupported.
-			IsCertain: true,
+			Status: event.MessageStatusFail,
+			Reason: event.MessageStatusUnsupported,
+			Error:  err.Error(),
 		}
+		content.FillLegacyBooleans()
 
 		errorIntent := portal.bridge.Bot
 		if !portal.Encrypted {
 			errorIntent = portal.MainIntent()
 		}
-		_, sendErr := errorIntent.SendMessageEvent(portal.MXID, EventMessageSendStatus, &content)
+		_, sendErr := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)
 		if sendErr != nil {
 			portal.log.Warnln("Failed to send message send status event:", sendErr)
 		}
 	}
 }
 
+var _ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
+var _ bridge.TypingPortal = (*Portal)(nil)
+
+func (portal *Portal) HandleMatrixReadReceipt(user bridge.User, eventID id.EventID, ts time.Time) {
+	if user.GetMXID() != portal.bridge.user.MXID {
+		return
+	}
+
+	if message := portal.bridge.DB.Message.GetByMXID(eventID); message != nil {
+		portal.log.Debugfln("Marking %s/%s as read", message.GUID, message.MXID)
+		err := portal.bridge.IM.SendReadReceipt(portal.GUID, message.GUID)
+		if err != nil {
+			portal.log.Warnln("Error marking message as read:", err)
+		}
+	} else if tapback := portal.bridge.DB.Tapback.GetByMXID(eventID); tapback != nil {
+		portal.log.Debugfln("Marking %s/%s as read", tapback.GUID, tapback.MXID)
+		err := portal.bridge.IM.SendReadReceipt(portal.GUID, tapback.GUID)
+		if err != nil {
+			portal.log.Warnln("Error marking tapback as read:", err)
+		}
+	}
+}
+
+func (portal *Portal) HandleMatrixTyping(userIDs []id.UserID) {
+	portal.typingLock.Lock()
+	defer portal.typingLock.Unlock()
+
+	isTyping := false
+	for _, userID := range userIDs {
+		if userID == portal.bridge.user.MXID {
+			isTyping = true
+			break
+		}
+	}
+	if isTyping != portal.userIsTyping {
+		portal.userIsTyping = isTyping
+		if !isTyping {
+			portal.log.Debugfln("Sending typing stop notification")
+		} else {
+			portal.log.Debugfln("Sending typing start notification")
+		}
+		err := portal.bridge.IM.SendTypingNotification(portal.GUID, isTyping)
+		if err != nil {
+			portal.log.Warnfln("Failed to bridge typing status change: %v", err)
+		}
+	}
+}
+
 func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("Reaction is not supported in portal"))
+		portal.sendUnsupportedCheckpoint(evt, bridge.MsgStepRemote, errors.New("reactions are not supported"))
 		return
 	}
 	portal.log.Debugln("Starting handling of Matrix reaction", evt.ID)
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, true, appservice.StatusTimeout)
+		portal.sendErrorMessage(evt, err, true, bridge.MsgStatusTimeout)
 		return
 	}
 
@@ -1200,7 +1301,9 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 	} else if existing == nil {
 		// TODO should timestamp be stored?
 		portal.log.Debugfln("Handled Matrix reaction %s into new iMessage tapback %s", evt.ID, resp.GUID)
-		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
+		if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		}
 		tapback := portal.bridge.DB.Tapback.New()
 		tapback.ChatGUID = portal.GUID
 		tapback.GUID = resp.GUID
@@ -1211,7 +1314,9 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		tapback.Insert()
 	} else {
 		portal.log.Debugfln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
-		portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
+		if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+			portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+		}
 		_, err = portal.MainIntent().RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to redact old tapback %s to %s: %v", existing.MXID, target.MXID, err)
@@ -1224,19 +1329,19 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 	if errorMsg != "" {
 		portal.log.Errorfln(errorMsg)
-		portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, errors.New(errorMsg), true, 0)
+		portal.bridge.SendMessageErrorCheckpoint(evt, bridge.MsgStepRemote, errors.New(errorMsg), true, 0)
 	}
 }
 
 func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, errors.New("bridge does not support any kinds of redactions"))
+		portal.sendUnsupportedCheckpoint(evt, bridge.MsgStepRemote, errors.New("redactions are not supported"))
 		return
 	}
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, true, appservice.StatusTimeout)
+		portal.sendErrorMessage(evt, err, true, bridge.MsgStatusTimeout)
 		return
 	}
 
@@ -1247,13 +1352,16 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 		_, err := portal.bridge.IM.SendTapback(portal.GUID, redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, true)
 		if err != nil {
 			portal.log.Errorfln("Failed to send removal of tapback %d to %s/%d: %v", redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart, err)
-			portal.bridge.AS.SendErrorMessageSendCheckpoint(evt, appservice.StepRemote, err, true, 0)
+			portal.bridge.SendMessageErrorCheckpoint(evt, bridge.MsgStepRemote, err, true, 0)
 		} else {
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
-			portal.bridge.AS.SendMessageSendCheckpoint(evt, appservice.StepRemote, 0)
+			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+				portal.bridge.SendMessageSuccessCheckpoint(evt, bridge.MsgStepRemote, 0)
+			}
 		}
+		return
 	}
-	portal.sendUnsupportedCheckpoint(evt, appservice.StepRemote, fmt.Errorf("can't redact non-reaction event"))
+	portal.sendUnsupportedCheckpoint(evt, bridge.MsgStepRemote, fmt.Errorf("can't redact non-reaction event"))
 }
 
 func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *appservice.IntentAPI) *id.EventID {
@@ -1388,7 +1496,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	extraContent := map[string]interface{}{}
 
 	if msg.IsAudioMessage {
-		ogg, err := ffmpeg.ConvertBytes(data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
+		ogg, err := ffmpeg.ConvertBytes(context.TODO(), data, ".ogg", []string{}, []string{"-c:a", "libopus"}, "audio/x-caf")
 		if err == nil {
 			extraContent["org.matrix.msc1767.audio"] = map[string]interface{}{}
 			extraContent["org.matrix.msc3245.voice"] = map[string]interface{}{}
@@ -1415,7 +1523,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 
 	if portal.bridge.Config.Bridge.ConvertVideo.Enabled && mimeType == "video/quicktime" {
 		conv := portal.bridge.Config.Bridge.ConvertVideo
-		convertedData, err := ffmpeg.ConvertBytes(data, "."+conv.Extension, []string{}, conv.FFMPEGArgs, "video/quicktime")
+		convertedData, err := ffmpeg.ConvertBytes(context.TODO(), data, "."+conv.Extension, []string{}, conv.FFMPEGArgs, "video/quicktime")
 		if err == nil {
 			mimeType = conv.MimeType
 			fileName += "." + conv.Extension
@@ -1425,7 +1533,7 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		}
 	}
 
-	data, uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
+	uploadMime, uploadInfo := portal.encryptFile(data, mimeType)
 
 	req := mautrix.ReqUploadMedia{
 		ContentBytes: data,
@@ -1490,6 +1598,9 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 				Body:    err.Error(),
 			}, extraContent, dbMessage.Timestamp)
 		} else {
+			if msg.Metadata != nil {
+				extraContent["com.beeper.message_metadata"] = msg.Metadata
+			}
 			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, extraContent, dbMessage.Timestamp)
 		}
 		if err != nil {
@@ -1520,9 +1631,17 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
 		}
 		portal.SetReply(content, msg)
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{
+		extraAttrs := map[string]interface{}{
 			bridgeInfoService: msg.Service,
-		}, dbMessage.Timestamp)
+		}
+		linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
+		if linkPreview != nil {
+			extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
+		}
+		if msg.Metadata != nil {
+			extraAttrs["com.beeper.message_metadata"] = msg.Metadata
+		}
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, extraAttrs, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
 			return
@@ -1639,8 +1758,8 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	if len(dbMessage.MXID) > 0 {
 		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, false)
-		if !isBackfill && !msg.IsFromMe && msg.IsRead && portal.bridge.user.DoublePuppetIntent != nil {
-			err := portal.bridge.user.DoublePuppetIntent.MarkRead(portal.MXID, dbMessage.MXID)
+		if !isBackfill && !msg.IsFromMe && msg.IsRead {
+			err := portal.markRead(portal.bridge.user.DoublePuppetIntent, dbMessage.MXID, time.Time{})
 			if err != nil {
 				portal.log.Warnln("Failed to mark %s as read after bridging: %v", dbMessage.MXID, err)
 			}
@@ -1659,10 +1778,8 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 	var intent *appservice.IntentAPI
-	redactionReq := mautrix.ReqRedact{Extra: map[string]interface{}{}}
 	if msg.IsFromMe {
 		intent = portal.bridge.user.DoublePuppetIntent
-		redactionReq.Extra[doublePuppetKey] = doublePuppetValue
 		if intent == nil {
 			portal.log.Debugfln("Dropping own tapback in %s as double puppeting is not initialized", msg.ChatGUID)
 			return
@@ -1678,7 +1795,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		if existing == nil {
 			return
 		}
-		_, err := intent.RedactEvent(portal.MXID, existing.MXID, redactionReq)
+		_, err := intent.RedactEvent(portal.MXID, existing.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to remove tapback from %s: %v", msg.SenderText(), err)
 		}
@@ -1689,25 +1806,21 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		return
 	}
 
-	content := event.Content{Parsed: &event.ReactionEventContent{
+	content := &event.ReactionEventContent{
 		RelatesTo: event.RelatesTo{
 			EventID: target.MXID,
 			Type:    event.RelAnnotation,
 			Key:     msg.Tapback.Type.Emoji(),
 		},
-	}}
-
-	if intent.IsCustomPuppet {
-		content.Raw = map[string]interface{}{doublePuppetKey: doublePuppetValue}
 	}
 
 	if existing != nil {
-		if _, err := intent.RedactEvent(portal.MXID, existing.MXID, redactionReq); err != nil {
+		if _, err := intent.RedactEvent(portal.MXID, existing.MXID); err != nil {
 			portal.log.Warnfln("Failed to redact old tapback from %s: %v", msg.SenderText(), err)
 		}
 	}
 
-	resp, err := intent.Client.SendMessageEvent(portal.MXID, event.EventReaction, &content)
+	resp, err := intent.SendMessageEvent(portal.MXID, event.EventReaction, &content)
 
 	if err != nil {
 		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.SenderText(), err)

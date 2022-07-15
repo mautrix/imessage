@@ -22,6 +22,7 @@ import (
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type PuppetQuery struct {
@@ -37,7 +38,7 @@ func (pq *PuppetQuery) New() *Puppet {
 }
 
 func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
-	rows, err := pq.db.Query("SELECT id, displayname, avatar_hash, avatar_url FROM puppet")
+	rows, err := pq.db.Query("SELECT id, displayname, name_overridden, avatar_hash, avatar_url FROM puppet")
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -49,7 +50,7 @@ func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 }
 
 func (pq *PuppetQuery) Get(id string) *Puppet {
-	row := pq.db.QueryRow("SELECT id, displayname, avatar_hash, avatar_url FROM puppet WHERE id=$1", id)
+	row := pq.db.QueryRow("SELECT id, displayname, name_overridden, avatar_hash, avatar_url FROM puppet WHERE id=$1", id)
 	if row == nil {
 		return nil
 	}
@@ -60,10 +61,11 @@ type Puppet struct {
 	db  *Database
 	log log.Logger
 
-	ID          string
-	Displayname string
-	AvatarHash  *[32]byte
-	AvatarURL   id.ContentURI
+	ID             string
+	Displayname    string
+	NameOverridden bool
+	AvatarHash     *[32]byte
+	AvatarURL      id.ContentURI
 }
 
 func (puppet *Puppet) avatarHashSlice() []byte {
@@ -73,10 +75,10 @@ func (puppet *Puppet) avatarHashSlice() []byte {
 	return (*puppet.AvatarHash)[:]
 }
 
-func (puppet *Puppet) Scan(row Scannable) *Puppet {
+func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 	var avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&puppet.ID, &puppet.Displayname, &avatarHashSlice, &avatarURL)
+	err := row.Scan(&puppet.ID, &puppet.Displayname, &puppet.NameOverridden, &avatarHashSlice, &avatarURL)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			puppet.log.Errorln("Database scan failed:", err)
@@ -93,16 +95,16 @@ func (puppet *Puppet) Scan(row Scannable) *Puppet {
 }
 
 func (puppet *Puppet) Insert() {
-	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, avatar_hash, avatar_url) VALUES ($1, $2, $3, $4)",
-		puppet.ID, puppet.Displayname, puppet.avatarHashSlice(), puppet.AvatarURL.String())
+	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, name_overridden, avatar_hash, avatar_url) VALUES ($1, $2, $3, $4, $5)",
+		puppet.ID, puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String())
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.ID, err)
 	}
 }
 
 func (puppet *Puppet) Update() {
-	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, avatar_hash=$2, avatar_url=$3 WHERE id=$4",
-		puppet.Displayname, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.ID)
+	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_overridden=$2, avatar_hash=$3, avatar_url=$4 WHERE id=$5",
+		puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.ID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s: %v", puppet.ID, err)
 	}

@@ -20,7 +20,9 @@ import (
 	"database/sql"
 
 	log "maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/id"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type UserQuery struct {
@@ -36,7 +38,7 @@ func (uq *UserQuery) New() *User {
 }
 
 func (uq *UserQuery) GetByMXID(userID id.UserID) *User {
-	row := uq.db.QueryRow(`SELECT mxid, access_token, next_batch, space_room FROM "user" WHERE mxid=$1`, userID)
+	row := uq.db.QueryRow(`SELECT mxid, access_token, next_batch, space_room, management_room FROM "user" WHERE mxid=$1`, userID)
 	if row == nil {
 		return nil
 	}
@@ -47,14 +49,15 @@ type User struct {
 	db  *Database
 	log log.Logger
 
-	MXID        id.UserID
-	AccessToken string
-	NextBatch   string
-	SpaceRoom   id.RoomID
+	MXID           id.UserID
+	AccessToken    string
+	NextBatch      string
+	SpaceRoom      id.RoomID
+	ManagementRoom id.RoomID
 }
 
-func (user *User) Scan(row Scannable) *User {
-	err := row.Scan(&user.MXID, &user.AccessToken, &user.NextBatch, &user.SpaceRoom)
+func (user *User) Scan(row dbutil.Scannable) *User {
+	err := row.Scan(&user.MXID, &user.AccessToken, &user.NextBatch, &user.SpaceRoom, &user.ManagementRoom)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			user.log.Errorln("Database scan failed:", err)
@@ -65,16 +68,16 @@ func (user *User) Scan(row Scannable) *User {
 }
 
 func (user *User) Insert() {
-	_, err := user.db.Exec(`INSERT INTO "user" (mxid, access_token, next_batch, space_room) VALUES ($1, $2, $3, $4)`,
-		user.MXID, user.AccessToken, user.NextBatch, user.SpaceRoom)
+	_, err := user.db.Exec(`INSERT INTO "user" (mxid, access_token, next_batch, space_room, management_room) VALUES ($1, $2, $3, $4, $5)`,
+		user.MXID, user.AccessToken, user.NextBatch, user.SpaceRoom, user.ManagementRoom)
 	if err != nil {
 		user.log.Warnfln("Failed to insert %s: %v", user.MXID, err)
 	}
 }
 
 func (user *User) Update() {
-	_, err := user.db.Exec(`UPDATE "user" SET access_token=$1, next_batch=$2, space_room=$3 WHERE mxid=$4`,
-		user.AccessToken, user.NextBatch, user.SpaceRoom, user.MXID)
+	_, err := user.db.Exec(`UPDATE "user" SET access_token=$1, next_batch=$2, space_room=$3, management_room=$4 WHERE mxid=$5`,
+		user.AccessToken, user.NextBatch, user.SpaceRoom, user.ManagementRoom, user.MXID)
 	if err != nil {
 		user.log.Warnfln("Failed to update %s: %v", user.MXID, err)
 	}

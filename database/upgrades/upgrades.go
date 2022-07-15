@@ -1,112 +1,32 @@
+// mautrix-imessage - A Matrix-iMessage puppeting bridge.
+// Copyright (C) 2022 Tulir Asokan
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 package upgrades
 
 import (
-	"database/sql"
-	"fmt"
-	"strings"
+	"embed"
 
-	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
-type Dialect int
+var Table dbutil.UpgradeTable
 
-const (
-	Postgres Dialect = iota
-	SQLite
-)
+//go:embed *.sql
+var rawUpgrades embed.FS
 
-func (dialect Dialect) String() string {
-	switch dialect {
-	case Postgres:
-		return "postgres"
-	case SQLite:
-		return "sqlite3"
-	default:
-		return ""
-	}
-}
-
-type upgradeFunc func(*sql.Tx, context) error
-
-type context struct {
-	dialect Dialect
-	db      *sql.DB
-	log     log.Logger
-}
-
-type upgrade struct {
-	message string
-	fn      upgradeFunc
-}
-
-const NumberOfUpgrades = 10
-
-var upgrades [NumberOfUpgrades]upgrade
-
-var UnsupportedDatabaseVersion = fmt.Errorf("unsupported database version")
-
-func GetVersion(db *sql.DB) (int, error) {
-	_, err := db.Exec("CREATE TABLE IF NOT EXISTS version (version INTEGER)")
-	if err != nil {
-		return -1, err
-	}
-
-	version := 0
-	row := db.QueryRow("SELECT version FROM version LIMIT 1")
-	if row != nil {
-		_ = row.Scan(&version)
-	}
-	return version, nil
-}
-
-func SetVersion(tx *sql.Tx, version int) error {
-	_, err := tx.Exec("DELETE FROM version")
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec("INSERT INTO version (version) VALUES ($1)", version)
-	return err
-}
-
-func Run(log log.Logger, dialectName string, db *sql.DB) error {
-	var dialect Dialect
-	switch strings.ToLower(dialectName) {
-	case "postgres":
-		dialect = Postgres
-	case "sqlite3":
-		dialect = SQLite
-	default:
-		return fmt.Errorf("unknown dialect %s", dialectName)
-	}
-
-	version, err := GetVersion(db)
-	if err != nil {
-		return err
-	}
-
-	if version > NumberOfUpgrades {
-		return UnsupportedDatabaseVersion
-	}
-
-	log.Infofln("Database currently on v%d, latest: v%d", version, NumberOfUpgrades)
-	for i, upgrade := range upgrades[version:] {
-		log.Infofln("Upgrading database to v%d: %s", version+i+1, upgrade.message)
-		tx, err := db.Begin()
-		if err != nil {
-			return err
-		}
-		err = upgrade.fn(tx, context{dialect, db, log})
-		if err != nil {
-			return err
-		}
-		err = SetVersion(tx, version+i+1)
-		if err != nil {
-			return err
-		}
-		err = tx.Commit()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+func init() {
+	Table.RegisterFS(rawUpgrades)
 }
