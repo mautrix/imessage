@@ -1524,6 +1524,8 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 			mimeType = "image/jpeg"
 			fileName += ".jpg"
 			data = convertedData
+		} else {
+			portal.log.Errorf("Failed to convert tiff image to jpeg: %v - sending without conversion", err)
 		}
 	}
 
