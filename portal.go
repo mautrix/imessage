@@ -1518,6 +1518,17 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 		}
 	}
 
+	if portal.bridge.Config.Bridge.ConvertTIFF && mimeType == "image/tiff" {
+		convertedData, err := ConvertTIFF(data)
+		if err == nil {
+			mimeType = "image/jpeg"
+			fileName += ".jpg"
+			data = convertedData
+		} else {
+			portal.log.Errorf("Failed to convert tiff image to jpeg: %v - sending without conversion", err)
+		}
+	}
+
 	if portal.bridge.Config.Bridge.ConvertVideo.Enabled && mimeType == "video/quicktime" {
 		conv := portal.bridge.Config.Bridge.ConvertVideo
 		convertedData, err := ffmpeg.ConvertBytes(context.TODO(), data, "."+conv.Extension, []string{}, conv.FFMPEGArgs, "video/quicktime")

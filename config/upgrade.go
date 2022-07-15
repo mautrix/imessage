@@ -89,6 +89,7 @@ func DoUpgrade(helper *up.Helper) {
 	}
 	helper.Copy(up.Bool, "bridge", "federate_rooms")
 	helper.Copy(up.Bool, "bridge", "convert_heif")
+	helper.Copy(up.Bool, "bridge", "convert_tiff")
 	helper.Copy(up.Bool, "bridge", "convert_video", "enabled")
 	helper.Copy(up.List, "bridge", "convert_video", "ffmpeg_args")
 	helper.Copy(up.Str, "bridge", "convert_video", "extension")
