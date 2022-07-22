@@ -143,6 +143,7 @@ Another error response:
       enough that it doesn't need to go through the disk.
     * `phones` (list of str)
     * `emails` (list of str)
+    * `correlation_id` (str, optional) - The UUID identifying the person who sent this message
 * Get full contact list (request type `get_contact_list`)
   * Returns an object with a `contacts` key that contains a list of contacts in the same format as `get_contact`
   * There should be an additional `primary_identifier` field if the primary identifier of the contact is known.
@@ -202,17 +203,19 @@ Another error response:
   * `target_guid` (str, optional) - For member change messages, the user identifier of the user being changed.
   * `new_group_title` (str, optional) - New name for group when the message was a group name change
   * `metadata` (any) - Metadata sent with the message. Any valid JSON may be present here.
+  * `correlation_id` (str, optional) - The UUID identifying the person who sent this message
 * Incoming read receipts (request type `read_receipt`)
   * `sender_guid` (str) - the user who sent the read receipt. Not required if `is_from_me` is true.
   * `is_from_me` (bool) - True if the read receipt is from the local user (e.g. from another device).
   * `chat_guid` (str) - The chat where the read receipt is.
   * `read_up_to` (str, UUID) - The GUID of the last read message.
   * `read_at` (double) - Unix timestamp when the read receipt happened.
+  * `correlation_id` (str, optional) - The UUID identifying the person who sent this message
 * Incoming typing notifications (request type `typing`)
   * `chat_guid` (str) - The chat where the user is typing.
   * `typing` (bool) - Whether the user is typing or not.
 * Chat info changes and new chats (request type `chat`)
-  * Same info as `get_chat` responses: `title` and `members`, plus a `chat_guid` field to identify the chat.
+  * Same info as `get_chat` responses: `title`, `correlation_id`, `members`, plus a `chat_guid` field to identify the chat.
   * `no_create_room` can be set to `true` to disable creating a new room if one doesn't exist.
 * Chat ID change (request type `chat_id`)
   * `old_guid` (str) - The old chat GUID.

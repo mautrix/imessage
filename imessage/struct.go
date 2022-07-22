@@ -71,6 +71,8 @@ type Message struct {
 	RichLink *RichLink `json:"rich_link,omitempty"`
 
 	Metadata MessageMetadata `json:"metadata,omitempty"`
+
+	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
 type MessageMetadata = map[string]interface{}
@@ -90,6 +92,8 @@ type ReadReceipt struct {
 
 	ReadAt         time.Time `json:"-"`
 	JSONUnixReadAt float64   `json:"read_at"`
+
+	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
 type TypingNotification struct {
@@ -128,6 +132,7 @@ type Contact struct {
 	UserGUID  string   `json:"user_guid,omitempty"`
 
 	PrimaryIdentifier string `json:"primary_identifier,omitempty"`
+	CorrelationID     string `json:"correlation_id,omitempty"`
 }
 
 func (contact *Contact) HasName() bool {
@@ -193,11 +198,12 @@ func (attachment *Attachment) Read() ([]byte, error) {
 }
 
 type ChatInfo struct {
-	JSONChatGUID string `json:"chat_guid"`
-	Identifier   `json:"-"`
-	DisplayName  string   `json:"title"`
-	Members      []string `json:"members"`
-	NoCreateRoom bool     `json:"no_create_room"`
+	JSONChatGUID  string `json:"chat_guid"`
+	Identifier    `json:"-"`
+	DisplayName   string   `json:"title"`
+	Members       []string `json:"members"`
+	NoCreateRoom  bool     `json:"no_create_room"`
+	CorrelationID string   `json:"correlation_id,omitempty"`
 }
 
 type Identifier struct {
