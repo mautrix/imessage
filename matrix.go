@@ -182,12 +182,26 @@ func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMRespon
 	var resp StartDMResponse
 	var err error
 
+	prepareDM := func() (*Portal, error) {
+		// this is done if and only if ActuallyStart is true, so that the user can see that they would only have SMS behavior
+		// this ensures that an iMessage room is created, instead of a bricked SMS room + an iMessage room
+		if mx.bridge.IM.Capabilities().MergedChats {
+			parsed := imessage.ParseIdentifier(resp.GUID)
+			parsed.Service = "iMessage"
+			resp.GUID = parsed.String()
+		}
+		if err := mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
+			return nil, err
+		}
+		return mx.bridge.GetPortalByGUID(resp.GUID), nil
+	}
+
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
 		resp.RoomID = portal.MXID
 		return &resp, nil
-	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
+	} else if portal, err = prepareDM(); err != nil {
 		return nil, fmt.Errorf("failed to prepare DM: %w", err)
 	} else if err = portal.CreateMatrixRoom(nil, &req.ProfileOverride); err != nil {
 		return nil, fmt.Errorf("failed to create Matrix room: %w", err)
