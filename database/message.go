@@ -18,6 +18,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
@@ -56,23 +57,25 @@ func (mq *MessageQuery) GetIDsSince(chat string, since time.Time) (messages []st
 	return
 }
 
+const messageColumns = "chat_guid, guid, part, mxid, sender_guid, timestamp, correlation_id"
+
 func (mq *MessageQuery) GetLastByGUID(chat string, guid string) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	return mq.get(fmt.Sprintf("SELECT %s ", messageColumns)+
 		"FROM message WHERE chat_guid=$1 AND guid=$2 ORDER BY part DESC LIMIT 1", chat, guid)
 }
 
 func (mq *MessageQuery) GetByGUID(chat string, guid string, part int) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	return mq.get(fmt.Sprintf("SELECT %s ", messageColumns)+
 		"FROM message WHERE chat_guid=$1 AND guid=$2 AND part=$3", chat, guid, part)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	return mq.get(fmt.Sprintf("SELECT %s ", messageColumns)+
 		"FROM message WHERE mxid=$1", mxid)
 }
 
 func (mq *MessageQuery) GetLastInChat(chat string) *Message {
-	msg := mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	msg := mq.get(fmt.Sprintf("SELECT %s ", messageColumns)+
 		"FROM message WHERE chat_guid=$1 ORDER BY timestamp DESC LIMIT 1", chat)
 	if msg == nil || msg.Timestamp == 0 {
 		// Old db, we don't know what the last message is.
@@ -93,12 +96,13 @@ type Message struct {
 	db  *Database
 	log log.Logger
 
-	ChatGUID   string
-	GUID       string
-	Part       int
-	MXID       id.EventID
-	SenderGUID string
-	Timestamp  int64
+	ChatGUID      string
+	GUID          string
+	Part          int
+	MXID          id.EventID
+	SenderGUID    string
+	Timestamp     int64
+	CorrelationID string
 }
 
 func (msg *Message) Time() time.Time {
@@ -107,19 +111,26 @@ func (msg *Message) Time() time.Time {
 }
 
 func (msg *Message) Scan(row dbutil.Scannable) *Message {
-	err := row.Scan(&msg.ChatGUID, &msg.GUID, &msg.Part, &msg.MXID, &msg.SenderGUID, &msg.Timestamp)
+	var correlationID sql.NullString
+	err := row.Scan(&msg.ChatGUID, &msg.GUID, &msg.Part, &msg.MXID, &msg.SenderGUID, &msg.Timestamp, &correlationID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
+	msg.CorrelationID = correlationID.String
 	return msg
 }
 
 func (msg *Message) Insert() {
-	_, err := msg.db.Exec("INSERT INTO message (chat_guid, guid, part, mxid, sender_guid, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
-		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp)
+	var correlationID sql.NullString
+	if len(msg.CorrelationID) != 0 {
+		correlationID.Valid = true
+		correlationID.String = msg.CorrelationID
+	}
+	_, err := msg.db.Exec(fmt.Sprintf("INSERT INTO message (%s) VALUES ($1, $2, $3, $4, $5, $6, $7)", messageColumns),
+		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp, correlationID)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s.%d@%s: %v", msg.GUID, msg.Part, msg.ChatGUID, err)
 	}
