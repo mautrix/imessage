@@ -57,8 +57,24 @@ func (pq *PortalQuery) GetByGUID(guid string) *Portal {
 	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE guid=$1", portalColumns), guid)
 }
 
+func (pq *PortalQuery) GetByCorrelationID(correlationID string) *Portal {
+	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE correlation_id=$1", portalColumns), correlationID)
+}
+
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
+}
+
+func (pq *PortalQuery) StoreCorrelation(guid string, correlationID string) bool {
+	if result, err := pq.db.Exec("UPDATE portal SET correlation_id=$1 WHERE guid=$2", correlationID, guid); err != nil {
+		pq.log.Errorfln("Failed to set correlation ID to %s for chat %s", correlationID, guid)
+		return false
+	} else if rowsAffected, err := result.RowsAffected(); err == nil {
+		pq.log.Errorfln("Failed to determine rows affected when setting correlation ID: %v", err)
+		return false
+	} else {
+		return rowsAffected != 0
+	}
 }
 
 func (pq *PortalQuery) FindPrivateChats() []*Portal {
