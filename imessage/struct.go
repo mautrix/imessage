@@ -72,7 +72,8 @@ type Message struct {
 
 	Metadata MessageMetadata `json:"metadata,omitempty"`
 
-	CorrelationID string `json:"correlation_id,omitempty"`
+	SenderCorrelationID string `json:"sender_correlation_id,omitempty"`
+	CorrelationID       string `json:"correlation_id,omitempty"`
 }
 
 type MessageMetadata = map[string]interface{}
@@ -93,7 +94,8 @@ type ReadReceipt struct {
 	ReadAt         time.Time `json:"-"`
 	JSONUnixReadAt float64   `json:"read_at"`
 
-	CorrelationID string `json:"correlation_id,omitempty"`
+	SenderCorrelationID string `json:"sender_correlation_id,omitempty"`
+	CorrelationID       string `json:"correlation_id,omitempty"`
 }
 
 type TypingNotification struct {
