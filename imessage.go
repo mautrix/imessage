@@ -65,9 +65,52 @@ func (imh *iMessageHandler) Start() {
 	}
 }
 
+func (imh *iMessageHandler) resolveChatGUIDWithCorrelationIdentifier(guid string, correlationID string) string {
+	if len(correlationID) == 0 {
+		return guid
+	}
+	parsed := imessage.ParseIdentifier(guid)
+	if parsed.IsGroup {
+		return guid
+	}
+	if portal := imh.bridge.DB.Portal.GetByCorrelationID(correlationID); portal != nil {
+		return portal.GUID
+	}
+	imh.bridge.DB.Portal.StoreCorrelation(guid, correlationID)
+	return guid
+}
+
+func (imh *iMessageHandler) resolveIdentifiers(guid string, senderID string, correlationID string, fromMe bool) (newGUID string, newSender string) {
+	if len(correlationID) == 0 {
+		// no correlation
+		return guid, senderID
+	}
+	parsed := imessage.ParseIdentifier(guid)
+	if parsed.IsGroup {
+		// todo: correlate group senders, requires knowledge of who is in the portal, this is not easily accessible right now.
+		return guid, senderID
+	}
+	newGUID = imh.resolveChatGUIDWithCorrelationIdentifier(guid, correlationID)
+	if len(senderID) > 0 {
+		imh.bridge.DB.Puppet.StoreCorrelation(senderID, correlationID)
+	}
+	if newGUID == guid {
+		return guid, senderID
+	}
+	if !fromMe {
+		// if this isn't from me, then the sender must match the chat ID, since this is a DM.
+		newSender = newGUID
+	} else {
+		newSender = senderID
+	}
+	return newGUID, newSender
+}
+
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	// TODO trace log
 	//imh.log.Debugfln("Received incoming message: %+v", msg)
+	msg.ChatGUID, msg.JSONSenderGUID = imh.resolveIdentifiers(msg.ChatGUID, msg.JSONSenderGUID, msg.CorrelationID, msg.IsFromMe)
+	msg.Sender = imessage.ParseIdentifier(msg.JSONSenderGUID)
 	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
 	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room to handle message")
@@ -81,6 +124,7 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 }
 
 func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStatus) {
+	status.ChatGUID = imh.resolveChatGUIDWithCorrelationIdentifier(status.ChatGUID, status.CorrelationID)
 	portal := imh.bridge.GetPortalByGUID(status.ChatGUID)
 	if len(portal.GUID) == 0 {
 		imh.log.Debugfln("Ignoring message status for message from unknown portal %s/%s", status.GUID, status.ChatGUID)
@@ -90,6 +134,7 @@ func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStat
 }
 
 func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
+	rr.ChatGUID, rr.SenderGUID = imh.resolveIdentifiers(rr.ChatGUID, rr.SenderGUID, rr.CorrelationID, rr.IsFromMe)
 	portal := imh.bridge.GetPortalByGUID(rr.ChatGUID)
 	if len(portal.MXID) == 0 {
 		return
@@ -98,6 +143,7 @@ func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
 }
 
 func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotification) {
+	notif.ChatGUID = imh.resolveChatGUIDWithCorrelationIdentifier(notif.ChatGUID, notif.CorrelationID)
 	portal := imh.bridge.GetPortalByGUID(notif.ChatGUID)
 	if len(portal.MXID) == 0 {
 		return
@@ -113,6 +159,8 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 }
 
 func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
+	chat.JSONChatGUID = imh.resolveChatGUIDWithCorrelationIdentifier(chat.JSONChatGUID, chat.CorrelationID)
+	chat.Identifier = imessage.ParseIdentifier(chat.JSONChatGUID)
 	portal := imh.bridge.GetPortalByGUID(chat.Identifier.String())
 	if len(portal.MXID) > 0 {
 		portal.log.Infoln("Syncing Matrix room to handle chat command")
