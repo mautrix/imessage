@@ -97,8 +97,9 @@ type ReadReceipt struct {
 }
 
 type TypingNotification struct {
-	ChatGUID string `json:"chat_guid"`
-	Typing   bool   `json:"typing"`
+	ChatGUID      string `json:"chat_guid"`
+	Typing        bool   `json:"typing"`
+	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
 type GroupActionType int
@@ -263,12 +264,13 @@ type PushKeyRequest struct {
 }
 
 type SendMessageStatus struct {
-	GUID       string `json:"guid"`
-	ChatGUID   string `json:"chat_guid"`
-	Status     string `json:"status"`
-	Service    string `json:"service"`
-	Message    string `json:"message,omitempty"`
-	StatusCode string `json:"status_code,omitempty"`
+	GUID          string `json:"guid"`
+	ChatGUID      string `json:"chat_guid"`
+	Status        string `json:"status"`
+	Service       string `json:"service"`
+	Message       string `json:"message,omitempty"`
+	StatusCode    string `json:"status_code,omitempty"`
+	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
 type StartupSyncHookResponse struct {
