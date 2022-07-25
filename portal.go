@@ -239,11 +239,63 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 	return nil
 }
 
+// mergeIntoPortal creates a tombstone event redirecting the user to a different room.
+// If the event is successfully created, the portal is deleted from the database and returns true. Otherwise, returns false.
+func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string) bool {
+	portal.log.Infofln("Merging portal %s into %s: %s", portal.MXID, string(roomID), tombstoneMessage)
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
+		Body:            tombstoneMessage,
+		ReplacementRoom: roomID,
+	})
+	if err != nil {
+		portal.log.Errorfln("Error while tombstoning %s: %v", portal.MXID, err)
+		return false
+	}
+	portal.Delete()
+	return true
+}
+
+// deduplicateAgainstPortal compares the current portal against the provided portal, and merges the newer portal into the older portal. Returns the deleted portal.
+func (portal *Portal) deduplicateAgainstPortal(otherPortal *Portal) *Portal {
+	if otherPortal.BackfillStartTS > portal.BackfillStartTS {
+		if !portal.mergeIntoPortal(otherPortal.MXID, "This room has been deduplicated.") {
+			portal.Delete()
+		}
+		return portal
+	} else {
+		if !otherPortal.mergeIntoPortal(portal.MXID, "This room has been deduplicated.") {
+			otherPortal.Delete()
+		}
+		return otherPortal
+	}
+}
+
+func (portal *Portal) SyncCorrelationID(chatInfo *imessage.ChatInfo) bool {
+	if portal.Identifier.IsGroup {
+		// groups do not get correlation IDs (yet?)
+		return false
+	}
+	if len(chatInfo.CorrelationID) == 0 || chatInfo.CorrelationID == portal.CorrelationID {
+		// no correlation ID, or no change
+		return false
+	}
+	if existingPortal := portal.bridge.DB.Portal.GetByCorrelationID(chatInfo.CorrelationID); existingPortal != nil && existingPortal.GUID != portal.GUID {
+		if portal.deduplicateAgainstPortal(portal.bridge.loadDBPortal(existingPortal, existingPortal.GUID)) == portal {
+			// we have been deleted!
+			return false
+		}
+	}
+	// store the correlation ID
+	portal.CorrelationID = chatInfo.CorrelationID
+	return true
+}
+
 func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	update := false
 	if len(chatInfo.DisplayName) > 0 {
 		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 	}
+	update = portal.SyncCorrelationID(chatInfo) || update
 	portal.SyncParticipants(chatInfo)
 	if update {
 		portal.Update()
@@ -636,6 +688,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	}
 	if chatInfo != nil {
 		portal.Name = chatInfo.DisplayName
+		portal.CorrelationID = chatInfo.CorrelationID
 	} else {
 		portal.log.Warnln("Didn't get any chat info")
 	}
@@ -1893,17 +1946,7 @@ func (portal *Portal) TombstoneOrReIDIfNeeded() (retargeted, tombstoned bool) {
 			portal.Identifier = identifier
 			return true, false
 		}
-		portal.log.Infofln("Tombstoning SMS portal %s with replacement portal %s", portal.GUID, replacement.GUID)
-		_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
-			Body:            "SMS rooms have been merged with iMessage rooms.",
-			ReplacementRoom: replacement.MXID,
-		})
-		if err != nil {
-			portal.log.Errorfln("Error while tombstoning %s: %v", portal.MXID, err)
-			return false, false
-		}
-		portal.Delete()
-		return false, true
+		return false, portal.mergeIntoPortal(replacement.MXID, "SMS rooms have been merged with iMessage rooms.")
 	} else {
 		portal.log.Infofln("ReID %s to %s for chat merging", portal.Identifier.String(), identifier.String())
 		portal.ReID(identifier.String())

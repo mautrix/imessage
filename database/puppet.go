@@ -60,6 +60,26 @@ func (pq *PuppetQuery) Get(id string) *Puppet {
 	return pq.New().Scan(row)
 }
 
+func (pq *PuppetQuery) GetByCorrelationID(id string) *Puppet {
+	row := pq.db.QueryRow(fmt.Sprintf("SELECT %s FROM puppet WHERE correlation_id=$1", puppetColumns), id)
+	if row == nil {
+		return nil
+	}
+	return pq.New().Scan(row)
+}
+
+func (pq *PuppetQuery) StoreCorrelation(guid string, correlationID string) bool {
+	if result, err := pq.db.Exec("UPDATE puppet SET correlation_id=$1 WHERE id=$2", correlationID, guid); err != nil {
+		pq.log.Errorfln("Failed to set correlation ID to %s for chat %s", correlationID, guid)
+		return false
+	} else if rowsAffected, err := result.RowsAffected(); err == nil {
+		pq.log.Errorfln("Failed to determine rows affected when setting correlation ID: %v", err)
+		return false
+	} else {
+		return rowsAffected != 0
+	}
+}
+
 type Puppet struct {
 	db  *Database
 	log log.Logger
