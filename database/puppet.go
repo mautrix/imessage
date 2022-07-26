@@ -72,7 +72,7 @@ func (pq *PuppetQuery) StoreCorrelation(guid string, correlationID string) bool 
 	if result, err := pq.db.Exec("UPDATE puppet SET correlation_id=$1 WHERE id=$2", correlationID, guid); err != nil {
 		pq.log.Errorfln("Failed to set correlation ID to %s for chat %s", correlationID, guid)
 		return false
-	} else if rowsAffected, err := result.RowsAffected(); err == nil {
+	} else if rowsAffected, err := result.RowsAffected(); err != nil {
 		pq.log.Errorfln("Failed to determine rows affected when setting correlation ID: %v", err)
 		return false
 	} else {

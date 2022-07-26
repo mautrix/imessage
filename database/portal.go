@@ -69,7 +69,7 @@ func (pq *PortalQuery) StoreCorrelation(guid string, correlationID string) bool 
 	if result, err := pq.db.Exec("UPDATE portal SET correlation_id=$1 WHERE guid=$2", correlationID, guid); err != nil {
 		pq.log.Errorfln("Failed to set correlation ID to %s for chat %s", correlationID, guid)
 		return false
-	} else if rowsAffected, err := result.RowsAffected(); err == nil {
+	} else if rowsAffected, err := result.RowsAffected(); err != nil {
 		pq.log.Errorfln("Failed to determine rows affected when setting correlation ID: %v", err)
 		return false
 	} else {
@@ -180,7 +180,7 @@ func (portal *Portal) Update() {
 		}
 	}
 	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, correlation_id=$8 WHERE guid=$9",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID, correlationID, portal.GUID)
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, correlationID, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}
