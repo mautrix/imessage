@@ -146,6 +146,26 @@ func (br *IMBridge) loadDBPortal(dbPortal *database.Portal, guid string) *Portal
 	return portal
 }
 
+// newDummyPortal returns an initialized Portal with no event processing capabilities
+func (br *IMBridge) newDummyPortal(dbPortal *database.Portal) *Portal {
+	portal := &Portal{
+		Portal: dbPortal,
+		bridge: br,
+		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
+
+		Identifier:      imessage.ParseIdentifier(dbPortal.GUID),
+		Messages:        make(chan *imessage.Message, 0),
+		ReadReceipts:    make(chan *imessage.ReadReceipt, 0),
+		MessageStatuses: make(chan *imessage.SendMessageStatus, 0),
+		MatrixMessages:  make(chan *event.Event, 0),
+		backfillStart:   make(chan struct{}),
+	}
+	if !br.IM.Capabilities().MessageSendResponses {
+		portal.messageDedup = make(map[string]SentMessage)
+	}
+	return portal
+}
+
 func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 	portal := &Portal{
 		Portal: dbPortal,
@@ -242,7 +262,7 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 // mergeIntoPortal creates a tombstone event redirecting the user to a different room.
 // If the event is successfully created, the portal is deleted from the database and returns true. Otherwise, returns false.
 func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string) bool {
-	portal.log.Infofln("Merging portal %s into %s: %s", portal.MXID, string(roomID), tombstoneMessage)
+	portal.log.Infofln("Merging portal %s into %s: %s", portal.MXID, roomID, tombstoneMessage)
 	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
 		Body:            tombstoneMessage,
 		ReplacementRoom: roomID,
@@ -252,12 +272,18 @@ func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string)
 		return false
 	}
 	portal.Delete()
+	if storedPortal := portal.bridge.portalsByGUID[portal.GUID]; storedPortal == portal && len(portal.GUID) != 0 {
+		portal.bridge.portalsByGUID[portal.GUID] = nil
+	}
+	if storedPortal := portal.bridge.portalsByMXID[portal.MXID]; storedPortal == portal && len(portal.MXID) != 0 {
+		portal.bridge.portalsByMXID[portal.MXID] = nil
+	}
 	return true
 }
 
 // deduplicateAgainstPortal compares the current portal against the provided portal, and merges the newer portal into the older portal. Returns the deleted portal.
 func (portal *Portal) deduplicateAgainstPortal(otherPortal *Portal) *Portal {
-	if otherPortal.BackfillStartTS > portal.BackfillStartTS {
+	if len(otherPortal.MXID) != 0 && otherPortal.BackfillStartTS > portal.BackfillStartTS {
 		if !portal.mergeIntoPortal(otherPortal.MXID, "This room has been deduplicated.") {
 			portal.Delete()
 		}

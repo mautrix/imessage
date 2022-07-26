@@ -74,6 +74,20 @@ func (imh *iMessageHandler) resolveChatGUIDWithCorrelationIdentifier(guid string
 		return guid
 	}
 	if portal := imh.bridge.DB.Portal.GetByCorrelationID(correlationID); portal != nil {
+		// there's already a portal with this correlation ID
+		if portal.GUID != guid {
+			// the existing portal has a different GUID
+			if existingPortal := imh.bridge.DB.Portal.GetByGUID(guid); existingPortal != nil {
+				// the incoming GUID has an existing portal
+				if len(existingPortal.MXID) == 0 {
+					// its just a row, delete it
+					existingPortal.Delete()
+				} else {
+					// tombstone it
+					imh.bridge.newDummyPortal(existingPortal).mergeIntoPortal(portal.MXID, "This room has been deduplicated.")
+				}
+			}
+		}
 		return portal.GUID
 	}
 	imh.bridge.DB.Portal.StoreCorrelation(guid, correlationID)
