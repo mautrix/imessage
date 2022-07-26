@@ -1,4 +1,4 @@
--- v0 -> v13: Latest schema
+-- v0 -> v14: Latest schema
 
 CREATE TABLE portal (
 	guid        		TEXT    PRIMARY KEY,
