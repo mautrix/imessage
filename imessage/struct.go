@@ -217,6 +217,9 @@ type Identifier struct {
 }
 
 func ParseIdentifier(guid string) Identifier {
+	if len(guid) == 0 {
+		return Identifier{}
+	}
 	parts := strings.Split(guid, ";")
 	return Identifier{
 		Service: parts[0],
