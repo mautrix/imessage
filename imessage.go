@@ -68,7 +68,7 @@ func (imh *iMessageHandler) Start() {
 // resolveChatGUIDWithCorrelationIdentifier takes a GUID/UUID pair, and determines whether a different, pre-existing chat GUID should be used instead.
 // if a pre-existing chat is found, and a portal exists with the incoming GUID, the portal will be tombstoned and forgotten.
 func (imh *iMessageHandler) resolveChatGUIDWithCorrelationIdentifier(guid string, correlationID string) string {
-	if len(correlationID) == 0 {
+	if !imh.bridge.IM.Capabilities().Correlation && len(correlationID) == 0 {
 		// no correlation, passthrough
 		return guid
 	}
@@ -102,7 +102,7 @@ func (imh *iMessageHandler) resolveChatGUIDWithCorrelationIdentifier(guid string
 // this preserves consistency and makes the sender appear to come from the same person, avoiding issues where the DM sender
 // is not a participant and cannot join the portal.
 func (imh *iMessageHandler) resolveIdentifiers(guid string, senderID string, correlationID string, fromMe bool) (newGUID string, newSender string) {
-	if len(correlationID) == 0 {
+	if !imh.bridge.IM.Capabilities().Correlation {
 		// no correlation
 		return guid, senderID
 	}
