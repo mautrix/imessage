@@ -364,6 +364,14 @@ func (portal *Portal) Sync(backfill bool) {
 			portal.UpdateAvatar(avatar, portal.MainIntent())
 		}
 	} else {
+		if len(portal.CorrelationID) == 0 && portal.bridge.IM.Capabilities().Correlation {
+			chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
+			if err != nil {
+				portal.log.Errorln("Failed to get chat info:", err)
+			} else {
+				portal.SyncCorrelationID(chatInfo)
+			}
+		}
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		puppet.Sync()
 	}
