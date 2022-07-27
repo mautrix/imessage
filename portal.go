@@ -281,21 +281,6 @@ func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string)
 	return true
 }
 
-// deduplicateAgainstPortal compares the current portal against the provided portal, and merges the newer portal into the older portal. Returns the deleted portal.
-func (portal *Portal) deduplicateAgainstPortal(otherPortal *Portal) *Portal {
-	if len(otherPortal.MXID) != 0 && otherPortal.BackfillStartTS > portal.BackfillStartTS {
-		if !portal.mergeIntoPortal(otherPortal.MXID, "This room has been deduplicated.") {
-			portal.Delete()
-		}
-		return portal
-	} else {
-		if !otherPortal.mergeIntoPortal(portal.MXID, "This room has been deduplicated.") {
-			otherPortal.Delete()
-		}
-		return otherPortal
-	}
-}
-
 func (portal *Portal) SyncCorrelationID(chatInfo *imessage.ChatInfo) bool {
 	if portal.Identifier.IsGroup {
 		// groups do not get correlation IDs (yet?)
@@ -306,8 +291,12 @@ func (portal *Portal) SyncCorrelationID(chatInfo *imessage.ChatInfo) bool {
 		return false
 	}
 	if existingPortal := portal.bridge.DB.Portal.GetByCorrelationID(chatInfo.CorrelationID); existingPortal != nil && existingPortal.GUID != portal.GUID {
-		if portal.deduplicateAgainstPortal(portal.bridge.loadDBPortal(existingPortal, existingPortal.GUID)) == portal {
-			// we have been deleted!
+		if len(existingPortal.MXID) == 0 {
+			// existing is just a row, delete it
+			existingPortal.Delete()
+		} else {
+			// well, they were here first, so let's delete ourselves
+			portal.mergeIntoPortal(existingPortal.MXID, "This room has been deduplicated.")
 			return false
 		}
 	}
