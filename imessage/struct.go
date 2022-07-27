@@ -256,6 +256,7 @@ type ConnectorCapabilities struct {
 	MessageStatusCheckpoints bool
 	MergedChats              bool
 	RichLinks                bool
+	Correlation              bool
 }
 
 type PushKeyRequest struct {
