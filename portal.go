@@ -358,7 +358,9 @@ func (portal *Portal) Sync(backfill bool) {
 			if err != nil {
 				portal.log.Errorln("Failed to get chat info:", err)
 			} else {
-				portal.SyncCorrelationID(chatInfo)
+				if portal.SyncCorrelationID(chatInfo) {
+					portal.Update()
+				}
 			}
 		}
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
