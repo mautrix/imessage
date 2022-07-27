@@ -96,30 +96,16 @@ func (tapback *Tapback) Scan(row dbutil.Scannable) *Tapback {
 }
 
 func (tapback *Tapback) Insert() {
-	var correlationID sql.NullString
-	if len(tapback.CorrelationID) != 0 {
-		correlationID = sql.NullString{
-			String: tapback.CorrelationID,
-			Valid:  true,
-		}
-	}
 	_, err := tapback.db.Exec(fmt.Sprintf("INSERT INTO tapback (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", tapbackColumns),
-		tapback.ChatGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.Type, tapback.MXID, correlationID)
+		tapback.ChatGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.Type, tapback.MXID, tapback.CorrelationID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to insert tapback %s/%s.%d/%s: %v", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
 	}
 }
 
 func (tapback *Tapback) Update() {
-	var correlationID sql.NullString
-	if len(tapback.CorrelationID) != 0 {
-		correlationID = sql.NullString{
-			String: tapback.CorrelationID,
-			Valid:  true,
-		}
-	}
 	_, err := tapback.db.Exec("UPDATE tapback SET guid=$5, type=$6, mxid=$7, correlation_id=$8 WHERE chat_guid=$1 AND message_guid=$2 AND message_part=$3 AND sender_guid=$4",
-		tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.GUID, tapback.Type, tapback.MXID, correlationID)
+		tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.GUID, tapback.Type, tapback.MXID, tapback.CorrelationID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to update tapback %s/%s.%d/%s: %v", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
 	}

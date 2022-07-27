@@ -124,13 +124,8 @@ func (msg *Message) Scan(row dbutil.Scannable) *Message {
 }
 
 func (msg *Message) Insert() {
-	var correlationID sql.NullString
-	if len(msg.CorrelationID) != 0 {
-		correlationID.Valid = true
-		correlationID.String = msg.CorrelationID
-	}
 	_, err := msg.db.Exec(fmt.Sprintf("INSERT INTO message (%s) VALUES ($1, $2, $3, $4, $5, $6, $7)", messageColumns),
-		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp, correlationID)
+		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp, msg.CorrelationID)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s.%d@%s: %v", msg.GUID, msg.Part, msg.ChatGUID, err)
 	}

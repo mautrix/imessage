@@ -153,15 +153,8 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	var correlationID sql.NullString
-	if len(portal.CorrelationID) != 0 {
-		correlationID = sql.NullString{
-			String: portal.CorrelationID,
-			Valid:  true,
-		}
-	}
 	_, err := portal.db.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)", portalColumns),
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, correlationID)
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
 	}
@@ -172,15 +165,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	var correlationID sql.NullString
-	if len(portal.CorrelationID) != 0 {
-		correlationID = sql.NullString{
-			String: portal.CorrelationID,
-			Valid:  true,
-		}
-	}
 	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, correlation_id=$8 WHERE guid=$9",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, correlationID, portal.GUID)
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}

@@ -120,30 +120,16 @@ func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 }
 
 func (puppet *Puppet) Insert() {
-	var correlationID sql.NullString
-	if len(puppet.CorrelationID) != 0 {
-		correlationID = sql.NullString{
-			String: puppet.CorrelationID,
-			Valid:  true,
-		}
-	}
 	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, name_overridden, avatar_hash, avatar_url, correlation_id) VALUES ($1, $2, $3, $4, $5, $6)",
-		puppet.ID, puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), correlationID)
+		puppet.ID, puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.CorrelationID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.ID, err)
 	}
 }
 
 func (puppet *Puppet) Update() {
-	var correlationID sql.NullString
-	if len(puppet.CorrelationID) != 0 {
-		correlationID = sql.NullString{
-			String: puppet.CorrelationID,
-			Valid:  true,
-		}
-	}
 	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_overridden=$2, avatar_hash=$3, avatar_url=$4, correlation_id=$5 WHERE id=$6",
-		puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), correlationID, puppet.ID)
+		puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.CorrelationID, puppet.ID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s: %v", puppet.ID, err)
 	}
