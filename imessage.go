@@ -65,12 +65,16 @@ func (imh *iMessageHandler) Start() {
 	}
 }
 
+// resolveChatGUIDWithCorrelationIdentifier takes a GUID/UUID pair, and determines whether a different, pre-existing chat GUID should be used instead.
+// if a pre-existing chat is found, and a portal exists with the incoming GUID, the portal will be tombstoned and forgotten.
 func (imh *iMessageHandler) resolveChatGUIDWithCorrelationIdentifier(guid string, correlationID string) string {
 	if len(correlationID) == 0 {
+		// no correlation, passthrough
 		return guid
 	}
 	parsed := imessage.ParseIdentifier(guid)
 	if parsed.IsGroup {
+		// we don't correlate groups right now, passthrough
 		return guid
 	}
 	if portal := imh.bridge.DB.Portal.GetByCorrelationID(correlationID); portal != nil {
@@ -94,6 +98,9 @@ func (imh *iMessageHandler) resolveChatGUIDWithCorrelationIdentifier(guid string
 	return guid
 }
 
+// resolveIdentifiers takes a chat GUID, sender GUID, and correlation ID, and maps the GUIDs to pre-existing GUIDs if possible.
+// this preserves consistency and makes the sender appear to come from the same person, avoiding issues where the DM sender
+// is not a participant and cannot join the portal.
 func (imh *iMessageHandler) resolveIdentifiers(guid string, senderID string, correlationID string, fromMe bool) (newGUID string, newSender string) {
 	if len(correlationID) == 0 {
 		// no correlation
@@ -105,16 +112,19 @@ func (imh *iMessageHandler) resolveIdentifiers(guid string, senderID string, cor
 		return guid, senderID
 	}
 	newGUID = imh.resolveChatGUIDWithCorrelationIdentifier(guid, correlationID)
-	if len(senderID) > 0 {
+	if !fromMe && len(senderID) > 0 {
+		// store the correlation for this sender
 		imh.bridge.DB.Puppet.StoreCorrelation(senderID, correlationID)
 	}
 	if newGUID == guid {
+		// the chat GUID did not change
 		return guid, senderID
 	}
 	if !fromMe {
 		// if this isn't from me, then the sender must match the chat ID, since this is a DM.
 		newSender = newGUID
 	} else {
+		// passthrough the incoming sender ID
 		newSender = senderID
 	}
 	return newGUID, newSender
