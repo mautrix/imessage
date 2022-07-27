@@ -1810,6 +1810,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
 	dbMessage.Timestamp = msg.Time.UnixNano() / int64(time.Millisecond)
+	dbMessage.CorrelationID = msg.SenderCorrelationID
 
 	intent := portal.getIntentForMessage(msg, dbMessage)
 	if intent == nil {
@@ -1922,11 +1923,13 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		tapback.GUID = msg.GUID
 		tapback.Type = msg.Tapback.Type
 		tapback.MXID = resp.EventID
+		tapback.CorrelationID = msg.SenderCorrelationID
 		tapback.Insert()
 	} else {
 		existing.GUID = msg.GUID
 		existing.Type = msg.Tapback.Type
 		existing.MXID = resp.EventID
+		existing.CorrelationID = msg.SenderCorrelationID
 		existing.Update()
 	}
 }
