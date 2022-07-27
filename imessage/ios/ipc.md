@@ -124,10 +124,12 @@ Another error response:
 * Get list of chats with messages after date (request type `get_chats`)
   * `min_timestamp` (double) - Unix timestamp
   * Response should be an array of chat GUIDs
-* Get group chat info (request type `get_chat`)
-  * `chat_guid` (str) - Group chat identifier, e.g. `iMessage;+;chat123456`
-  * Response contains `title` (displayname of group) and `members` (list of
-    participant user identifiers)
+* Get chat info (request type `get_chat`)
+  * `chat_guid` (str) - Chat identifier, e.g. `iMessage;+;chat123456`
+  * Response contains:
+    * `title` (displayname of group, if it is one)
+    * `members` (list of participant user identifiers)
+    * `correlation_id` (the UUID for this conversation, if one exists)
 * Get group chat avatar (request type `get_chat_avatar`)
   * `chat_guid` (str) - Group chat identifier
   * Response contains the same data as message `attachment`s: `mime_type`,
@@ -143,7 +145,7 @@ Another error response:
       enough that it doesn't need to go through the disk.
     * `phones` (list of str)
     * `emails` (list of str)
-    * `correlation_id` (str, optional) - The UUID identifying the person who sent this message
+    * `correlation_id` (str, optional) - The UUID identifying this person
 * Get full contact list (request type `get_contact_list`)
   * Returns an object with a `contacts` key that contains a list of contacts in the same format as `get_contact`
   * There should be an additional `primary_identifier` field if the primary identifier of the contact is known.
@@ -203,16 +205,19 @@ Another error response:
   * `target_guid` (str, optional) - For member change messages, the user identifier of the user being changed.
   * `new_group_title` (str, optional) - New name for group when the message was a group name change
   * `metadata` (any) - Metadata sent with the message. Any valid JSON may be present here.
-  * `correlation_id` (str, optional) - The UUID identifying the person who sent this message
+  * `correlation_id` (str, optional) - The UUID identifying the conversation this message is a part of
+  * `sender_correlation_id` (str, optional) - The UUID identifying the person who sent this message
 * Incoming read receipts (request type `read_receipt`)
   * `sender_guid` (str) - the user who sent the read receipt. Not required if `is_from_me` is true.
   * `is_from_me` (bool) - True if the read receipt is from the local user (e.g. from another device).
   * `chat_guid` (str) - The chat where the read receipt is.
   * `read_up_to` (str, UUID) - The GUID of the last read message.
   * `read_at` (double) - Unix timestamp when the read receipt happened.
-  * `correlation_id` (str, optional) - The UUID identifying the person who sent this message
+  * `correlation_id` (str, optional) - The UUID identifying the conversation this receipt is a part of
+  * `sender_correlation_id` (str, optional) - The UUID identifying the person who sent this receipt
 * Incoming typing notifications (request type `typing`)
   * `chat_guid` (str) - The chat where the user is typing.
+  * `correlation_id` (str, optional) - The UUID identifying the conversation this event is a part of
   * `typing` (bool) - Whether the user is typing or not.
 * Chat info changes and new chats (request type `chat`)
   * Same info as `get_chat` responses: `title`, `correlation_id`, `members`, plus a `chat_guid` field to identify the chat.
@@ -233,6 +238,8 @@ Another error response:
   * `status_code` (str) - A machine-readable identifier for the current status.
   * `service` (str) - The service the outgoing message will be sent on. If the message is downgraded to SMS, you should send this payload again with service set to `SMS`.
     * If the service is omitted, it defaults to the service of the chat.
+  * `correlation_id` (str, optional) - The UUID identifying the conversation this receipt is a part of
+  * `sender_correlation_id` (str, optional) - The UUID identifying the person who sent the message this receipt is a part of
 * Pinging the Matrix websocket (request type `ping_server`)
   * Used to ensure that the websocket connection is alive. Should be called if there's some reason to believe
     the connection may have silently failed, e.g. when the device wakes up from sleep.

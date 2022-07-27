@@ -270,13 +270,14 @@ type PushKeyRequest struct {
 }
 
 type SendMessageStatus struct {
-	GUID          string `json:"guid"`
-	ChatGUID      string `json:"chat_guid"`
-	Status        string `json:"status"`
-	Service       string `json:"service"`
-	Message       string `json:"message,omitempty"`
-	StatusCode    string `json:"status_code,omitempty"`
-	CorrelationID string `json:"correlation_id,omitempty"`
+	GUID                string `json:"guid"`
+	ChatGUID            string `json:"chat_guid"`
+	Status              string `json:"status"`
+	Service             string `json:"service"`
+	Message             string `json:"message,omitempty"`
+	StatusCode          string `json:"status_code,omitempty"`
+	CorrelationID       string `json:"correlation_id,omitempty"`
+	SenderCorrelationID string `json:"sender_correlation_id,omitempty"`
 }
 
 type StartupSyncHookResponse struct {
