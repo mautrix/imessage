@@ -146,6 +146,26 @@ func (br *IMBridge) loadDBPortal(dbPortal *database.Portal, guid string) *Portal
 	return portal
 }
 
+// newDummyPortal returns an initialized Portal with no event processing capabilities
+func (br *IMBridge) newDummyPortal(dbPortal *database.Portal) *Portal {
+	portal := &Portal{
+		Portal: dbPortal,
+		bridge: br,
+		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
+
+		Identifier:      imessage.ParseIdentifier(dbPortal.GUID),
+		Messages:        make(chan *imessage.Message, 0),
+		ReadReceipts:    make(chan *imessage.ReadReceipt, 0),
+		MessageStatuses: make(chan *imessage.SendMessageStatus, 0),
+		MatrixMessages:  make(chan *event.Event, 0),
+		backfillStart:   make(chan struct{}),
+	}
+	if !br.IM.Capabilities().MessageSendResponses {
+		portal.messageDedup = make(map[string]SentMessage)
+	}
+	return portal
+}
+
 func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 	portal := &Portal{
 		Portal: dbPortal,
@@ -239,11 +259,58 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 	return nil
 }
 
+// mergeIntoPortal creates a tombstone event redirecting the user to a different room.
+// If the event is successfully created, the portal is deleted from the database and returns true. Otherwise, returns false.
+func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string) bool {
+	portal.log.Infofln("Merging portal %s into %s: %s", portal.MXID, roomID, tombstoneMessage)
+	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
+		Body:            tombstoneMessage,
+		ReplacementRoom: roomID,
+	})
+	if err != nil {
+		portal.log.Errorfln("Error while tombstoning %s: %v", portal.MXID, err)
+		return false
+	}
+	portal.Delete()
+	if storedPortal := portal.bridge.portalsByGUID[portal.GUID]; storedPortal == portal && len(portal.GUID) != 0 {
+		portal.bridge.portalsByGUID[portal.GUID] = nil
+	}
+	if storedPortal := portal.bridge.portalsByMXID[portal.MXID]; storedPortal == portal && len(portal.MXID) != 0 {
+		portal.bridge.portalsByMXID[portal.MXID] = nil
+	}
+	return true
+}
+
+func (portal *Portal) SyncCorrelationID(chatInfo *imessage.ChatInfo) bool {
+	if portal.Identifier.IsGroup {
+		// groups do not get correlation IDs (yet?)
+		return false
+	}
+	if len(chatInfo.CorrelationID) == 0 || chatInfo.CorrelationID == portal.CorrelationID {
+		// no correlation ID, or no change
+		return false
+	}
+	if existingPortal := portal.bridge.DB.Portal.GetByCorrelationID(chatInfo.CorrelationID); existingPortal != nil && existingPortal.GUID != portal.GUID {
+		if len(existingPortal.MXID) == 0 {
+			// existing is just a row, delete it
+			existingPortal.Delete()
+		} else {
+			// well, they were here first, so let's delete ourselves
+			portal.mergeIntoPortal(existingPortal.MXID, "This room has been deduplicated.")
+			return false
+		}
+	}
+	// store the correlation ID
+	portal.CorrelationID = chatInfo.CorrelationID
+	return true
+}
+
 func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	update := false
 	if len(chatInfo.DisplayName) > 0 {
 		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 	}
+	update = portal.SyncCorrelationID(chatInfo) || update
 	portal.SyncParticipants(chatInfo)
 	if update {
 		portal.Update()
@@ -286,6 +353,16 @@ func (portal *Portal) Sync(backfill bool) {
 			portal.UpdateAvatar(avatar, portal.MainIntent())
 		}
 	} else {
+		if len(portal.CorrelationID) == 0 && portal.bridge.IM.Capabilities().Correlation {
+			chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
+			if err != nil {
+				portal.log.Errorln("Failed to get chat info:", err)
+			} else {
+				if portal.SyncCorrelationID(chatInfo) {
+					portal.Update()
+				}
+			}
+		}
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		puppet.Sync()
 	}
@@ -636,6 +713,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	}
 	if chatInfo != nil {
 		portal.Name = chatInfo.DisplayName
+		portal.CorrelationID = chatInfo.CorrelationID
 	} else {
 		portal.log.Warnln("Didn't get any chat info")
 	}
@@ -1893,17 +1971,7 @@ func (portal *Portal) TombstoneOrReIDIfNeeded() (retargeted, tombstoned bool) {
 			portal.Identifier = identifier
 			return true, false
 		}
-		portal.log.Infofln("Tombstoning SMS portal %s with replacement portal %s", portal.GUID, replacement.GUID)
-		_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
-			Body:            "SMS rooms have been merged with iMessage rooms.",
-			ReplacementRoom: replacement.MXID,
-		})
-		if err != nil {
-			portal.log.Errorfln("Error while tombstoning %s: %v", portal.MXID, err)
-			return false, false
-		}
-		portal.Delete()
-		return false, true
+		return false, portal.mergeIntoPortal(replacement.MXID, "SMS rooms have been merged with iMessage rooms.")
 	} else {
 		portal.log.Infofln("ReID %s to %s for chat merging", portal.Identifier.String(), identifier.String())
 		portal.ReID(identifier.String())
