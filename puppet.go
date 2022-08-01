@@ -355,7 +355,7 @@ func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
 }
 
 func (puppet *Puppet) UpdateCorrelationID(contact *imessage.Contact) bool {
-	if len(contact.CorrelationID) == 0 || contact.CorrelationID == puppet.CorrelationID {
+	if contact == nil || len(contact.CorrelationID) == 0 || contact.CorrelationID == puppet.CorrelationID {
 		return false
 	}
 	puppet.CorrelationID = contact.CorrelationID
