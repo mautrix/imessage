@@ -616,8 +616,12 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 }
 
 func (portal *Portal) getBridgeInfoStateKey() string {
-	return fmt.Sprintf("%s://%s/%s",
+	key := fmt.Sprintf("%s://%s/%s",
 		bridgeInfoProto, strings.ToLower(portal.Identifier.Service), portal.GUID)
+	if len(key) > 255 {
+		key = fmt.Sprintf("%s://%s/%s", bridgeInfoProto, strings.ToLower(portal.Identifier.Service), sha256.Sum256([]byte(portal.GUID)))
+	}
+	return key
 }
 
 func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
