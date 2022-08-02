@@ -1679,6 +1679,7 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 		return
 	}
 	for index, attach := range msg.Attachments {
+		portal.log.Debugfln("Handling iMessage attachment %s.%d", msg.GUID, index)
 		mediaContent, extraContent, err := portal.handleIMAttachment(msg, attach, intent)
 		var resp *mautrix.RespSendEvent
 		if err != nil {
@@ -1724,9 +1725,13 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 		extraAttrs := map[string]interface{}{
 			bridgeInfoService: msg.Service,
 		}
-		linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
-		if linkPreview != nil {
-			extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
+		if msg.RichLink != nil {
+			portal.log.Debugfln("Handling rich link in iMessage %s", msg.GUID)
+			linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
+			if linkPreview != nil {
+				extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
+				portal.log.Debugfln("Link preview metadata converted for %s", msg.GUID)
+			}
 		}
 		if msg.Metadata != nil {
 			extraAttrs["com.beeper.message_metadata"] = msg.Metadata
@@ -1740,6 +1745,8 @@ func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Me
 		dbMessage.MXID = resp.EventID
 		dbMessage.Insert()
 		dbMessage.Part++
+	} else if len(msg.Attachments) == 0 {
+		portal.log.Warnfln("iMessage %s doesn't contain any attachments nor text", msg.GUID)
 	}
 }
 
@@ -1808,7 +1815,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 		return ""
 	}
 
-	portal.log.Debugln("Starting handling of iMessage", msg.GUID)
+	portal.log.Debugfln("Starting handling of iMessage %s (type: %d, attachments: %d, text: %d)", msg.GUID, msg.ItemType, len(msg.Attachments), len(msg.Text))
 	dbMessage = portal.bridge.DB.Message.New()
 	dbMessage.ChatGUID = portal.GUID
 	dbMessage.SenderGUID = msg.Sender.String()
@@ -1817,6 +1824,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	intent := portal.getIntentForMessage(msg, dbMessage)
 	if intent == nil {
+		portal.log.Debugln("Handling of iMessage", msg.GUID, "was cancelled (didn't get an intent)")
 		return dbMessage.MXID
 	}
 
@@ -1855,7 +1863,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 			}
 		}
 	} else {
-		portal.log.Debugfln("Unhandled message %s (%d attachments, %d characters of text)", msg.GUID, len(msg.Attachments), len(msg.Text))
+		portal.log.Debugfln("Unhandled message %s", msg.GUID)
 	}
 	return dbMessage.MXID
 }
