@@ -130,5 +130,5 @@ type MessageBridgeResult struct {
 
 type ChatBridgeResult struct {
 	ChatGUID string    `json:"chat_guid"`
-	MXID     id.RoomID `json:"mx_id"`
+	MXID     id.RoomID `json:"mxid"`
 }
