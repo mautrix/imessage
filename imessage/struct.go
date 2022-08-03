@@ -257,6 +257,7 @@ type ConnectorCapabilities struct {
 	MergedChats              bool
 	RichLinks                bool
 	Correlation              bool
+	ChatBridgeResult         bool
 }
 
 type PushKeyRequest struct {

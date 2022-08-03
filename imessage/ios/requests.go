@@ -19,6 +19,7 @@ package ios
 import (
 	"go.mau.fi/mautrix-imessage/imessage"
 	"go.mau.fi/mautrix-imessage/ipc"
+	"maunium.net/go/mautrix/id"
 )
 
 const (
@@ -38,6 +39,7 @@ const (
 	ReqResolveIdentifier   ipc.Command = "resolve_identifier"
 	ReqPrepareDM           ipc.Command = "prepare_dm"
 	ReqMessageBridgeResult ipc.Command = "message_bridge_result"
+	ReqChatBridgeResult    ipc.Command = "chat_bridge_result"
 )
 
 type SendMessageRequest struct {
@@ -124,4 +126,9 @@ type MessageBridgeResult struct {
 	ChatGUID string `json:"chat_guid"`
 	GUID     string `json:"message_guid"`
 	Success  bool   `json:"success"`
+}
+
+type ChatBridgeResult struct {
+	ChatGUID string    `json:"chat_guid"`
+	MXID     id.RoomID `json:"mxid"`
 }
