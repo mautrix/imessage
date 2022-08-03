@@ -532,5 +532,6 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendCaptions:            ios.isAndroid,
 		BridgeState:             false,
 		MergedChats:             ios.mergeChats,
+		ChatBridgeResult:        ios.isAndroid,
 	}
 }

@@ -41,6 +41,7 @@ import (
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
+	"go.mau.fi/mautrix-imessage/imessage/ios"
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
@@ -842,6 +843,14 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 		portal.unlockBackfill()
 	}()
 	portal.log.Debugln("Finished creating Matrix room")
+
+	if portal.bridge.IM.Capabilities().ChatBridgeResult {
+		portal.bridge.IPC.Send(ios.ReqChatBridgeResult, ios.ChatBridgeResult{
+			ChatGUID: portal.GUID,
+			MXID:     portal.MXID,
+		})
+	}
+
 	return nil
 }
 

@@ -174,6 +174,9 @@ Another error response:
   * Has fields `chat_guid`, `message_guid` and `success`.
   * Doesn't have an ID, so it doesn't need to be responded to.
   * Only enabled for android-sms.
+* Notification of portal mxID for a chat GUID (request type `chat_bridge_result`)
+  * Has fields `chat_guid`, `mx_id`
+  * Only enabled for android-sms.
 
 #### to mautrix-imessage
 * Incoming messages (request type `message`)
