@@ -186,9 +186,9 @@ func (user *User) tryRelogin(cause error, action string) bool {
 	return true
 }
 
-func (user *User) handleReceiptEvent(portal *Portal, event *event.Event) {
-	for eventID, receipts := range *event.Content.AsReceipt() {
-		if receipt, ok := receipts.Read[user.MXID]; !ok {
+func (user *User) handleReceiptEvent(portal *Portal, evt *event.Event) {
+	for eventID, receipts := range *evt.Content.AsReceipt() {
+		if receipt, ok := receipts.GetOrCreate(event.ReceiptTypeRead)[user.MXID]; !ok {
 			// Ignore receipt events where this user isn't present.
 		} else if val, ok := receipt.Extra[appservice.DoublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == portal.bridge.Name {
 			// Ignore double puppeted read receipts.

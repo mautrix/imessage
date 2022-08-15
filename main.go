@@ -184,7 +184,7 @@ func (br *IMBridge) PreInit() {
 
 func (br *IMBridge) Init() {
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
-	br.DB = database.New(br.Bridge.DB)
+	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
 
 	br.IPC = ipc.NewStdioProcessor(br.Log, br.Config.IMessage.LogIPCPayloads)
 	br.IPC.SetHandler("reset-encryption", br.ipcResetEncryption)
