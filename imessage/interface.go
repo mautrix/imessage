@@ -61,6 +61,7 @@ type API interface {
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
 	SendMessageBridgeResult(chatID, messageID string, success bool)
+	NotifyUpcomingMessage(eventID id.EventID)
 
 	PreStartupSyncHook() (StartupSyncHookResponse, error)
 

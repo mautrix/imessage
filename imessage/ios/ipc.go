@@ -27,6 +27,7 @@ import (
 
 	"go.mau.fi/mautrix-imessage/imessage"
 	"go.mau.fi/mautrix-imessage/ipc"
+	"maunium.net/go/mautrix/id"
 )
 
 const (
@@ -495,6 +496,14 @@ func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, succe
 		GUID:     messageID,
 		Success:  success,
 	})
+}
+
+func (ios *iOSConnector) NotifyUpcomingMessage(eventID id.EventID) {
+	if !ios.isAndroid {
+		// Only android needs to be notified about upcoming messages to stay awake
+		return
+	}
+	_ = ios.IPC.Send(ReqUpcomingMessage, &UpcomingMessage{EventID: eventID})
 }
 
 func (ios *iOSConnector) PreStartupSyncHook() (resp imessage.StartupSyncHookResponse, err error) {

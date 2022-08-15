@@ -40,6 +40,7 @@ const (
 	ReqPrepareDM           ipc.Command = "prepare_dm"
 	ReqMessageBridgeResult ipc.Command = "message_bridge_result"
 	ReqChatBridgeResult    ipc.Command = "chat_bridge_result"
+	ReqUpcomingMessage     ipc.Command = "upcoming_message"
 )
 
 type SendMessageRequest struct {
@@ -131,4 +132,8 @@ type MessageBridgeResult struct {
 type ChatBridgeResult struct {
 	ChatGUID string    `json:"chat_guid"`
 	MXID     id.RoomID `json:"mxid"`
+}
+
+type UpcomingMessage struct {
+	EventID id.EventID `json:"event_id"`
 }

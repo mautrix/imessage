@@ -30,6 +30,8 @@ import (
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
 
+	"maunium.net/go/mautrix/event"
+
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -198,6 +200,12 @@ func (br *IMBridge) Init() {
 	if err != nil {
 		br.Log.Fatalln("Failed to initialize iMessage connector:", err)
 		os.Exit(14)
+	}
+
+	if br.Config.IMessage.Platform == "android" {
+		br.EventProcessor.PrependHandler(event.EventEncrypted, func(evt *event.Event) {
+			go br.IM.NotifyUpcomingMessage(evt.ID)
+		})
 	}
 
 	br.IMHandler = NewiMessageHandler(br)

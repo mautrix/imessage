@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"go.mau.fi/mautrix-imessage/imessage"
+	"maunium.net/go/mautrix/id"
 )
 
 const sendMessage = `
@@ -206,4 +207,8 @@ func (mac *macOSDatabase) SendReadReceipt(chatID, readUpTo string) error {
 
 func (mac *macOSDatabase) SendTypingNotification(chatID string, typing bool) error {
 	return nil
+}
+
+func (mac *macOSDatabase) NotifyUpcomingMessage(eventID id.EventID) {
+
 }
