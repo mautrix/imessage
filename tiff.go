@@ -4,8 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"golang.org/x/image/tiff"
 	"image/jpeg"
+
+	"golang.org/x/image/tiff"
 )
 
 func ConvertTIFF(data []byte) ([]byte, error) {

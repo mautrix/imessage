@@ -78,7 +78,7 @@ func (pq *PortalQuery) StoreCorrelation(guid string, correlationID string) bool 
 }
 
 func (pq *PortalQuery) FindPrivateChats() []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE guid LIKE '%;-;%'", portalColumns))
+	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE guid LIKE '%%;-;%%'", portalColumns))
 }
 
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {

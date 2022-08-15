@@ -26,8 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"go.mau.fi/mautrix-imessage/imessage"
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 const sendMessage = `
