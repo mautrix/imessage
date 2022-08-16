@@ -75,8 +75,7 @@ func (user *User) initDoublePuppet() {
 
 func (user *User) loginWithSharedSecret() error {
 	user.log.Debugfln("Logging in with shared secret")
-	mac := hmac.New(sha512.New, []byte(user.bridge.Config.Bridge.LoginSharedSecret))
-	mac.Write([]byte(user.MXID))
+	loginSecret := user.bridge.Config.Bridge.LoginSharedSecret
 	url := user.bridge.Config.Bridge.DoublePuppetServerURL
 	if url == "" {
 		url = user.bridge.AS.HomeserverURL
@@ -88,13 +87,21 @@ func (user *User) loginWithSharedSecret() error {
 	client.Logger = user.bridge.AS.Log.Sub(string(user.MXID))
 	client.Client = user.bridge.AS.HTTPClient
 	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
-	resp, err := client.Login(&mautrix.ReqLogin{
-		Type:                     mautrix.AuthTypePassword,
+	req := mautrix.ReqLogin{
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(user.MXID)},
-		Password:                 hex.EncodeToString(mac.Sum(nil)),
 		DeviceID:                 id.DeviceID(user.bridge.Config.IMessage.BridgeName()),
 		InitialDeviceDisplayName: user.bridge.Config.IMessage.BridgeName(),
-	})
+	}
+	if loginSecret == "appservice" {
+		client.AccessToken = user.bridge.AS.Registration.AppToken
+		req.Type = mautrix.AuthTypeAppservice
+	} else {
+		mac := hmac.New(sha512.New, []byte(loginSecret))
+		mac.Write([]byte(user.MXID))
+		req.Password = hex.EncodeToString(mac.Sum(nil))
+		req.Type = mautrix.AuthTypePassword
+	}
+	resp, err := client.Login(&req)
 	if err != nil {
 		return fmt.Errorf("failed to log in with shared secret: %w", err)
 	}
