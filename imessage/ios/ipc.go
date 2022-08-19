@@ -534,13 +534,14 @@ func (ios *iOSConnector) PrepareDM(guid string) error {
 
 func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
-		MessageSendResponses:    true,
-		SendTapbacks:            !ios.isAndroid,
-		SendReadReceipts:        !ios.isAndroid,
-		SendTypingNotifications: !ios.isAndroid,
-		SendCaptions:            ios.isAndroid,
-		BridgeState:             false,
-		MergedChats:             ios.mergeChats,
-		ChatBridgeResult:        ios.isAndroid,
+		MessageSendResponses:     true,
+		MessageStatusCheckpoints: ios.isAndroid,
+		SendTapbacks:             !ios.isAndroid,
+		SendReadReceipts:         !ios.isAndroid,
+		SendTypingNotifications:  !ios.isAndroid,
+		SendCaptions:             ios.isAndroid,
+		BridgeState:              false,
+		MergedChats:              ios.mergeChats,
+		ChatBridgeResult:         ios.isAndroid,
 	}
 }
