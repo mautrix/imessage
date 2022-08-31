@@ -40,6 +40,7 @@ type BridgeConfig struct {
 	SendErrorNotices    bool `yaml:"send_error_notices"`
 
 	MaxHandleSeconds int `yaml:"max_handle_seconds"`
+	DeviceId string `yaml:"device_id"`
 
 	SyncWithCustomPuppets bool    `yaml:"sync_with_custom_puppets"`
 	SyncDirectChatList    bool    `yaml:"sync_direct_chat_list"`

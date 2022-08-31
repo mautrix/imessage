@@ -645,9 +645,9 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 				AvatarURL:   portal.AvatarURL.CUString(),
 			},
 
-			GUID:    portal.GUID,
-			IsGroup: portal.Identifier.IsGroup,
-			Service: portal.Identifier.Service,
+			GUID:     portal.GUID,
+			IsGroup:  portal.Identifier.IsGroup,
+			Service:  portal.Identifier.Service,
 
 			SendStatusStart: portal.bridge.SendStatusStartTS,
 			TimeoutSeconds:  portal.bridge.Config.Bridge.MaxHandleSeconds,
@@ -658,6 +658,8 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			bridgeInfo.Protocol.ID = "android-sms"
 			bridgeInfo.Protocol.DisplayName = "Android SMS"
 			bridgeInfo.Protocol.ExternalURL = ""
+			fmt.Printf("DeviceId: %s\n",portal.bridge.Config.Bridge.DeviceId)
+			bridgeInfo.Channel.DeviceId = portal.bridge.Config.Bridge.DeviceId
 		} else {
 			bridgeInfo.Protocol.ID = "imessage-sms"
 			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
