@@ -92,6 +92,8 @@ bridge:
     # homeserver which could cause confusion in the chat history on the remote
     # network. Set to 0 to disable.
     max_handle_seconds: 0
+    # Android SMS session's deviceID
+    device_id: null
     # Whether or not to sync with custom puppets to receive EDUs that are not normally sent to appservices.
     sync_with_custom_puppets: false
     # Whether or not to update the m.direct account data event when double puppeting is enabled.

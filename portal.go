@@ -658,6 +658,7 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			bridgeInfo.Protocol.ID = "android-sms"
 			bridgeInfo.Protocol.DisplayName = "Android SMS"
 			bridgeInfo.Protocol.ExternalURL = ""
+			bridgeInfo.Channel.DeviceID = portal.bridge.Config.Bridge.DeviceID
 		} else {
 			bridgeInfo.Protocol.ID = "imessage-sms"
 			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
