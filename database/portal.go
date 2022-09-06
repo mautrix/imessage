@@ -47,7 +47,7 @@ func (pq *PortalQuery) Count() (count int) {
 	return
 }
 
-const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space, correlation_id"
+const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space, correlation_id, thread_id"
 
 func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
@@ -115,6 +115,7 @@ type Portal struct {
 	BackfillStartTS int64
 	InSpace         bool
 	CorrelationID   string
+	ThreadID        string
 }
 
 func (portal *Portal) avatarHashSlice() []byte {
@@ -127,7 +128,7 @@ func (portal *Portal) avatarHashSlice() []byte {
 func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL, correlationID sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace, &correlationID)
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace, &correlationID, &portal.ThreadID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -153,8 +154,8 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)", portalColumns),
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID)
+	_, err := portal.db.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)", portalColumns),
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID, portal.ThreadID)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
 	}
@@ -165,8 +166,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, correlation_id=$8 WHERE guid=$9",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID, portal.GUID)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, correlation_id=$8, thread_id=$9 WHERE guid=$10",
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID, portal.ThreadID, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}
