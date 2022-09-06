@@ -659,6 +659,7 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			bridgeInfo.Protocol.DisplayName = "Android SMS"
 			bridgeInfo.Protocol.ExternalURL = ""
 			bridgeInfo.Channel.DeviceID = portal.bridge.Config.Bridge.DeviceID
+			bridgeInfo.Channel.ThreadID = portal.ThreadID
 		} else {
 			bridgeInfo.Protocol.ID = "imessage-sms"
 			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
@@ -721,6 +722,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	if chatInfo != nil {
 		portal.Name = chatInfo.DisplayName
 		portal.CorrelationID = chatInfo.CorrelationID
+		portal.ThreadID = chatInfo.ThreadID
 	} else {
 		portal.log.Warnln("Didn't get any chat info")
 	}

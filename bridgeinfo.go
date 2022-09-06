@@ -35,6 +35,7 @@ type CustomBridgeInfoSection struct {
 	SendStatusStart int64  `json:"com.beeper.send_status_start,omitempty"`
 	TimeoutSeconds  int    `json:"com.beeper.timeout_seconds,omitempty"`
 	DeviceID        string `json:"com.beeper.device_id,omitempty"`
+	ThreadID        string `json:"com.beeper.thread_id,omitempty"`
 }
 
 type CustomBridgeInfoContent struct {
