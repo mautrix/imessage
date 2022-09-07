@@ -140,7 +140,7 @@ func (ipc *Processor) Loop() {
 			ipc.waiterLock.Lock()
 			waiter, ok := ipc.waiters[msg.ID]
 			if !ok {
-				ipc.log.Warnln("Nothing waiting for IPC response to %d", msg.ID)
+				ipc.log.Warnfln("Nothing waiting for IPC response to %d", msg.ID)
 			} else {
 				delete(ipc.waiters, msg.ID)
 				waiter <- &msg
