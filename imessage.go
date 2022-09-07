@@ -46,22 +46,35 @@ func (imh *iMessageHandler) Start() {
 	contacts := imh.bridge.IM.ContactChan()
 	messageStatuses := imh.bridge.IM.MessageStatusChan()
 	for {
+		start := time.Now()
+		var thing string
 		select {
 		case msg := <-messages:
 			imh.HandleMessage(msg)
+			thing = "message"
 		case rr := <-readReceipts:
 			imh.HandleReadReceipt(rr)
+			thing = "read receipt"
 		case notif := <-typingNotifications:
 			imh.HandleTypingNotification(notif)
+			thing = "typing notification"
 		case chat := <-chats:
 			imh.HandleChat(chat)
+			thing = "chat"
 		case contact := <-contacts:
 			imh.HandleContact(contact)
+			thing = "contact"
 		case status := <-messageStatuses:
 			imh.HandleMessageStatus(status)
+			thing = "message status"
 		case <-imh.stop:
 			return
 		}
+		imh.log.Debugfln(
+			"Handled %s in %s (queued: %dm/%dr/%dt/%dch/%dct/%ds)",
+			thing, time.Since(start),
+			len(messages), len(readReceipts), len(typingNotifications), len(chats), len(contacts), len(messageStatuses),
+		)
 	}
 }
 
@@ -119,6 +132,8 @@ func (imh *iMessageHandler) resolveIdentifiers(guid string, correlationID string
 	return newGUID, senderID, identifier
 }
 
+const PortalBufferTimeout = 10 * time.Second
+
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	// TODO trace log
 	//imh.log.Debugfln("Received incoming message: %+v", msg)
@@ -132,7 +147,11 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 			return
 		}
 	}
-	portal.Messages <- msg
+	select {
+	case portal.Messages <- msg:
+	case <-time.After(PortalBufferTimeout):
+		imh.log.Errorln("Portal message buffer is still full after 10 seconds, dropping message %s", msg.GUID)
+	}
 }
 
 func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStatus) {
@@ -142,16 +161,25 @@ func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStat
 		imh.log.Debugfln("Ignoring message status for message from unknown portal %s/%s", status.GUID, status.ChatGUID)
 		return
 	}
-	portal.MessageStatuses <- status
+	select {
+	case portal.MessageStatuses <- status:
+	case <-time.After(PortalBufferTimeout):
+		imh.log.Errorln("Portal message status buffer is still full after 10 seconds, dropping %+v", *status)
+	}
 }
 
 func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
 	rr.ChatGUID, rr.SenderGUID, _ = imh.resolveIdentifiers(rr.ChatGUID, rr.CorrelationID, rr.SenderGUID, rr.SenderCorrelationID, imessage.Identifier{}, rr.IsFromMe)
 	portal := imh.bridge.GetPortalByGUID(rr.ChatGUID)
 	if len(portal.MXID) == 0 {
+		imh.log.Debugfln("Ignoring read receipt in unknown portal %s", rr.ChatGUID)
 		return
 	}
-	portal.ReadReceipts <- rr
+	select {
+	case portal.ReadReceipts <- rr:
+	case <-time.After(PortalBufferTimeout):
+		imh.log.Errorln("Portal read receipt buffer is still full after 10 seconds, dropping %+v", *rr)
+	}
 }
 
 func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotification) {
