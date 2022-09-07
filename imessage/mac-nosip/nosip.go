@@ -113,7 +113,7 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 
 func (mac *MacNoSIPConnector) pingLoop(ipcProc *ipc.Processor) {
 	for {
-		resp, err := ipcProc.RequestAsync(ReqPing, nil)
+		resp, _, err := ipcProc.RequestAsync(ReqPing, nil)
 		if err != nil {
 			mac.log.Fatalln("Failed to send ping to Barcelona")
 			os.Exit(254)

@@ -25,6 +25,7 @@ import (
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	log "maunium.net/go/maulogger/v2"
 )
@@ -163,13 +164,14 @@ func (ipc *Processor) Send(cmd Command, data interface{}) error {
 	return err
 }
 
-func (ipc *Processor) RequestAsync(cmd Command, data interface{}) (<-chan *Message, error) {
+func (ipc *Processor) RequestAsync(cmd Command, data interface{}) (<-chan *Message, int, error) {
 	respChan := make(chan *Message, 1)
 	reqID := int(atomic.AddInt32(&ipc.reqID, 1))
 	ipc.waiterLock.Lock()
 	ipc.waiters[reqID] = respChan
 	ipc.waiterLock.Unlock()
 	ipc.lock.Lock()
+	ipc.log.Debugfln("Sending IPC command: %s/%d", cmd, reqID)
 	err := ipc.stdout.Encode(OutgoingMessage{Command: cmd, ID: reqID, Data: data})
 	ipc.lock.Unlock()
 	if err != nil {
@@ -178,33 +180,37 @@ func (ipc *Processor) RequestAsync(cmd Command, data interface{}) (<-chan *Messa
 		ipc.waiterLock.Unlock()
 		close(respChan)
 	}
-	return respChan, err
+	return respChan, reqID, err
 }
 
 func (ipc *Processor) Request(ctx context.Context, cmd Command, reqData interface{}, respData interface{}) error {
-	respChan, err := ipc.RequestAsync(cmd, reqData)
+	respChan, reqID, err := ipc.RequestAsync(cmd, reqData)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	select {
-	case rawData := <-respChan:
-		if rawData.Command == "error" {
-			var respErr Error
-			err = json.Unmarshal(rawData.Data, &respErr)
-			if err != nil {
-				return fmt.Errorf("failed to parse error response: %w", err)
+	for {
+		select {
+		case rawData := <-respChan:
+			if rawData.Command == "error" {
+				var respErr Error
+				err = json.Unmarshal(rawData.Data, &respErr)
+				if err != nil {
+					return fmt.Errorf("failed to parse error response: %w", err)
+				}
+				return respErr
 			}
-			return respErr
-		}
-		if respData != nil {
-			err = json.Unmarshal(rawData.Data, &respData)
-			if err != nil {
-				return fmt.Errorf("failed to parse response: %w", err)
+			if respData != nil {
+				err = json.Unmarshal(rawData.Data, &respData)
+				if err != nil {
+					return fmt.Errorf("failed to parse response: %w", err)
+				}
 			}
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("context finished: %w", ctx.Err())
+		case <-time.After(5 * time.Second):
+			ipc.log.Debugfln("Still waiting for response to %s/%d", cmd, reqID)
 		}
-		return nil
-	case <-ctx.Done():
-		return fmt.Errorf("context finished: %w", ctx.Err())
 	}
 }
 
