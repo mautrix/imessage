@@ -447,29 +447,44 @@ func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 func (portal *Portal) handleMessageLoop() {
 	portal.log.Debugln("Starting message processing loop")
 	for {
+		start := time.Now()
+		var thing string
 		select {
 		case msg := <-portal.Messages:
 			portal.HandleiMessage(msg, false)
+			thing = "iMessage"
 		case readReceipt := <-portal.ReadReceipts:
 			portal.HandleiMessageReadReceipt(readReceipt)
+			thing = "read receipt"
 		case <-portal.backfillStart:
+			thing = "backfill lock"
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
 		case evt := <-portal.MatrixMessages:
 			switch evt.Type {
 			case event.EventMessage, event.EventSticker:
+				thing = "Matrix message"
 				portal.HandleMatrixMessage(evt)
 			case event.EventRedaction:
+				thing = "Matrix redaction"
 				portal.HandleMatrixRedaction(evt)
 			case event.EventReaction:
+				thing = "Matrix reaction"
 				portal.HandleMatrixReaction(evt)
 			default:
+				thing = "unsupported Matrix event"
 				portal.log.Warnln("Unsupported event type %+v in portal message channel", evt.Type)
 			}
-		case status := <-portal.MessageStatuses:
-			portal.HandleiMessageSendMessageStatus(status)
+		case msgStatus := <-portal.MessageStatuses:
+			thing = "message status"
+			portal.HandleiMessageSendMessageStatus(msgStatus)
 		}
+		portal.log.Debugfln(
+			"Handled %s in %s (queued: %di/%dr/%dm/%ds)",
+			thing, time.Since(start),
+			len(portal.messageDedup), len(portal.ReadReceipts), len(portal.MatrixMessages), len(portal.MessageStatuses),
+		)
 	}
 }
 
