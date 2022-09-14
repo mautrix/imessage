@@ -7,8 +7,9 @@ homeserver:
     # The domain of the homeserver (for MXIDs, etc).
     domain: example.com
 
-    # Is the homeserver actually mautrix-asmux?
-    asmux: false
+    # What software is the homeserver running?
+    # Standard Matrix homeservers like Synapse, Dendrite and Conduit should just use "standard" here.
+    software: standard
     # Does the homeserver support https://github.com/matrix-org/matrix-spec-proposals/pull/2246?
     async_media: false
 

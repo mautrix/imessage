@@ -88,8 +88,6 @@ type IMBridge struct {
 	websocketStarted             chan struct{}
 	websocketStopped             chan struct{}
 
-	suppressSyncStart bool
-
 	SendStatusStartTS    int64
 	sendStatusUpdateInfo bool
 }
@@ -392,9 +390,7 @@ func (br *IMBridge) startWebsocket(wg *sync.WaitGroup) {
 			go br.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
 		}
 		go br.sendPushKey()
-		if !br.suppressSyncStart {
-			br.RequestStartSync()
-		}
+		br.RequestStartSync()
 		wgOnce.Do(wg.Done)
 		select {
 		case br.websocketStarted <- struct{}{}:
@@ -465,11 +461,6 @@ func (br *IMBridge) Start() {
 	}
 
 	needsPortalFinding := br.Config.Bridge.FindPortalsIfEmpty && br.DB.Portal.Count() == 0
-	if needsPortalFinding {
-		br.suppressSyncStart = true
-	} else if br.Crypto != nil {
-		br.Crypto.RegisterAppserviceListener()
-	}
 
 	br.Log.Debugln("Finding bridge user")
 	br.user = br.loadDBUser()
@@ -478,8 +469,6 @@ func (br *IMBridge) Start() {
 	startupGroup.Add(2)
 	br.Log.Debugln("Connecting to iMessage")
 	go br.connectToiMessage(&startupGroup)
-	br.Log.Debugln("Starting application service websocket")
-	go br.startWebsocket(&startupGroup)
 
 	if needsPortalFinding {
 		br.Log.Infoln("Portal database is empty, finding portals from Matrix room state")
@@ -492,8 +481,10 @@ func (br *IMBridge) Start() {
 		if br.Crypto != nil {
 			br.Crypto.Reset()
 		}
-		br.suppressSyncStart = false
 	}
+
+	br.Log.Debugln("Starting application service websocket")
+	go br.startWebsocket(&startupGroup)
 
 	br.Log.Debugln("Starting iMessage handler")
 	go br.IMHandler.Start()

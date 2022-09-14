@@ -126,7 +126,7 @@ func DoUpgrade(helper *up.Helper) {
 }
 
 var SpacedBlocks = [][]string{
-	{"homeserver", "asmux"},
+	{"homeserver", "software"},
 	{"appservice"},
 	{"appservice", "id"},
 	{"appservice", "as_token"},
