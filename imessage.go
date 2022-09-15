@@ -78,66 +78,11 @@ func (imh *iMessageHandler) Start() {
 	}
 }
 
-// resolveChatGUIDWithCorrelationIdentifier takes a GUID/UUID pair, and determines whether a different, pre-existing chat GUID should be used instead.
-// if a pre-existing chat is found, and a portal exists with the incoming GUID, the portal will be tombstoned and forgotten.
-func (imh *iMessageHandler) resolveChatGUIDWithCorrelationIdentifier(guid string, correlationID string) string {
-	if !imh.bridge.IM.Capabilities().Correlation || len(correlationID) == 0 {
-		// no correlation, passthrough
-		return guid
-	}
-	parsed := imessage.ParseIdentifier(guid)
-	if parsed.IsGroup {
-		// we don't correlate groups right now, passthrough
-		return guid
-	}
-	if portal := imh.bridge.DB.Portal.GetByCorrelationID(correlationID); portal != nil {
-		// there's already a portal with this correlation ID
-		if portal.GUID != guid {
-			// the existing portal has a different GUID
-			if existingPortal := imh.bridge.DB.Portal.GetByGUID(guid); existingPortal != nil {
-				// the incoming GUID has an existing portal
-				if len(existingPortal.MXID) == 0 {
-					// its just a row, delete it
-					existingPortal.Delete()
-				} else {
-					// tombstone it
-					imh.bridge.newDummyPortal(existingPortal).mergeIntoPortal(portal.MXID, "This room has been deduplicated.")
-				}
-			}
-		}
-		return portal.GUID
-	}
-	imh.bridge.DB.Portal.StoreCorrelation(guid, correlationID)
-	return guid
-}
-
-// resolveIdentifiers takes a chat GUID, sender GUID, and correlation ID, and maps the GUIDs to pre-existing GUIDs if possible.
-// this preserves consistency and makes the sender appear to come from the same person, avoiding issues where the DM sender
-// is not a participant and cannot join the portal.
-func (imh *iMessageHandler) resolveIdentifiers(guid string, correlationID string, senderID string, senderCorrelationID string, identifier imessage.Identifier, fromMe bool) (newGUID string, newSender string, newIdentifier imessage.Identifier) {
-	if !imh.bridge.IM.Capabilities().Correlation {
-		// no correlation
-		return guid, senderID, identifier
-	}
-	if len(senderID) > 0 && len(senderCorrelationID) > 0 {
-		// store the correlation for this sender
-		imh.bridge.DB.Puppet.StoreCorrelation(senderID, correlationID)
-	}
-	parsed := imessage.ParseIdentifier(guid)
-	if parsed.IsGroup || len(correlationID) == 0 {
-		// todo: correlate group senders, requires knowledge of who is in the portal, this is not easily accessible right now.
-		return guid, senderID, identifier
-	}
-	newGUID = imh.resolveChatGUIDWithCorrelationIdentifier(guid, correlationID)
-	return newGUID, senderID, identifier
-}
-
 const PortalBufferTimeout = 10 * time.Second
 
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	// TODO trace log
 	//imh.log.Debugfln("Received incoming message: %+v", msg)
-	msg.ChatGUID, msg.JSONSenderGUID, msg.Sender = imh.resolveIdentifiers(msg.ChatGUID, msg.CorrelationID, msg.JSONSenderGUID, msg.SenderCorrelationID, msg.Sender, msg.IsFromMe)
 	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
 	if len(portal.MXID) == 0 {
 		if portal.ThreadID == "" {
@@ -158,7 +103,6 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 }
 
 func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStatus) {
-	status.ChatGUID = imh.resolveChatGUIDWithCorrelationIdentifier(status.ChatGUID, status.CorrelationID)
 	portal := imh.bridge.GetPortalByGUID(status.ChatGUID)
 	if len(portal.MXID) == 0 {
 		imh.log.Debugfln("Ignoring message status for message from unknown portal %s/%s", status.GUID, status.ChatGUID)
@@ -172,7 +116,6 @@ func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStat
 }
 
 func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
-	rr.ChatGUID, rr.SenderGUID, _ = imh.resolveIdentifiers(rr.ChatGUID, rr.CorrelationID, rr.SenderGUID, rr.SenderCorrelationID, imessage.Identifier{}, rr.IsFromMe)
 	portal := imh.bridge.GetPortalByGUID(rr.ChatGUID)
 	if len(portal.MXID) == 0 {
 		imh.log.Debugfln("Ignoring read receipt in unknown portal %s", rr.ChatGUID)
@@ -186,7 +129,6 @@ func (imh *iMessageHandler) HandleReadReceipt(rr *imessage.ReadReceipt) {
 }
 
 func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotification) {
-	notif.ChatGUID = imh.resolveChatGUIDWithCorrelationIdentifier(notif.ChatGUID, notif.CorrelationID)
 	portal := imh.bridge.GetPortalByGUID(notif.ChatGUID)
 	if len(portal.MXID) == 0 {
 		return
@@ -202,7 +144,6 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 }
 
 func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
-	chat.JSONChatGUID = imh.resolveChatGUIDWithCorrelationIdentifier(chat.JSONChatGUID, chat.CorrelationID)
 	chat.Identifier = imessage.ParseIdentifier(chat.JSONChatGUID)
 	portal := imh.bridge.GetPortalByGUID(chat.Identifier.String())
 	if len(portal.MXID) > 0 {

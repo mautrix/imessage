@@ -283,36 +283,11 @@ func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string)
 	return true
 }
 
-func (portal *Portal) SyncCorrelationID(chatInfo *imessage.ChatInfo) bool {
-	if portal.Identifier.IsGroup {
-		// groups do not get correlation IDs (yet?)
-		return false
-	}
-	if len(chatInfo.CorrelationID) == 0 || chatInfo.CorrelationID == portal.CorrelationID {
-		// no correlation ID, or no change
-		return false
-	}
-	if existingPortal := portal.bridge.DB.Portal.GetByCorrelationID(chatInfo.CorrelationID); existingPortal != nil && existingPortal.GUID != portal.GUID {
-		if len(existingPortal.MXID) == 0 {
-			// existing is just a row, delete it
-			existingPortal.Delete()
-		} else {
-			// well, they were here first, so let's delete ourselves
-			portal.mergeIntoPortal(existingPortal.MXID, "This room has been deduplicated.")
-			return false
-		}
-	}
-	// store the correlation ID
-	portal.CorrelationID = chatInfo.CorrelationID
-	return true
-}
-
 func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	update := false
 	if len(chatInfo.DisplayName) > 0 {
 		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 	}
-	update = portal.SyncCorrelationID(chatInfo) || update
 	portal.SyncParticipants(chatInfo)
 	if update {
 		portal.Update()
@@ -355,16 +330,6 @@ func (portal *Portal) Sync(backfill bool) {
 			portal.UpdateAvatar(avatar, portal.MainIntent())
 		}
 	} else {
-		if len(portal.CorrelationID) == 0 && portal.bridge.IM.Capabilities().Correlation {
-			chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID, portal.ThreadID)
-			if err != nil {
-				portal.log.Errorln("Failed to get chat info:", err)
-			} else {
-				if portal.SyncCorrelationID(chatInfo) {
-					portal.Update()
-				}
-			}
-		}
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		puppet.Sync()
 	}
@@ -736,7 +701,6 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	}
 	if chatInfo != nil {
 		portal.Name = chatInfo.DisplayName
-		portal.CorrelationID = chatInfo.CorrelationID
 		portal.ThreadID = chatInfo.ThreadID
 	} else {
 		portal.log.Warnln("Didn't get any chat info")

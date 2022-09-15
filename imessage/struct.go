@@ -72,9 +72,6 @@ type Message struct {
 
 	Metadata MessageMetadata `json:"metadata,omitempty"`
 
-	SenderCorrelationID string `json:"sender_correlation_id,omitempty"`
-	CorrelationID       string `json:"correlation_id,omitempty"`
-
 	ThreadID string `json:"thread_id,omitempty"`
 }
 
@@ -95,15 +92,11 @@ type ReadReceipt struct {
 
 	ReadAt         time.Time `json:"-"`
 	JSONUnixReadAt float64   `json:"read_at"`
-
-	SenderCorrelationID string `json:"sender_correlation_id,omitempty"`
-	CorrelationID       string `json:"correlation_id,omitempty"`
 }
 
 type TypingNotification struct {
-	ChatGUID      string `json:"chat_guid"`
-	Typing        bool   `json:"typing"`
-	CorrelationID string `json:"correlation_id,omitempty"`
+	ChatGUID string `json:"chat_guid"`
+	Typing   bool   `json:"typing"`
 }
 
 type GroupActionType int
@@ -137,7 +130,6 @@ type Contact struct {
 	UserGUID  string   `json:"user_guid,omitempty"`
 
 	PrimaryIdentifier string `json:"primary_identifier,omitempty"`
-	CorrelationID     string `json:"correlation_id,omitempty"`
 }
 
 func (contact *Contact) HasName() bool {
@@ -203,13 +195,12 @@ func (attachment *Attachment) Read() ([]byte, error) {
 }
 
 type ChatInfo struct {
-	JSONChatGUID  string `json:"chat_guid"`
-	Identifier    `json:"-"`
-	DisplayName   string   `json:"title"`
-	Members       []string `json:"members"`
-	NoCreateRoom  bool     `json:"no_create_room"`
-	CorrelationID string   `json:"correlation_id,omitempty"`
-	ThreadID      string   `json:"thread_id,omitempty"`
+	JSONChatGUID string `json:"chat_guid"`
+	Identifier   `json:"-"`
+	DisplayName  string   `json:"title"`
+	Members      []string `json:"members"`
+	NoCreateRoom bool     `json:"no_create_room"`
+	ThreadID     string   `json:"thread_id,omitempty"`
 }
 
 type Identifier struct {
@@ -259,7 +250,6 @@ type ConnectorCapabilities struct {
 	MessageStatusCheckpoints bool
 	MergedChats              bool
 	RichLinks                bool
-	Correlation              bool
 	ChatBridgeResult         bool
 }
 
@@ -274,14 +264,12 @@ type PushKeyRequest struct {
 }
 
 type SendMessageStatus struct {
-	GUID                string `json:"guid"`
-	ChatGUID            string `json:"chat_guid"`
-	Status              string `json:"status"`
-	Service             string `json:"service"`
-	Message             string `json:"message,omitempty"`
-	StatusCode          string `json:"status_code,omitempty"`
-	CorrelationID       string `json:"correlation_id,omitempty"`
-	SenderCorrelationID string `json:"sender_correlation_id,omitempty"`
+	GUID       string `json:"guid"`
+	ChatGUID   string `json:"chat_guid"`
+	Status     string `json:"status"`
+	Service    string `json:"service"`
+	Message    string `json:"message,omitempty"`
+	StatusCode string `json:"status_code,omitempty"`
 }
 
 type StartupSyncHookResponse struct {

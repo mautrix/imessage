@@ -47,7 +47,7 @@ func (pq *PortalQuery) Count() (count int) {
 	return
 }
 
-const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space, correlation_id, thread_id"
+const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space, thread_id"
 
 func (pq *PortalQuery) GetAll() []*Portal {
 	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
@@ -57,24 +57,8 @@ func (pq *PortalQuery) GetByGUID(guid string) *Portal {
 	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE guid=$1", portalColumns), guid)
 }
 
-func (pq *PortalQuery) GetByCorrelationID(correlationID string) *Portal {
-	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE correlation_id=$1", portalColumns), correlationID)
-}
-
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
-}
-
-func (pq *PortalQuery) StoreCorrelation(guid string, correlationID string) bool {
-	if result, err := pq.db.Exec("UPDATE portal SET correlation_id=$1 WHERE guid=$2", correlationID, guid); err != nil {
-		pq.log.Errorfln("Failed to set correlation ID to %s for chat %s", correlationID, guid)
-		return false
-	} else if rowsAffected, err := result.RowsAffected(); err != nil {
-		pq.log.Errorfln("Failed to determine rows affected when setting correlation ID: %v", err)
-		return false
-	} else {
-		return rowsAffected != 0
-	}
 }
 
 func (pq *PortalQuery) FindPrivateChats() []*Portal {
@@ -114,7 +98,6 @@ type Portal struct {
 	Encrypted       bool
 	BackfillStartTS int64
 	InSpace         bool
-	CorrelationID   string
 	ThreadID        string
 }
 
@@ -126,16 +109,15 @@ func (portal *Portal) avatarHashSlice() []byte {
 }
 
 func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
-	var mxid, avatarURL, correlationID sql.NullString
+	var mxid, avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace, &correlationID, &portal.ThreadID)
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace, &portal.ThreadID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
 		}
 		return nil
 	}
-	portal.CorrelationID = correlationID.String
 	portal.MXID = id.RoomID(mxid.String)
 	portal.AvatarURL, _ = id.ParseContentURI(avatarURL.String)
 	if avatarHashSlice != nil || len(avatarHashSlice) == 32 {
@@ -154,8 +136,8 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 }
 
 func (portal *Portal) Insert() {
-	_, err := portal.db.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)", portalColumns),
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID, portal.ThreadID)
+	_, err := portal.db.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)", portalColumns),
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
 	}
@@ -166,8 +148,8 @@ func (portal *Portal) Update() {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, correlation_id=$8, thread_id=$9 WHERE guid=$10",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.CorrelationID, portal.ThreadID, portal.GUID)
+	_, err := portal.db.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, thread_id=$8 WHERE guid=$9",
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}
