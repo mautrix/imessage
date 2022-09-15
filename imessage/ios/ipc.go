@@ -358,7 +358,7 @@ func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) ([]*imes
 	return resp, err
 }
 
-func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []string, err error) {
+func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
 	return resp, ios.IPC.Request(context.Background(), ReqGetChats, &GetChatsRequest{
 		MinTimestamp: timeToFloat(minDate),
 	}, &resp)

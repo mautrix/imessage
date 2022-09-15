@@ -194,6 +194,11 @@ func (attachment *Attachment) Read() ([]byte, error) {
 	return os.ReadFile(attachment.PathOnDisk)
 }
 
+type ChatIdentifier struct {
+	ChatGUID string `json:"chat_guid"`
+	ThreadID string `json:"thread_id,omitempty"`
+}
+
 type ChatInfo struct {
 	JSONChatGUID string `json:"chat_guid"`
 	Identifier   `json:"-"`

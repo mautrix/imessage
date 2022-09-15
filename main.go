@@ -559,9 +559,12 @@ func (br *IMBridge) StartupSync() {
 		br.Log.Errorln("Failed to get chat list to backfill:", err)
 		return
 	}
-	for _, chatID := range chats {
-		if _, isSynced := alreadySynced[chatID]; !isSynced {
-			portal := br.GetPortalByGUID(chatID)
+	for _, chat := range chats {
+		if _, isSynced := alreadySynced[chat.ChatGUID]; !isSynced {
+			portal := br.GetPortalByGUID(chat.ChatGUID)
+			if portal.ThreadID == "" {
+				portal.ThreadID = chat.ThreadID
+			}
 			portal.log.Infoln("Syncing portal (startup sync, new portal)")
 			portal.Sync(true)
 		}

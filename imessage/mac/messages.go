@@ -385,19 +385,19 @@ func (mac *macOSDatabase) getReadReceiptsSince(minDate time.Time) ([]*imessage.R
 	return receipts, minDate, nil
 }
 
-func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]string, error) {
+func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]imessage.ChatIdentifier, error) {
 	res, err := mac.recentChatsQuery.Query(minDate.UnixNano() - imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying chats with messages after date: %w", err)
 	}
-	var chats []string
+	var chats []imessage.ChatIdentifier
 	for res.Next() {
 		var chatID string
 		err = res.Scan(&chatID)
 		if err != nil {
 			return chats, fmt.Errorf("error scanning row: %w", err)
 		}
-		chats = append(chats, chatID)
+		chats = append(chats, imessage.ChatIdentifier{ChatGUID: chatID})
 	}
 	return chats, nil
 }

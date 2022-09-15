@@ -123,7 +123,8 @@ Another error response:
   * `typing` (bool) - Whether to send or cancel the typing notification.
 * Get list of chats with messages after date (request type `get_chats`)
   * `min_timestamp` (double) - Unix timestamp
-  * Response should be an array of chat GUIDs
+  * Response should be an array of objects with the following fields:
+    * `chat_guid` (str) - The chat ID
 * Get chat info (request type `get_chat`)
   * `chat_guid` (str) - Chat identifier, e.g. `iMessage;+;chat123456`
   * Response contains:
