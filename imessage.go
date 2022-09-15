@@ -140,6 +140,9 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	msg.ChatGUID, msg.JSONSenderGUID, msg.Sender = imh.resolveIdentifiers(msg.ChatGUID, msg.CorrelationID, msg.JSONSenderGUID, msg.SenderCorrelationID, msg.Sender, msg.IsFromMe)
 	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
 	if len(portal.MXID) == 0 {
+		if portal.ThreadID == "" {
+			portal.ThreadID = msg.ThreadID
+		}
 		portal.log.Infoln("Creating Matrix room to handle message")
 		err := portal.CreateMatrixRoom(nil, nil)
 		if err != nil {
@@ -157,7 +160,7 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 func (imh *iMessageHandler) HandleMessageStatus(status *imessage.SendMessageStatus) {
 	status.ChatGUID = imh.resolveChatGUIDWithCorrelationIdentifier(status.ChatGUID, status.CorrelationID)
 	portal := imh.bridge.GetPortalByGUID(status.ChatGUID)
-	if len(portal.GUID) == 0 {
+	if len(portal.MXID) == 0 {
 		imh.log.Debugfln("Ignoring message status for message from unknown portal %s/%s", status.GUID, status.ChatGUID)
 		return
 	}

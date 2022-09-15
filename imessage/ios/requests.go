@@ -17,9 +17,10 @@
 package ios
 
 import (
+	"maunium.net/go/mautrix/id"
+
 	"go.mau.fi/mautrix-imessage/imessage"
 	"go.mau.fi/mautrix-imessage/ipc"
-	"maunium.net/go/mautrix/id"
 )
 
 const (
@@ -81,6 +82,7 @@ type SetTypingRequest struct {
 
 type GetChatRequest struct {
 	ChatGUID string `json:"chat_guid"`
+	ThreadID string `json:"thread_id"`
 }
 
 type GetChatsRequest struct {

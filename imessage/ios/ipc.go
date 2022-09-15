@@ -25,9 +25,10 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
+	"maunium.net/go/mautrix/id"
+
 	"go.mau.fi/mautrix-imessage/imessage"
 	"go.mau.fi/mautrix-imessage/ipc"
-	"maunium.net/go/mautrix/id"
 )
 
 const (
@@ -399,9 +400,9 @@ func (ios *iOSConnector) GetContactList() ([]*imessage.Contact, error) {
 	return resp.Contacts, err
 }
 
-func (ios *iOSConnector) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
+func (ios *iOSConnector) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
 	var resp imessage.ChatInfo
-	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID}, &resp)
+	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID, ThreadID: threadID}, &resp)
 	return &resp, err
 }
 

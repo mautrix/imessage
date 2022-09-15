@@ -402,7 +402,7 @@ func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]string
 	return chats, nil
 }
 
-func (mac *macOSDatabase) GetChatInfo(chatID string) (*imessage.ChatInfo, error) {
+func (mac *macOSDatabase) GetChatInfo(chatID, _ string) (*imessage.ChatInfo, error) {
 	row := mac.chatQuery.QueryRow(chatID)
 	var info imessage.ChatInfo
 	info.Identifier = imessage.ParseIdentifier(chatID)

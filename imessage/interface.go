@@ -48,7 +48,7 @@ type API interface {
 	MessageStatusChan() <-chan *SendMessageStatus
 	GetContactInfo(identifier string) (*Contact, error)
 	GetContactList() ([]*Contact, error)
-	GetChatInfo(chatID string) (*ChatInfo, error)
+	GetChatInfo(chatID, threadID string) (*ChatInfo, error)
 	GetGroupAvatar(chatID string) (*Attachment, error)
 
 	ResolveIdentifier(identifier string) (string, error)

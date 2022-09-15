@@ -74,6 +74,8 @@ type Message struct {
 
 	SenderCorrelationID string `json:"sender_correlation_id,omitempty"`
 	CorrelationID       string `json:"correlation_id,omitempty"`
+
+	ThreadID string `json:"thread_id,omitempty"`
 }
 
 type MessageMetadata = map[string]interface{}

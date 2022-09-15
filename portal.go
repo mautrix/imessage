@@ -338,7 +338,7 @@ func (portal *Portal) Sync(backfill bool) {
 	portal.addToSpace(portal.bridge.user)
 
 	if !portal.IsPrivateChat() {
-		chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
+		chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID, portal.ThreadID)
 		if err != nil {
 			portal.log.Errorln("Failed to get chat info:", err)
 		}
@@ -356,7 +356,7 @@ func (portal *Portal) Sync(backfill bool) {
 		}
 	} else {
 		if len(portal.CorrelationID) == 0 && portal.bridge.IM.Capabilities().Correlation {
-			chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID)
+			chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID, portal.ThreadID)
 			if err != nil {
 				portal.log.Errorln("Failed to get chat info:", err)
 			} else {
@@ -728,7 +728,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 
 	if chatInfo == nil {
 		portal.log.Debugln("Getting chat info to create Matrix room")
-		chatInfo, err = portal.bridge.IM.GetChatInfo(portal.GUID)
+		chatInfo, err = portal.bridge.IM.GetChatInfo(portal.GUID, portal.ThreadID)
 		if err != nil && !portal.IsPrivateChat() {
 			// If there's no chat info for a group, it probably doesn't exist, and we shouldn't auto-create a Matrix room for it.
 			return fmt.Errorf("failed to get chat info: %w", err)
