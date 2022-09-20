@@ -64,6 +64,7 @@ type API interface {
 	NotifyUpcomingMessage(eventID id.EventID)
 
 	PreStartupSyncHook() (StartupSyncHookResponse, error)
+	PostStartupSyncHook()
 
 	Capabilities() ConnectorCapabilities
 }

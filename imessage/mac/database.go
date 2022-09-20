@@ -87,6 +87,8 @@ func (mac *macOSDatabase) PreStartupSyncHook() (resp imessage.StartupSyncHookRes
 	return
 }
 
+func (mac *macOSDatabase) PostStartupSyncHook() {}
+
 func (mac *macOSDatabase) PrepareDM(guid string) error {
 	// Nothing needed here
 	return nil

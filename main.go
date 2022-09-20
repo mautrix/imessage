@@ -570,6 +570,7 @@ func (br *IMBridge) StartupSync() {
 		}
 	}
 	br.Log.Infoln("Startup sync complete")
+	br.IM.PostStartupSyncHook()
 }
 
 func (br *IMBridge) PeriodicSync() {

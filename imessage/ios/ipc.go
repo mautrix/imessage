@@ -512,6 +512,10 @@ func (ios *iOSConnector) PreStartupSyncHook() (resp imessage.StartupSyncHookResp
 	return
 }
 
+func (ios *iOSConnector) PostStartupSyncHook() {
+	_ = ios.IPC.Send(ReqPostStartupSync, nil)
+}
+
 func (ios *iOSConnector) ResolveIdentifier(identifier string) (string, error) {
 	if ios.isAndroid {
 		return imessage.Identifier{

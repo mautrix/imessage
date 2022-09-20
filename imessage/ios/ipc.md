@@ -166,6 +166,9 @@ Another error response:
   * Sent when the bridge is starting and is about to do the startup sync.
     The sync won't start until this request responds.
   * Optionally, the response may contain `"skip_sync": true` to skip the startup sync.
+* Finish startup sync (request type `post_startup_sync`)
+  * Sent when the bridge has completed startup sync.
+  * Doesn't need a response.
 * Prepare a new private chat (request type `prepare_dm`)
   * `guid` (str) - The GUID of the user to start a chat with
   * Doesn't return anything (just acknowledge with an empty response).

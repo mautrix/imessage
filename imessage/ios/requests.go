@@ -37,6 +37,7 @@ const (
 	ReqGetMessagesAfter    ipc.Command = "get_messages_after"
 	ReqGetRecentMessages   ipc.Command = "get_recent_messages"
 	ReqPreStartupSync      ipc.Command = "pre_startup_sync"
+	ReqPostStartupSync     ipc.Command = "post_startup_sync"
 	ReqResolveIdentifier   ipc.Command = "resolve_identifier"
 	ReqPrepareDM           ipc.Command = "prepare_dm"
 	ReqMessageBridgeResult ipc.Command = "message_bridge_result"
