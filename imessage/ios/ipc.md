@@ -194,6 +194,7 @@ Another error response:
   * `sender_guid` (str) - User identifier, e.g. `iMessage;-;+123456` or
     `SMS;-;+123456`. Not required if `is_from_me` is true.
   * `is_from_me` (bool) - True if the message was sent by the local user
+  * `is_read` (bool) - True if the message was already read
   * `service` (str) - Explicitly states the origin service (e.g. `SMS`, `iMessage`), most useful when using chat merging
     * If the service is omitted, it defaults to the service of the chat.
   * `thread_originator_guid` (str, UUID, optional) - The thread originator message ID
