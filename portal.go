@@ -968,9 +968,10 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
-			Reason: reason,
-			Status: msgStatusCode,
-			Error:  rootErr.Error(),
+			Reason:   reason,
+			Status:   msgStatusCode,
+			Error:    rootErr.Error(),
+			Message:  rootErr.Error(),
 		}
 		content.FillLegacyBooleans()
 
