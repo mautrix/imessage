@@ -473,12 +473,18 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 			return
 		}
 		errString := "internal error"
+		humanReadableError := "internal error"
 		if len(msgStatus.Message) != 0 {
-			errString = msgStatus.Message
+			humanReadableError = msgStatus.Message
+			if len(msgStatus.StatusCode) != 0 {
+				errString = fmt.Sprintf("%s: %s", msgStatus.StatusCode, msgStatus.Message)
+			} else {
+				errString = msgStatus.Message
+			}
 		} else if len(msgStatus.StatusCode) != 0 {
 			errString = msgStatus.StatusCode
 		}
-		portal.sendErrorMessage(evt, errors.New(errString), true, status.MsgStatusPermFailure)
+		portal.sendErrorMessage(evt, errors.New(errString), humanReadableError, true, status.MsgStatusPermFailure)
 	} else {
 		portal.log.Infofln("Ignoring unused message status type %v for event %s/%s %s/%s", msgStatus.Status, string(eventID), portal.MXID, msgStatus.GUID, portal.GUID)
 		return
@@ -937,7 +943,7 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) (string, *event.
 	return "application/octet-stream", file
 }
 
-func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertain bool, checkpointStatus status.MessageCheckpointStatus) {
+func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanReadableError string, isCertain bool, checkpointStatus status.MessageCheckpointStatus) {
 	portal.bridge.SendMessageCheckpoint(evt, status.MsgStepRemote, rootErr, checkpointStatus, 0)
 
 	possibility := "may not have been"
@@ -968,9 +974,10 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, isCertai
 				Type:    event.RelReference,
 				EventID: evt.ID,
 			},
-			Reason: reason,
-			Status: msgStatusCode,
-			Error:  rootErr.Error(),
+			Reason:  reason,
+			Status:  msgStatusCode,
+			Error:   rootErr.Error(),
+			Message: humanReadableError,
 		}
 		content.FillLegacyBooleans()
 
@@ -1067,7 +1074,7 @@ func (portal *Portal) shouldHandleMessage(evt *event.Event) error {
 		return nil
 	}
 
-	return errors.New(fmt.Sprintf("It's been over %d seconds since the message arrived at the homeserver. Will not handle the event.", portal.bridge.Config.Bridge.MaxHandleSeconds))
+	return fmt.Errorf("message is too old (over %d seconds)", portal.bridge.Config.Bridge.MaxHandleSeconds)
 }
 
 func (portal *Portal) addRelaybotFormat(sender id.UserID, content *event.MessageEventContent) bool {
@@ -1105,7 +1112,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, true, status.MsgStatusTimeout)
+		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout)
 		return
 	}
 
@@ -1150,7 +1157,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 				statusCode = status.MsgStatusTimeout
 			}
 		}
-		portal.sendErrorMessage(evt, err, certain, statusCode)
+		portal.sendErrorMessage(evt, err, ipcErr.Message, certain, statusCode)
 	} else if resp != nil {
 		dbMessage := portal.bridge.DB.Message.New()
 		dbMessage.ChatGUID = portal.GUID
@@ -1176,7 +1183,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		url, err = msg.URL.Parse()
 	}
 	if err != nil {
-		portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), true, status.MsgStatusPermFailure)
+		portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), "malformed attachment URL", true, status.MsgStatusPermFailure)
 		portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
 		return nil, nil
 	}
@@ -1230,14 +1237,14 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 	var data []byte
 	data, err = portal.MainIntent().DownloadBytes(url)
 	if err != nil {
-		portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), true, status.MsgStatusPermFailure)
+		portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), "failed to download attachment", true, status.MsgStatusPermFailure)
 		portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
 		return
 	}
 	if file != nil {
-		data, err = file.Decrypt(data)
+		err = file.DecryptInPlace(data)
 		if err != nil {
-			portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), true, status.MsgStatusPermFailure)
+			portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), "failed to decrypt attachment", true, status.MsgStatusPermFailure)
 			portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
 			return
 		}
@@ -1353,7 +1360,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, true, status.MsgStatusTimeout)
+		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout)
 		return
 	}
 
@@ -1412,7 +1419,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, true, status.MsgStatusTimeout)
+		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout)
 		return
 	}
 
