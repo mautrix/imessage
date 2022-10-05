@@ -215,7 +215,14 @@ type Portal struct {
 	typingLock   sync.Mutex
 }
 
-var _ bridge.Portal = (*Portal)(nil)
+var (
+	_ bridge.Portal = (*Portal)(nil)
+	_ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
+	_ bridge.TypingPortal = (*Portal)(nil)
+//	_ bridge.MembershipHandlingPortal = (*Portal)(nil)
+//	_ bridge.MetaHandlingPortal = (*Portal)(nil)
+//	_ bridge.DisappearingPortal = (*Portal)(nil)
+)
 
 func (portal *Portal) IsEncrypted() bool {
 	return portal.Encrypted
