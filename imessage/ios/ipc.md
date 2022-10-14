@@ -173,7 +173,7 @@ Another error response:
   * `guid` (str) - The GUID of the user to start a chat with
   * Doesn't return anything (just acknowledge with an empty response).
 * Confirm a message being bridged (request type `message_bridge_result`).
-  * Has fields `chat_guid`, `message_guid` and `success`.
+  * Has fields `chat_guid`, `message_guid`, `event_id`, and `success`.
   * Doesn't have an ID, so it doesn't need to be responded to.
   * Only enabled for android-sms.
 * Notification of portal room ID for a chat GUID (request type `chat_bridge_result`)
