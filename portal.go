@@ -21,7 +21,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"golang.org/x/net/dns/dnsmessage"
 	"html"
 	"runtime/debug"
 	"strings"
