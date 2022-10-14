@@ -1804,16 +1804,16 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.EventID {
 	var dbMessage *database.Message
 	var overrideSuccess bool
-	var eventId = id.EventID("")
 	defer func() {
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
 		}
-		var hasMXID = dbMessage != nil && len(dbMessage.MXID) > 0
+		hasMXID := dbMessage != nil && len(dbMessage.MXID) > 0
+		var eventID id.EventID
 		if hasMXID {
-			eventId = dbMessage.MXID
+			eventID = dbMessage.MXID
 		}
-		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, eventId, overrideSuccess || hasMXID)
+		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, eventID, overrideSuccess || hasMXID)
 	}()
 
 	if msg.Tapback != nil {
