@@ -19,6 +19,7 @@ package mac
 import (
 	"database/sql"
 	"fmt"
+	"maunium.net/go/mautrix/id"
 	"sync"
 
 	log "maunium.net/go/maulogger/v2"
@@ -94,7 +95,7 @@ func (mac *macOSDatabase) PrepareDM(guid string) error {
 	return nil
 }
 
-func (mac *macOSDatabase) SendMessageBridgeResult(chatID, messageID string, success bool) {}
+func (mac *macOSDatabase) SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool) {}
 
 func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{

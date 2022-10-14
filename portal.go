@@ -1808,7 +1808,12 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
 		}
-		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, overrideSuccess || (dbMessage != nil && len(dbMessage.MXID) > 0))
+		hasMXID := dbMessage != nil && len(dbMessage.MXID) > 0
+		var eventID id.EventID
+		if hasMXID {
+			eventID = dbMessage.MXID
+		}
+		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, eventID, overrideSuccess || hasMXID)
 	}()
 
 	if msg.Tapback != nil {

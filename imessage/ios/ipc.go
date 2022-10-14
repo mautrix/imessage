@@ -487,7 +487,7 @@ func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool) erro
 	})
 }
 
-func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, success bool) {
+func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool) {
 	if !ios.isAndroid {
 		// Only android needs message bridging confirmations
 		return
@@ -495,6 +495,7 @@ func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, succe
 	_ = ios.IPC.Send(ReqMessageBridgeResult, &MessageBridgeResult{
 		ChatGUID: chatID,
 		GUID:     messageID,
+		EventID:  eventID,
 		Success:  success,
 	})
 }
