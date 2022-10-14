@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"golang.org/x/net/dns/dnsmessage"
 	"html"
 	"runtime/debug"
 	"strings"
@@ -1804,11 +1805,16 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.EventID {
 	var dbMessage *database.Message
 	var overrideSuccess bool
+	var eventId = id.EventID("")
 	defer func() {
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
 		}
-		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, overrideSuccess || (dbMessage != nil && len(dbMessage.MXID) > 0))
+		var hasMXID = dbMessage != nil && len(dbMessage.MXID) > 0
+		if hasMXID {
+			eventId = dbMessage.MXID
+		}
+		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, eventId, overrideSuccess || hasMXID)
 	}()
 
 	if msg.Tapback != nil {

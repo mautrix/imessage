@@ -94,7 +94,7 @@ func (mac *macOSDatabase) PrepareDM(guid string) error {
 	return nil
 }
 
-func (mac *macOSDatabase) SendMessageBridgeResult(chatID, messageID string, success bool) {}
+func (mac *macOSDatabase) SendMessageBridgeResult(chatID, messageID string, eventID string, success bool) {}
 
 func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{

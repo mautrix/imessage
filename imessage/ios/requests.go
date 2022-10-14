@@ -127,9 +127,10 @@ type PrepareDMRequest struct {
 }
 
 type MessageBridgeResult struct {
-	ChatGUID string `json:"chat_guid"`
-	GUID     string `json:"message_guid"`
-	Success  bool   `json:"success"`
+	ChatGUID string     `json:"chat_guid"`
+	GUID     string     `json:"message_guid"`
+	EventID  id.EventID `json:"event_id,omitempty"`
+	Success  bool       `json:"success"`
 }
 
 type ChatBridgeResult struct {
