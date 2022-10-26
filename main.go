@@ -269,7 +269,7 @@ func (br *IMBridge) PingServer() (start, serverTs, end time.Time) {
 }
 
 func (br *IMBridge) ipcResetEncryption(_ json.RawMessage) interface{} {
-	br.Crypto.Reset()
+	br.Crypto.Reset(true)
 	return PingResponse{true}
 }
 
@@ -479,7 +479,7 @@ func (br *IMBridge) Start() {
 		}
 		// The database was probably reset, so log out of all bridge bot devices to keep the list clean
 		if br.Crypto != nil {
-			br.Crypto.Reset()
+			br.Crypto.Reset(true)
 		}
 	}
 

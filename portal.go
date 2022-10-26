@@ -29,6 +29,7 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/util/jsontime"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -216,12 +217,12 @@ type Portal struct {
 }
 
 var (
-	_ bridge.Portal = (*Portal)(nil)
+	_ bridge.Portal                    = (*Portal)(nil)
 	_ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
-	_ bridge.TypingPortal = (*Portal)(nil)
-//	_ bridge.MembershipHandlingPortal = (*Portal)(nil)
-//	_ bridge.MetaHandlingPortal = (*Portal)(nil)
-//	_ bridge.DisappearingPortal = (*Portal)(nil)
+	_ bridge.TypingPortal              = (*Portal)(nil)
+	//	_ bridge.MembershipHandlingPortal = (*Portal)(nil)
+	//	_ bridge.MetaHandlingPortal = (*Portal)(nil)
+	//	_ bridge.DisappearingPortal = (*Portal)(nil)
 )
 
 func (portal *Portal) IsEncrypted() bool {
@@ -1027,7 +1028,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 		EventID:    eventID,
 		RoomID:     portal.MXID,
 		Step:       status.MsgStepRemote,
-		Timestamp:  time.Now().UnixNano() / int64(time.Millisecond),
+		Timestamp:  jsontime.UnixMilliNow(),
 		Status:     status.MsgStatusSuccess,
 		ReportedBy: status.MsgReportedByBridge,
 	}
@@ -1310,10 +1311,7 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step status.Me
 	}
 }
 
-var _ bridge.ReadReceiptHandlingPortal = (*Portal)(nil)
-var _ bridge.TypingPortal = (*Portal)(nil)
-
-func (portal *Portal) HandleMatrixReadReceipt(user bridge.User, eventID id.EventID, ts time.Time) {
+func (portal *Portal) HandleMatrixReadReceipt(user bridge.User, eventID id.EventID, receipt event.ReadReceipt) {
 	if user.GetMXID() != portal.bridge.user.MXID {
 		return
 	}

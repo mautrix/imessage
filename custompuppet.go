@@ -200,7 +200,7 @@ func (user *User) handleReceiptEvent(portal *Portal, evt *event.Event) {
 		} else if val, ok := receipt.Extra[appservice.DoublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == portal.bridge.Name {
 			// Ignore double puppeted read receipts.
 		} else {
-			portal.HandleMatrixReadReceipt(user, eventID, time.UnixMilli(receipt.Timestamp))
+			portal.HandleMatrixReadReceipt(user, eventID, receipt)
 		}
 	}
 }
