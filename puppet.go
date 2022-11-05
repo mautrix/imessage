@@ -41,9 +41,7 @@ var userIDRegex *regexp.Regexp
 
 func (br *IMBridge) ParsePuppetMXID(mxid id.UserID) (string, bool) {
 	if userIDRegex == nil {
-		userIDRegex = regexp.MustCompile(fmt.Sprintf("^@%s:%s$",
-			br.Config.Bridge.FormatUsername("(.+)"),
-			br.Config.Homeserver.Domain))
+		userIDRegex = br.Config.MakeUserIDRegex("(.+)")
 	}
 	match := userIDRegex.FindStringSubmatch(string(mxid))
 	if match == nil || len(match) != 2 {
