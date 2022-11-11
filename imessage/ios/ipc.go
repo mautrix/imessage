@@ -43,6 +43,7 @@ const (
 	IncomingMessageIDQuery     ipc.Command = "message_ids_after_time"
 	IncomingPushKey            ipc.Command = "push_key"
 	IncomingSendMessageStatus  ipc.Command = "send_message_status"
+	IncomingBackfillTask       ipc.Command = "backfill"
 )
 
 func floatToTime(unix float64) time.Time {
@@ -72,6 +73,7 @@ type iOSConnector struct {
 	chatChan          chan *imessage.ChatInfo
 	contactChan       chan *imessage.Contact
 	messageStatusChan chan *imessage.SendMessageStatus
+	backfillTaskChan  chan *imessage.BackfillTask
 	isAndroid         bool
 	isNoSIP           bool
 	mergeChats        bool
@@ -87,6 +89,7 @@ func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC 
 		chatChan:          make(chan *imessage.ChatInfo, 32),
 		contactChan:       make(chan *imessage.Contact, 2048),
 		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
+		backfillTaskChan:  make(chan *imessage.BackfillTask, 32),
 		isAndroid:         bridge.GetConnectorConfig().Platform == "android",
 		isNoSIP:           bridge.GetConnectorConfig().Platform == "mac-nosip",
 		mergeChats:        bridge.GetConnectorConfig().ChatMerging,
@@ -120,6 +123,7 @@ func (ios *iOSConnector) Start(readyCallback func()) error {
 	ios.IPC.SetHandler(IncomingMessageIDQuery, ios.handleMessageIDQuery)
 	ios.IPC.SetHandler(IncomingPushKey, ios.handlePushKey)
 	ios.IPC.SetHandler(IncomingSendMessageStatus, ios.handleIncomingSendMessageStatus)
+	ios.IPC.SetHandler(IncomingBackfillTask, ios.handleIncomingBackfillTask)
 	readyCallback()
 	return nil
 }
@@ -334,6 +338,21 @@ func (ios *iOSConnector) handleIncomingSendMessageStatus(data json.RawMessage) i
 	return nil
 }
 
+func (ios *iOSConnector) handleIncomingBackfillTask(data json.RawMessage) interface{} {
+	var task imessage.BackfillTask
+	err := json.Unmarshal(data, &task)
+	if err != nil {
+		ios.log.Warnln("Failed to parse incoming backfill task:", err)
+		return nil
+	}
+	select {
+	case ios.backfillTaskChan <- &task:
+	default:
+		ios.log.Warnln("Incoming backfill task buffer is full")
+	}
+	return nil
+}
+
 func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetMessagesAfter, &GetMessagesAfterRequest{
@@ -346,11 +365,12 @@ func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) 
 	return resp, err
 }
 
-func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
+func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetRecentMessagesRequest{
-		ChatGUID: chatID,
-		Limit:    limit,
+		ChatGUID:   chatID,
+		Limit:      limit,
+		BackfillID: backfillID,
 	}, &resp)
 	for _, msg := range resp {
 		ios.postprocessMessage(msg)
@@ -386,6 +406,10 @@ func (ios *iOSConnector) ContactChan() <-chan *imessage.Contact {
 
 func (ios *iOSConnector) MessageStatusChan() <-chan *imessage.SendMessageStatus {
 	return ios.messageStatusChan
+}
+
+func (ios *iOSConnector) BackfillTaskChan() <-chan *imessage.BackfillTask {
+	return ios.backfillTaskChan
 }
 
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {

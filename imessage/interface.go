@@ -38,7 +38,7 @@ type API interface {
 	Start(readyCallback func()) error
 	Stop()
 	GetMessagesSinceDate(chatID string, minDate time.Time) ([]*Message, error)
-	GetMessagesWithLimit(chatID string, limit int) ([]*Message, error)
+	GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*Message, error)
 	GetChatsWithMessagesAfter(minDate time.Time) ([]ChatIdentifier, error)
 	MessageChan() <-chan *Message
 	ReadReceiptChan() <-chan *ReadReceipt
@@ -46,6 +46,7 @@ type API interface {
 	ChatChan() <-chan *ChatInfo
 	ContactChan() <-chan *Contact
 	MessageStatusChan() <-chan *SendMessageStatus
+	BackfillTaskChan() <-chan *BackfillTask
 	GetContactInfo(identifier string) (*Contact, error)
 	GetContactList() ([]*Contact, error)
 	GetChatInfo(chatID, threadID string) (*ChatInfo, error)

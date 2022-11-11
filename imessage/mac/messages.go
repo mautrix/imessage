@@ -311,7 +311,7 @@ func columnExists(db *sql.DB, table, column string) bool {
 	return name == column
 }
 
-func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int) ([]*imessage.Message, error) {
+func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
 	res, err := mac.limitedMessagesQuery.Query(chatID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages with limit: %w", err)
@@ -452,19 +452,23 @@ func (mac *macOSDatabase) ReadReceiptChan() <-chan *imessage.ReadReceipt {
 }
 
 func (mac *macOSDatabase) TypingNotificationChan() <-chan *imessage.TypingNotification {
-	return make(chan *imessage.TypingNotification, 0)
+	return nil
 }
 
 func (mac *macOSDatabase) ChatChan() <-chan *imessage.ChatInfo {
-	return make(chan *imessage.ChatInfo, 0)
+	return nil
 }
 
 func (mac *macOSDatabase) ContactChan() <-chan *imessage.Contact {
-	return make(chan *imessage.Contact, 0)
+	return nil
 }
 
 func (mac *macOSDatabase) MessageStatusChan() <-chan *imessage.SendMessageStatus {
-	return make(<-chan *imessage.SendMessageStatus, 0)
+	return nil
+}
+
+func (mac *macOSDatabase) BackfillTaskChan() <-chan *imessage.BackfillTask {
+	return nil
 }
 
 func (mac *macOSDatabase) Start(readyCallback func()) error {

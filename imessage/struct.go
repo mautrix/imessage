@@ -277,6 +277,12 @@ type SendMessageStatus struct {
 	StatusCode string `json:"status_code,omitempty"`
 }
 
+type BackfillTask struct {
+	ChatGUID   string     `json:"chat_guid"`
+	Messages   []*Message `json:"messages"`
+	BackfillID string     `json:"backfill_id"`
+}
+
 type StartupSyncHookResponse struct {
 	SkipSync bool `json:"skip_sync"`
 }

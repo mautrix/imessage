@@ -526,7 +526,7 @@ func (portal *Portal) backfill() {
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
 	if lastMessage == nil && portal.BackfillStartTS == 0 {
 		portal.log.Debugfln("Fetching up to %d messages for initial backfill", portal.bridge.Config.Bridge.InitialBackfillLimit)
-		messages, err = portal.bridge.IM.GetMessagesWithLimit(portal.GUID, portal.bridge.Config.Bridge.InitialBackfillLimit)
+		messages, err = portal.bridge.IM.GetMessagesWithLimit(portal.GUID, portal.bridge.Config.Bridge.InitialBackfillLimit, "TODO")
 	} else if lastMessage != nil {
 		portal.log.Debugfln("Fetching messages since %s for catchup backfill", lastMessage.Time().String())
 		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, lastMessage.Time())

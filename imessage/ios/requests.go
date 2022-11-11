@@ -99,8 +99,9 @@ type GetContactListResponse struct {
 }
 
 type GetRecentMessagesRequest struct {
-	ChatGUID string `json:"chat_guid"`
-	Limit    int    `json:"limit"`
+	ChatGUID   string `json:"chat_guid"`
+	Limit      int    `json:"limit"`
+	BackfillID string `json:"backfill_id"`
 }
 
 type GetMessagesAfterRequest struct {
