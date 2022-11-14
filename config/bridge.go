@@ -65,12 +65,10 @@ type BridgeConfig struct {
 		MimeType   string   `yaml:"mime_type"`
 		Extension  string   `yaml:"extension"`
 	} `yaml:"convert_video"`
-
-	ForceUniformDMSenders bool `yaml:"force_uniform_dm_senders"`
-
-	FederateRooms bool `yaml:"federate_rooms"`
-
-	CommandPrefix string `yaml:"command_prefix"`
+	CommandPrefix         string `yaml:"command_prefix"`
+	ForceUniformDMSenders bool   `yaml:"force_uniform_dm_senders"`
+	FederateRooms         bool   `yaml:"federate_rooms"`
+	CaptionInMessage      bool   `yaml:"caption_in_message"`
 
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 

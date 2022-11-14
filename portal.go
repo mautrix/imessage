@@ -21,7 +21,6 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"html"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -1109,7 +1108,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 
 	var messageReplyID string
 	var messageReplyPart int
-	replyToID := msg.GetReplyTo()
+	replyToID := msg.RelatesTo.GetReplyTo()
 	if len(replyToID) > 0 {
 		imsg := portal.bridge.DB.Message.GetByMXID(replyToID)
 		if imsg != nil {
@@ -1197,6 +1196,10 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 	}
 	var caption string
 	filename := msg.Body
+	if msg.FileName != "" && msg.FileName != msg.Body {
+		filename = msg.FileName
+		caption = msg.Body
+	}
 	portal.addDedup(evt.ID, filename)
 	if evt.Sender != portal.bridge.user.MXID {
 		portal.addRelaybotFormat(evt.Sender, msg)
@@ -1567,7 +1570,7 @@ func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *dat
 	return nil
 }
 
-func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, map[string]interface{}, error) {
+func (portal *Portal) convertIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, map[string]interface{}, error) {
 	data, err := attach.Read()
 	if err != nil {
 		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
@@ -1678,26 +1681,94 @@ func (portal *Portal) handleIMAttachment(msg *imessage.Message, attach *imessage
 	return &content, extraContent, nil
 }
 
-func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
-	if msg.Attachments == nil {
-		return
-	}
+type ConvertedMessage struct {
+	Type    event.Type
+	Content *event.MessageEventContent
+	Extra   map[string]any
+}
+
+func (portal *Portal) convertIMAttachments(msg *imessage.Message, intent *appservice.IntentAPI) []*ConvertedMessage {
+	converted := make([]*ConvertedMessage, len(msg.Attachments))
 	for index, attach := range msg.Attachments {
-		portal.log.Debugfln("Handling iMessage attachment %s.%d", msg.GUID, index)
-		mediaContent, extraContent, err := portal.handleIMAttachment(msg, attach, intent)
-		var resp *mautrix.RespSendEvent
+		portal.log.Debugfln("Converting iMessage attachment %s.%d", msg.GUID, index)
+		content, extra, err := portal.convertIMAttachment(msg, attach, intent)
 		if err != nil {
-			// Errors are already logged in handleIMAttachment so no need to log here, just send to Matrix room.
-			resp, err = portal.sendMessage(intent, event.EventMessage, &event.MessageEventContent{
+			content = &event.MessageEventContent{
 				MsgType: event.MsgNotice,
 				Body:    err.Error(),
-			}, extraContent, dbMessage.Timestamp)
-		} else {
-			if msg.Metadata != nil {
-				extraContent["com.beeper.message_metadata"] = msg.Metadata
 			}
-			resp, err = portal.sendMessage(intent, event.EventMessage, &mediaContent, extraContent, dbMessage.Timestamp)
+		} else if msg.Metadata != nil {
+			extra["com.beeper.message_metadata"] = msg.Metadata
 		}
+		converted[index] = &ConvertedMessage{
+			Type:    event.EventMessage,
+			Content: content,
+			Extra:   extra,
+		}
+	}
+	return converted
+}
+
+func (portal *Portal) convertIMText(msg *imessage.Message) *ConvertedMessage {
+	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
+	msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
+	if len(msg.Text) == 0 && len(msg.Subject) == 0 {
+		return nil
+	}
+	content := &event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    msg.Text,
+	}
+	if len(msg.Subject) > 0 {
+		content.Format = event.FormatHTML
+		content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", event.TextToHTML(msg.Subject), event.TextToHTML(content.Body))
+		content.Body = fmt.Sprintf("**%s**\n%s", msg.Subject, msg.Text)
+	}
+	portal.SetReply(content, msg)
+	extraAttrs := map[string]any{
+		bridgeInfoService: msg.Service,
+	}
+	if msg.RichLink != nil {
+		portal.log.Debugfln("Handling rich link in iMessage %s", msg.GUID)
+		linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
+		if linkPreview != nil {
+			extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
+			portal.log.Debugfln("Link preview metadata converted for %s", msg.GUID)
+		}
+	}
+	if msg.Metadata != nil {
+		extraAttrs["com.beeper.message_metadata"] = msg.Metadata
+	}
+	return &ConvertedMessage{
+		Type:    event.EventMessage,
+		Content: content,
+		Extra:   extraAttrs,
+	}
+}
+
+func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.IntentAPI) []*ConvertedMessage {
+	attachments := portal.convertIMAttachments(msg, intent)
+	text := portal.convertIMText(msg)
+	if text != nil && len(attachments) == 1 && portal.bridge.Config.Bridge.CaptionInMessage {
+		attach := attachments[0].Content
+		attach.FileName = attach.Body
+		attach.Body = text.Content.Body
+		attach.Format = text.Content.Format
+		attach.FormattedBody = text.Content.FormattedBody
+	} else if text != nil {
+		attachments = append(attachments, text)
+	}
+	return attachments
+}
+
+func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+	parts := portal.convertiMessage(msg, intent)
+	if len(parts) == 0 {
+		portal.log.Warnfln("iMessage %s doesn't contain any attachments nor text", msg.GUID)
+	}
+	for index, converted := range parts {
+		portal.log.Debugfln("Sending iMessage attachment %s.%d", msg.GUID, index)
+		resp, err := portal.sendMessage(intent, converted.Type, converted.Content, converted.Extra, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send attachment %s.%d: %v", msg.GUID, index, err)
 		} else {
@@ -1705,52 +1776,8 @@ func (portal *Portal) handleIMAttachments(msg *imessage.Message, dbMessage *data
 			dbMessage.MXID = resp.EventID
 			dbMessage.Part = index
 			dbMessage.Insert()
-			// Attachments set the part explicitly, but a potential caption after attachments won't,
-			// so pre-set the next part index here.
 			dbMessage.Part++
 		}
-	}
-}
-
-func (portal *Portal) handleIMText(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
-	msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
-	msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
-	if len(msg.Text) > 0 {
-		content := &event.MessageEventContent{
-			MsgType: event.MsgText,
-			Body:    msg.Text,
-		}
-		if len(msg.Subject) > 0 {
-			content.Body = fmt.Sprintf("**%s**\n%s", msg.Subject, msg.Text)
-			content.Format = event.FormatHTML
-			content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", html.EscapeString(msg.Subject), html.EscapeString(msg.Text))
-		}
-		portal.SetReply(content, msg)
-		extraAttrs := map[string]interface{}{
-			bridgeInfoService: msg.Service,
-		}
-		if msg.RichLink != nil {
-			portal.log.Debugfln("Handling rich link in iMessage %s", msg.GUID)
-			linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
-			if linkPreview != nil {
-				extraAttrs["com.beeper.linkpreviews"] = []*BeeperLinkPreview{linkPreview}
-				portal.log.Debugfln("Link preview metadata converted for %s", msg.GUID)
-			}
-		}
-		if msg.Metadata != nil {
-			extraAttrs["com.beeper.message_metadata"] = msg.Metadata
-		}
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, extraAttrs, dbMessage.Timestamp)
-		if err != nil {
-			portal.log.Errorfln("Failed to send message %s: %v", msg.GUID, err)
-			return
-		}
-		portal.log.Debugfln("Handled iMessage text %s.%d -> %s", msg.GUID, dbMessage.Part, resp.EventID)
-		dbMessage.MXID = resp.EventID
-		dbMessage.Insert()
-		dbMessage.Part++
-	} else if len(msg.Attachments) == 0 {
-		portal.log.Warnfln("iMessage %s doesn't contain any attachments nor text", msg.GUID)
 	}
 }
 
@@ -1841,8 +1868,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	switch msg.ItemType {
 	case imessage.ItemTypeMessage:
-		portal.handleIMAttachments(msg, dbMessage, intent)
-		portal.handleIMText(msg, dbMessage, intent)
+		portal.handleNormaliMessage(msg, dbMessage, intent)
 	case imessage.ItemTypeMember:
 		groupUpdateEventID = portal.handleIMMemberChange(msg, dbMessage, intent)
 	case imessage.ItemTypeName:

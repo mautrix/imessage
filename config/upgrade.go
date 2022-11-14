@@ -67,7 +67,6 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "initial_backfill_disable_notifications")
 	helper.Copy(up.Bool, "bridge", "periodic_sync")
 	helper.Copy(up.Bool, "bridge", "find_portals_if_db_empty")
-	helper.Copy(up.Bool, "bridge", "force_uniform_dm_senders")
 	if legacyMediaViewerURL, ok := helper.Get(up.Str, "bridge", "media_viewer_url"); ok && legacyMediaViewerURL != "" {
 		helper.Set(up.Str, legacyMediaViewerURL, "bridge", "media_viewer", "url")
 
@@ -88,7 +87,6 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Copy(up.Int, "bridge", "media_viewer", "imessage_min_size")
 		helper.Copy(up.Str, "bridge", "media_viewer", "template")
 	}
-	helper.Copy(up.Bool, "bridge", "federate_rooms")
 	helper.Copy(up.Bool, "bridge", "convert_heif")
 	helper.Copy(up.Bool, "bridge", "convert_tiff")
 	helper.Copy(up.Bool, "bridge", "convert_video", "enabled")
@@ -96,6 +94,9 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "bridge", "convert_video", "extension")
 	helper.Copy(up.Str, "bridge", "convert_video", "mime_type")
 	helper.Copy(up.Str, "bridge", "command_prefix")
+	helper.Copy(up.Bool, "bridge", "force_uniform_dm_senders")
+	helper.Copy(up.Bool, "bridge", "federate_rooms")
+	helper.Copy(up.Bool, "bridge", "caption_in_message")
 
 	helper.Copy(up.Bool, "bridge", "encryption", "allow")
 	helper.Copy(up.Bool, "bridge", "encryption", "default")

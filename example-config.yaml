@@ -133,13 +133,6 @@ bridge:
         # Template text when inserting media viewer URLs.
         # %s is replaced with the actual URL.
         template: "Full size attachment: %s"
-    # Should we rewrite the sender in a DM to match the chat GUID?
-    # This is helpful when the sender ID shifts depending on the device they use, since
-    # the bridge is unable to add participants to the chat post-creation.
-    force_uniform_dm_senders: true
-    # Whether or not created rooms should have federation enabled.
-    # If false, created portal rooms will never be federated.
-    federate_rooms: true
     # Should we convert heif images to jpeg before re-uploading? This increases
     # compatibility, but adds generation loss (reduces quality).
     convert_heif: true
@@ -158,6 +151,16 @@ bridge:
         mime_type: "video/mp4"
     # The prefix for commands.
     command_prefix: "!im"
+    # Should we rewrite the sender in a DM to match the chat GUID?
+    # This is helpful when the sender ID shifts depending on the device they use, since
+    # the bridge is unable to add participants to the chat post-creation.
+    force_uniform_dm_senders: true
+    # Whether or not created rooms should have federation enabled.
+    # If false, created portal rooms will never be federated.
+    federate_rooms: true
+    # Send captions in the same message as images using MSC2530?
+    # This is currently not supported in most clients.
+    caption_in_message: false
 
     # End-to-bridge encryption support options.
     # See https://docs.mau.fi/bridges/general/end-to-bridge-encryption.html
