@@ -19,6 +19,7 @@ package mac
 //#cgo CFLAGS: -x objective-c -Wno-incompatible-pointer-types
 //#cgo LDFLAGS: -framework Contacts -framework Foundation
 //#include "meowContacts.h"
+//#include "meowMemory.h"
 import "C"
 import (
 	"fmt"

@@ -115,10 +115,3 @@ unsigned long meowGetArrayLength(NSArray* arr) {
     }
     return arr.count;
 }
-
-NSAutoreleasePool* meowMakePool() {
-	return [[NSAutoreleasePool alloc] init];
-}
-void meowReleasePool(NSAutoreleasePool* pool) {
-	[pool drain];
-}
