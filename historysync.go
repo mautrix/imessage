@@ -69,7 +69,7 @@ func (portal *Portal) forwardBackfill() {
 	} else if lastMessage != nil {
 		portal.log.Debugfln("Fetching messages since %s for catchup backfill", lastMessage.Time().String())
 		backfillID = fmt.Sprintf("bridge-catchup-msg-%s::%s::%d", portal.Identifier.LocalID, lastMessage.GUID, time.Now().UnixMilli())
-		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, lastMessage.Time(), backfillID)
+		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, lastMessage.Time().Add(1*time.Millisecond), backfillID)
 	} else if portal.BackfillStartTS != 0 {
 		startTime := time.UnixMilli(portal.BackfillStartTS)
 		portal.log.Debugfln("Fetching messages since %s for catchup backfill after portal recovery", startTime.String())
