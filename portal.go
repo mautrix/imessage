@@ -28,6 +28,7 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/util/jsontime"
 
 	"maunium.net/go/mautrix"
@@ -37,12 +38,10 @@ import (
 	"maunium.net/go/mautrix/crypto/attachment"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/pushrules"
 	"maunium.net/go/mautrix/util/ffmpeg"
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
-	"go.mau.fi/mautrix-imessage/imessage/ios"
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
@@ -230,7 +229,7 @@ func (portal *Portal) IsEncrypted() bool {
 
 func (portal *Portal) MarkEncrypted() {
 	portal.Encrypted = true
-	portal.Update()
+	portal.Update(nil)
 }
 
 func (portal *Portal) ReceiveMatrixEvent(_ bridge.User, evt *event.Event) {
@@ -297,7 +296,7 @@ func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	}
 	portal.SyncParticipants(chatInfo)
 	if update {
-		portal.Update()
+		portal.Update(nil)
 		portal.UpdateBridgeInfo()
 	}
 }
@@ -345,7 +344,7 @@ func (portal *Portal) Sync(backfill bool) {
 		portal.log.Debugln("Locking backfill (sync)")
 		portal.lockBackfill()
 		portal.log.Debugln("Starting sync backfill")
-		portal.backfill()
+		portal.forwardBackfill()
 		portal.log.Debugln("Unlocking backfill (sync)")
 		portal.unlockBackfill()
 	}
@@ -495,96 +494,6 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 	} else {
 		portal.log.Infofln("Ignoring unused message status type %v for event %s/%s %s/%s", msgStatus.Status, string(eventID), portal.MXID, msgStatus.GUID, portal.GUID)
 		return
-	}
-}
-
-func (portal *Portal) lockBackfill() {
-	portal.backfillLock.Lock()
-	portal.backfillWait.Wait()
-	portal.backfillWait.Add(1)
-	select {
-	case portal.backfillStart <- struct{}{}:
-	default:
-	}
-}
-
-func (portal *Portal) unlockBackfill() {
-	portal.backfillWait.Done()
-	portal.backfillLock.Unlock()
-}
-
-func (portal *Portal) backfill() {
-	defer func() {
-		if err := recover(); err != nil {
-			portal.log.Errorln("Panic while backfilling: %v\n%s", err, string(debug.Stack()))
-		}
-	}()
-
-	var messages []*imessage.Message
-	var err error
-	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
-	if lastMessage == nil && portal.BackfillStartTS == 0 {
-		portal.log.Debugfln("Fetching up to %d messages for initial backfill", portal.bridge.Config.Bridge.InitialBackfillLimit)
-		messages, err = portal.bridge.IM.GetMessagesWithLimit(portal.GUID, portal.bridge.Config.Bridge.InitialBackfillLimit, "TODO")
-	} else if lastMessage != nil {
-		portal.log.Debugfln("Fetching messages since %s for catchup backfill", lastMessage.Time().String())
-		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, lastMessage.Time())
-	} else if portal.BackfillStartTS != 0 {
-		startTime := time.Unix(0, portal.BackfillStartTS*int64(time.Millisecond))
-		portal.log.Debugfln("Fetching messages since %s for catchup backfill after portal recovery", startTime.String())
-		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, startTime)
-	}
-	if err != nil {
-		portal.log.Errorln("Failed to fetch messages for backfilling:", err)
-	} else if len(messages) == 0 {
-		portal.log.Debugln("Nothing to backfill")
-	} else {
-		portal.log.Infofln("Backfilling %d messages", len(messages))
-		var lastReadEvent id.EventID
-		for _, message := range messages {
-			mxid := portal.HandleiMessage(message, true)
-			if message.IsRead || message.IsFromMe {
-				lastReadEvent = mxid
-			}
-		}
-		portal.log.Infoln("Backfill finished")
-		if len(lastReadEvent) > 0 {
-			err = portal.markRead(portal.bridge.user.DoublePuppetIntent, lastReadEvent, time.Time{})
-			if err != nil {
-				portal.log.Warnfln("Failed to mark %s as read with double puppet: %v", lastReadEvent, err)
-			}
-		}
-	}
-}
-
-func (portal *Portal) disableNotifications() {
-	if !portal.bridge.Config.Bridge.BackfillDisableNotifs || portal.bridge.user.DoublePuppetIntent == nil {
-		return
-	}
-	portal.log.Debugfln("Disabling notifications for %s for backfilling", portal.bridge.user.MXID)
-	ruleID := fmt.Sprintf("net.maunium.silence_while_backfilling.%s", portal.MXID)
-	err := portal.bridge.user.DoublePuppetIntent.PutPushRule("global", pushrules.OverrideRule, ruleID, &mautrix.ReqPutPushRule{
-		Actions: []pushrules.PushActionType{pushrules.ActionDontNotify},
-		Conditions: []pushrules.PushCondition{{
-			Kind:    pushrules.KindEventMatch,
-			Key:     "room_id",
-			Pattern: string(portal.MXID),
-		}},
-	})
-	if err != nil {
-		portal.log.Warnfln("Failed to disable notifications for %s while backfilling: %v", portal.bridge.user.MXID, err)
-	}
-}
-
-func (portal *Portal) enableNotifications() {
-	if !portal.bridge.Config.Bridge.BackfillDisableNotifs || portal.bridge.user.DoublePuppetIntent == nil {
-		return
-	}
-	portal.log.Debugfln("Re-enabling notifications for %s after backfilling", portal.bridge.user.MXID)
-	ruleID := fmt.Sprintf("net.maunium.silence_while_backfilling.%s", portal.MXID)
-	err := portal.bridge.user.DoublePuppetIntent.DeletePushRule("global", pushrules.OverrideRule, ruleID)
-	if err != nil {
-		portal.log.Warnfln("Failed to re-enable notifications for %s after backfilling: %v", portal.bridge.user.MXID, err)
 	}
 }
 
@@ -798,7 +707,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	portal.lockBackfill()
 	portal.MXID = resp.RoomID
 	portal.log.Debugln("Storing created room ID", portal.MXID, "in database")
-	portal.Update()
+	portal.Update(nil)
 	portal.bridge.portalsLock.Lock()
 	portal.bridge.portalsByMXID[portal.MXID] = portal
 	portal.bridge.portalsLock.Unlock()
@@ -830,21 +739,23 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 		portal.log.Debugln("Ensuring double puppet for", portal.bridge.user.MXID, "is joined to portal")
 		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
 	}
+	firstEventResp, err := portal.MainIntent().SendMessageEvent(portal.MXID, PortalCreationDummyEvent, struct{}{})
+	if err != nil {
+		portal.log.Errorln("Failed to send dummy event to mark portal creation:", err)
+	} else {
+		portal.FirstEventID = firstEventResp.EventID
+		portal.Update(nil)
+	}
 	go func() {
-		portal.disableNotifications()
 		portal.log.Debugln("Starting initial backfill")
-		portal.backfill()
-		portal.enableNotifications()
+		portal.forwardBackfill()
 		portal.log.Debugln("Unlocking backfill (create)")
 		portal.unlockBackfill()
 	}()
 	portal.log.Debugln("Finished creating Matrix room")
 
 	if portal.bridge.IM.Capabilities().ChatBridgeResult {
-		portal.bridge.IPC.Send(ios.ReqChatBridgeResult, ios.ChatBridgeResult{
-			ChatGUID: portal.GUID,
-			MXID:     portal.MXID,
-		})
+		portal.bridge.IM.SendChatBridgeResult(portal.GUID, portal.MXID)
 	}
 
 	return nil
@@ -863,7 +774,7 @@ func (portal *Portal) addToSpace(user *User) {
 	} else {
 		portal.log.Debugfln("Added room to %s's personal filtering space (%s)", user.MXID, spaceID)
 		portal.InSpace = true
-		portal.Update()
+		portal.Update(nil)
 	}
 }
 
@@ -883,34 +794,6 @@ func (portal *Portal) MainIntent() *appservice.IntentAPI {
 		return portal.GetDMPuppet().Intent
 	}
 	return portal.bridge.Bot
-}
-
-func (portal *Portal) SetReply(content *event.MessageEventContent, msg *imessage.Message) {
-	if len(msg.ReplyToGUID) == 0 {
-		return
-	}
-	message := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.ReplyToGUID, msg.ReplyToPart)
-	if message != nil {
-		evt, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
-		if err != nil {
-			portal.log.Warnln("Failed to get reply target:", err)
-			return
-		}
-		if evt.Type == event.EventEncrypted {
-			_ = evt.Content.ParseRaw(evt.Type)
-			decryptedEvt, err := portal.bridge.Crypto.Decrypt(evt)
-			if err != nil {
-				portal.log.Warnln("Failed to decrypt reply target:", err)
-			} else {
-				evt = decryptedEvt
-			}
-		}
-		_ = evt.Content.ParseRaw(evt.Type)
-		content.SetReply(evt)
-	} else {
-		portal.log.Debugfln("Unknown reply target %s.%d", msg.ReplyToGUID, msg.ReplyToPart)
-	}
-	return
 }
 
 func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespSendEvent, error) {
@@ -1170,9 +1053,9 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		dbMessage.ChatGUID = portal.GUID
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
-		dbMessage.Timestamp = resp.Time.UnixNano() / 1e6
+		dbMessage.Timestamp = resp.Time.UnixMilli()
 		portal.sendDeliveryReceipt(evt.ID, resp.Service, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
-		dbMessage.Insert()
+		dbMessage.Insert(nil)
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
 		portal.log.Debugln("Handled Matrix message", evt.ID, "(waiting for echo)")
@@ -1397,7 +1280,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 		tapback.MessagePart = target.Part
 		tapback.Type = tapbackType
 		tapback.MXID = evt.ID
-		tapback.Insert()
+		tapback.Insert(nil)
 	} else {
 		portal.log.Debugfln("Handled Matrix reaction %s into iMessage tapback %s, replacing old %s", evt.ID, resp.GUID, existing.MXID)
 		if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
@@ -1479,7 +1362,7 @@ func (portal *Portal) UpdateAvatar(attachment *imessage.Attachment, intent *apps
 			portal.log.Errorfln("Failed to set room avatar: %v", err)
 			return nil
 		}
-		portal.Update()
+		portal.Update(nil)
 		portal.UpdateBridgeInfo()
 		portal.log.Debugfln("Successfully updated room avatar (%s / %s)", portal.AvatarURL, resp.EventID)
 		return &resp.EventID
@@ -1506,7 +1389,7 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 			portal.log.Warnfln("Echo for Matrix message %s has lower timestamp than expected (message: %s, expected: %s)", msg.Time.Unix(), dedup.Timestamp.Unix())
 		}
 		dbMessage.MXID = dedup.EventID
-		dbMessage.Insert()
+		dbMessage.Insert(nil)
 		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, true)
 		return true
 	}
@@ -1677,7 +1560,6 @@ func (portal *Portal) convertIMAttachment(msg *imessage.Message, attach *imessag
 	default:
 		content.MsgType = event.MsgFile
 	}
-	portal.SetReply(&content, msg)
 	return &content, extraContent, nil
 }
 
@@ -1724,7 +1606,6 @@ func (portal *Portal) convertIMText(msg *imessage.Message) *ConvertedMessage {
 		content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", event.TextToHTML(msg.Subject), event.TextToHTML(content.Body))
 		content.Body = fmt.Sprintf("**%s**\n%s", msg.Subject, msg.Text)
 	}
-	portal.SetReply(content, msg)
 	extraAttrs := map[string]any{
 		bridgeInfoService: msg.Service,
 	}
@@ -1746,6 +1627,37 @@ func (portal *Portal) convertIMText(msg *imessage.Message) *ConvertedMessage {
 	}
 }
 
+func (portal *Portal) GetReplyEvent(msg *imessage.Message) (id.EventID, *event.Event) {
+	if len(msg.ReplyToGUID) == 0 {
+		return "", nil
+	}
+	message := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.ReplyToGUID, msg.ReplyToPart)
+	if message != nil {
+		evt, err := portal.MainIntent().GetEvent(portal.MXID, message.MXID)
+		if err != nil {
+			portal.log.Warnln("Failed to get reply target event:", err)
+			return message.MXID, nil
+		}
+		if evt.Type == event.EventEncrypted {
+			_ = evt.Content.ParseRaw(evt.Type)
+			decryptedEvt, err := portal.bridge.Crypto.Decrypt(evt)
+			if err != nil {
+				portal.log.Warnln("Failed to decrypt reply target:", err)
+			} else {
+				evt = decryptedEvt
+			}
+		}
+		_ = evt.Content.ParseRaw(evt.Type)
+		return message.MXID, evt
+	} else if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		portal.log.Debugfln("Using deterministic event ID for unknown reply target %s.%d", msg.ReplyToGUID, msg.ReplyToPart)
+		return portal.deterministicEventID(msg.ReplyToGUID, msg.ReplyToPart), nil
+	} else {
+		portal.log.Debugfln("Unknown reply target %s.%d", msg.ReplyToGUID, msg.ReplyToPart)
+	}
+	return "", nil
+}
+
 func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.IntentAPI) []*ConvertedMessage {
 	attachments := portal.convertIMAttachments(msg, intent)
 	text := portal.convertIMText(msg)
@@ -1757,6 +1669,19 @@ func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.
 		attach.FormattedBody = text.Content.FormattedBody
 	} else if text != nil {
 		attachments = append(attachments, text)
+	}
+	if msg.ReplyToGUID != "" {
+		replyToMXID, replyToEvt := portal.GetReplyEvent(msg)
+		if replyToMXID != "" {
+			msg.ReplyProcessed = true
+			for _, part := range attachments {
+				if replyToEvt != nil {
+					part.Content.SetReply(replyToEvt)
+				} else {
+					part.Content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(replyToMXID)
+				}
+			}
+		}
 	}
 	return attachments
 }
@@ -1775,7 +1700,7 @@ func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *dat
 			portal.log.Debugfln("Handled iMessage attachment %s.%d -> %s", msg.GUID, index, resp.EventID)
 			dbMessage.MXID = resp.EventID
 			dbMessage.Part = index
-			dbMessage.Insert()
+			dbMessage.Insert(nil)
 			dbMessage.Part++
 		}
 	}
@@ -1787,7 +1712,12 @@ func (portal *Portal) handleIMError(msg *imessage.Message, dbMessage *database.M
 			MsgType: event.MsgNotice,
 			Body:    msg.ErrorNotice,
 		}
-		portal.SetReply(content, msg)
+		replyToMXID, replyToEvt := portal.GetReplyEvent(msg)
+		if replyToEvt != nil {
+			content.SetReply(replyToEvt)
+		} else if replyToMXID != "" {
+			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(replyToMXID)
+		}
 		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send error notice %s: %v", msg.GUID, err)
@@ -1795,7 +1725,7 @@ func (portal *Portal) handleIMError(msg *imessage.Message, dbMessage *database.M
 		}
 		portal.log.Debugfln("Handled iMessage error notice %s.%d -> %s", msg.GUID, dbMessage.Part, resp.EventID)
 		dbMessage.MXID = resp.EventID
-		dbMessage.Insert()
+		dbMessage.Insert(nil)
 		dbMessage.Part++
 	}
 }
@@ -1803,7 +1733,7 @@ func (portal *Portal) handleIMError(msg *imessage.Message, dbMessage *database.M
 func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *database.Message) *appservice.IntentAPI {
 	if msg.IsFromMe {
 		intent := portal.bridge.user.DoublePuppetIntent
-		if portal.isDuplicate(dbMessage, msg) {
+		if dbMessage != nil && portal.isDuplicate(dbMessage, msg) {
 			return nil
 		} else if intent == nil {
 			portal.log.Debugfln("Dropping own message in %s as double puppeting is not initialized", msg.ChatGUID)
@@ -1856,7 +1786,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 	dbMessage.ChatGUID = portal.GUID
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
-	dbMessage.Timestamp = msg.Time.UnixNano() / int64(time.Millisecond)
+	dbMessage.Timestamp = msg.Time.UnixMilli()
 
 	intent := portal.getIntentForMessage(msg, dbMessage)
 	if intent == nil {
@@ -1886,7 +1816,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	if groupUpdateEventID != nil {
 		dbMessage.MXID = *groupUpdateEventID
-		dbMessage.Insert()
+		dbMessage.Insert(nil)
 	}
 
 	if len(dbMessage.MXID) > 0 {
@@ -1910,16 +1840,9 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		portal.log.Debugfln("Unknown tapback target %s.%d", msg.Tapback.TargetGUID, msg.Tapback.TargetPart)
 		return
 	}
-	var intent *appservice.IntentAPI
-	if msg.IsFromMe {
-		intent = portal.bridge.user.DoublePuppetIntent
-		if intent == nil {
-			portal.log.Debugfln("Dropping own tapback in %s as double puppeting is not initialized", msg.ChatGUID)
-			return
-		}
-	} else {
-		puppet := portal.bridge.GetPuppetByLocalID(msg.Sender.LocalID)
-		intent = puppet.Intent
+	intent := portal.getIntentForMessage(msg, nil)
+	if intent == nil {
+		return
 	}
 	senderGUID := msg.Sender.String()
 
@@ -1953,7 +1876,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		}
 	}
 
-	resp, err := intent.SendMessageEvent(portal.MXID, event.EventReaction, &content)
+	resp, err := intent.SendMassagedMessageEvent(portal.MXID, event.EventReaction, &content, msg.Time.UnixMilli())
 
 	if err != nil {
 		portal.log.Errorfln("Failed to send tapback from %s: %v", msg.SenderText(), err)
@@ -1969,7 +1892,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		tapback.GUID = msg.GUID
 		tapback.Type = msg.Tapback.Type
 		tapback.MXID = resp.EventID
-		tapback.Insert()
+		tapback.Insert(nil)
 	} else {
 		existing.GUID = msg.GUID
 		existing.Type = msg.Tapback.Type

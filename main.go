@@ -255,7 +255,7 @@ func (br *IMBridge) PingServer() (start, serverTs, end time.Time) {
 	defer cancel()
 	err := br.AS.RequestWebsocket(ctx, &appservice.WebsocketRequest{
 		Command: "ping",
-		Data:    &PingData{Timestamp: start.UnixNano() / int64(time.Millisecond)},
+		Data:    &PingData{Timestamp: start.UnixMilli()},
 	}, &resp)
 	end = time.Now()
 	if err != nil {
@@ -553,7 +553,7 @@ func (br *IMBridge) StartupSync() {
 	if forceUpdateBridgeInfo {
 		br.DB.KV.Set(database.KVBridgeInfoVersion, database.ExpectedBridgeInfoVersion)
 	}
-	syncChatMaxAge := time.Duration(br.Config.Bridge.ChatSyncMaxAge*24*60) * time.Minute
+	syncChatMaxAge := time.Duration(br.Config.Bridge.Backfill.InitialSyncMaxAge*24*60) * time.Minute
 	chats, err := br.IM.GetChatsWithMessagesAfter(time.Now().Add(-syncChatMaxAge))
 	if err != nil {
 		br.Log.Errorln("Failed to get chat list to backfill:", err)

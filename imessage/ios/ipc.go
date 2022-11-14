@@ -353,11 +353,12 @@ func (ios *iOSConnector) handleIncomingBackfillTask(data json.RawMessage) interf
 	return nil
 }
 
-func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
+func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetMessagesAfter, &GetMessagesAfterRequest{
-		ChatGUID:  chatID,
-		Timestamp: timeToFloat(minDate),
+		ChatGUID:   chatID,
+		Timestamp:  timeToFloat(minDate),
+		BackfillID: backfillID,
 	}, &resp)
 	for _, msg := range resp {
 		ios.postprocessMessage(msg)
@@ -521,6 +522,25 @@ func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, event
 		GUID:     messageID,
 		EventID:  eventID,
 		Success:  success,
+	})
+}
+
+func (ios *iOSConnector) SendBackfillResult(chatID, backfillID string, success bool) {
+	if !ios.isAndroid {
+		// Only android needs message bridging confirmations
+		return
+	}
+	_ = ios.IPC.Send(ReqBackfillResult, &BackfillResult{
+		ChatGUID:   chatID,
+		BackfillID: backfillID,
+		Success:    success,
+	})
+}
+
+func (ios *iOSConnector) SendChatBridgeResult(guid string, mxid id.RoomID) {
+	_ = ios.IPC.Send(ReqChatBridgeResult, &ChatBridgeResult{
+		ChatGUID: guid,
+		MXID:     mxid,
 	})
 }
 

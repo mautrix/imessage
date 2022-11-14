@@ -324,7 +324,7 @@ func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int, backfil
 	return messages, err
 }
 
-func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time) ([]*imessage.Message, error) {
+func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time, _ string) ([]*imessage.Message, error) {
 	res, err := mac.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages after date: %w", err)

@@ -57,6 +57,8 @@ type Message struct {
 	ReplyToPart int      `json:"thread_originator_part,omitempty"`
 	Tapback     *Tapback `json:"associated_message,omitempty"`
 
+	ReplyProcessed bool `json:"-"`
+
 	// Deprecated: use attachments array
 	Attachment *Attachment `json:"attachment,omitempty"`
 

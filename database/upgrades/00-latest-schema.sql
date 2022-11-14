@@ -1,4 +1,4 @@
--- v0 -> v15: Latest schema
+-- v0 -> v17: Latest schema
 
 CREATE TABLE portal (
 	guid              TEXT    PRIMARY KEY,
@@ -9,8 +9,9 @@ CREATE TABLE portal (
 	encrypted         BOOLEAN NOT NULL DEFAULT false,
 	backfill_start_ts BIGINT NOT NULL DEFAULT 0,
 	in_space          BOOLEAN NOT NULL DEFAULT false,
-	correlation_id    TEXT,
-	thread_id         TEXT NOT NULL DEFAULT ''
+	thread_id         TEXT NOT NULL DEFAULT '',
+	first_event_id    TEXT NOT NULL DEFAULT '',
+	next_batch_id     TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE puppet (
@@ -18,8 +19,7 @@ CREATE TABLE puppet (
 	displayname     TEXT NOT NULL,
 	name_overridden BOOLEAN,
 	avatar_hash     TEXT,
-	avatar_url      TEXT,
-	correlation_id 	TEXT
+	avatar_url      TEXT
 );
 
 CREATE TABLE "user" (

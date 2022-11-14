@@ -42,6 +42,7 @@ const (
 	ReqPrepareDM           ipc.Command = "prepare_dm"
 	ReqMessageBridgeResult ipc.Command = "message_bridge_result"
 	ReqChatBridgeResult    ipc.Command = "chat_bridge_result"
+	ReqBackfillResult      ipc.Command = "backfill_result"
 	ReqUpcomingMessage     ipc.Command = "upcoming_message"
 )
 
@@ -105,8 +106,9 @@ type GetRecentMessagesRequest struct {
 }
 
 type GetMessagesAfterRequest struct {
-	ChatGUID  string  `json:"chat_guid"`
-	Timestamp float64 `json:"timestamp"`
+	ChatGUID   string  `json:"chat_guid"`
+	Timestamp  float64 `json:"timestamp"`
+	BackfillID string  `json:"backfill_id"`
 }
 
 type PingServerResponse struct {
@@ -137,6 +139,12 @@ type MessageBridgeResult struct {
 type ChatBridgeResult struct {
 	ChatGUID string    `json:"chat_guid"`
 	MXID     id.RoomID `json:"mxid"`
+}
+
+type BackfillResult struct {
+	ChatGUID   string `json:"chat_guid"`
+	BackfillID string `json:"backfill_id"`
+	Success    bool   `json:"success"`
 }
 
 type UpcomingMessage struct {
