@@ -800,16 +800,25 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 	return portal.sendMessage(portal.MainIntent(), event.EventMessage, content, map[string]interface{}{}, 0)
 }
 
+func (portal *Portal) encrypt(intent *appservice.IntentAPI, content *event.Content, eventType event.Type) (event.Type, error) {
+	if portal.Encrypted && portal.bridge.Crypto != nil {
+		intent.AddDoublePuppetValue(content)
+		err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, content)
+		if err != nil {
+			return eventType, fmt.Errorf("failed to encrypt event: %w", err)
+		}
+		eventType = event.EventEncrypted
+	}
+	return eventType, nil
+}
+
 func (portal *Portal) sendMessage(intent *appservice.IntentAPI, eventType event.Type, content interface{}, extraContent map[string]interface{}, timestamp int64) (*mautrix.RespSendEvent, error) {
 	wrappedContent := &event.Content{Parsed: content}
 	wrappedContent.Raw = extraContent
-	intent.AddDoublePuppetValue(wrappedContent)
-	if portal.Encrypted && portal.bridge.Crypto != nil {
-		err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, wrappedContent)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt event: %w", err)
-		}
-		eventType = event.EventEncrypted
+	var err error
+	eventType, err = portal.encrypt(intent, wrappedContent, eventType)
+	if err != nil {
+		return nil, err
 	}
 
 	_, _ = intent.UserTyping(portal.MXID, false, 0)
@@ -1389,6 +1398,7 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 			portal.log.Warnfln("Echo for Matrix message %s has lower timestamp than expected (message: %s, expected: %s)", msg.Time.Unix(), dedup.Timestamp.Unix())
 		}
 		dbMessage.MXID = dedup.EventID
+		dbMessage.Timestamp = msg.Time.UnixMilli()
 		dbMessage.Insert(nil)
 		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, true)
 		return true

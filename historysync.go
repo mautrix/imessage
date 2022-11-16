@@ -76,6 +76,14 @@ func (portal *Portal) forwardBackfill() {
 		backfillID = fmt.Sprintf("bridge-catchup-ts-%s::%d::%d", portal.Identifier.LocalID, startTime.UnixMilli(), time.Now().UnixMilli())
 		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, startTime, backfillID)
 	}
+	for index, msg := range messages {
+		if portal.bridge.DB.Message.GetByGUID(msg.ChatGUID, msg.GUID, 0) != nil {
+			portal.log.Debugfln("Skipping duplicate message %s at start of forward backfill batch", msg.GUID)
+			continue
+		}
+		messages = messages[index:]
+		break
+	}
 	if err != nil {
 		portal.log.Errorln("Failed to fetch messages for backfilling:", err)
 		go portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, false)
@@ -108,7 +116,7 @@ type messageIndex struct {
 	Index int
 }
 
-func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool) {
+func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
 	events := make([]*event.Event, 0, len(messages))
 	metas := make([]messageWithIndex, 0, len(messages))
 	metaIndexes := make(map[messageIndex]int, len(messages))
@@ -141,17 +149,23 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 					Raw:    conv.Extra,
 				},
 			}
+			var err error
+			evt.Type, err = portal.encrypt(intent, &evt.Content, evt.Type)
+			if err != nil {
+				return nil, nil, nil, false, err
+			}
 			intent.AddDoublePuppetValue(&evt.Content)
 			if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 				evt.ID = portal.deterministicEventID(msg.GUID, index)
 			}
+
 			events = append(events, evt)
 			metas = append(metas, messageWithIndex{msg, intent, nil, index})
 			metaIndexes[messageIndex{msg.GUID, index}] = len(metas)
 		}
 		isRead = msg.IsRead || msg.IsFromMe
 	}
-	return events, metas, metaIndexes, isRead
+	return events, metas, metaIndexes, isRead, nil
 }
 
 func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Message, forward bool) (success bool) {
@@ -167,7 +181,11 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		portal.log.Debugfln("Dropping non-forward backfill %s as MSC2716 is not enabled", backfillID)
 		return true
 	}
-	events, metas, metaIndexes, isRead := portal.convertBackfill(messages)
+	events, metas, metaIndexes, isRead, err := portal.convertBackfill(messages)
+	if err != nil {
+		portal.log.Errorfln("Failed to convert messages for backfill: %v", err)
+		return false
+	}
 	portal.log.Debugfln("Converted %d messages into %d events to backfill", len(messages), len(events))
 	if len(events) == 0 {
 		return true
