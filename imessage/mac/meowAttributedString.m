@@ -17,7 +17,40 @@
 #include <Foundation/Foundation.h>
 #include "meowAttributedString.h"
 
-char* meowDecodeAttributedString(char* input) {
+id jsonSafeObject(id obj);
+
+NSArray* jsonSafeArray(NSArray* input) {
+	NSMutableArray* output = [[NSMutableArray alloc] initWithCapacity:input.count];
+	[output enumerateObjectsUsingBlock:^(id object, NSUInteger idx, BOOL *stop) {
+		[output setObject:jsonSafeObject(object) atIndexedSubscript:idx];
+	}];
+	return output;
+}
+
+NSDictionary* jsonSafeDict(NSDictionary* input) {
+	NSMutableDictionary* output = [[NSMutableDictionary alloc] init];
+	[input enumerateKeysAndObjectsUsingBlock:^(id key, id obj, BOOL *stop) {
+		[output setObject:jsonSafeObject(obj) forKey:key];
+	}];
+	return output;
+}
+
+id jsonSafeObject(id obj) {
+	if ([obj isKindOfClass:[NSString class]] || [obj isKindOfClass:[NSNumber class]] || [obj isKindOfClass:[NSNull class]]) {
+		return obj;
+	} else if ([obj isKindOfClass:[NSData class]]) {
+		return [obj base64EncodedStringWithOptions:0];
+	} else if ([obj isKindOfClass:[NSURL class]]) {
+		return ((NSURL*)obj).absoluteString;
+	} else if ([obj isKindOfClass:[NSDictionary class]]) {
+		return jsonSafeDict(obj);
+	} else if ([obj isKindOfClass:[NSArray class]]) {
+		return jsonSafeArray(obj);
+	}
+	return @"unknown object";
+}
+
+char* meowUnsafeDecodeAttributedString(char* input) {
     NSString* nsInput = @(input);
     NSData* data = [[NSData alloc] initWithBase64EncodedString:nsInput options:0];
     NSUnarchiver* arch = [[NSUnarchiver alloc] initForReadingWithData:data];
@@ -29,7 +62,7 @@ char* meowDecodeAttributedString(char* input) {
             [attrs addObject:@{
                 @"location": [NSNumber numberWithUnsignedInteger:range.location],
                 @"length": [NSNumber numberWithUnsignedInteger:range.length],
-                @"values": attributes,
+                @"values": jsonSafeDict(attributes),
             }];
         }
     ];
@@ -46,4 +79,13 @@ char* meowDecodeAttributedString(char* input) {
     }
     NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
     return [jsonString UTF8String];
+}
+
+char* meowDecodeAttributedString(char* input) {
+	@try {
+		return meowUnsafeDecodeAttributedString(input);
+	}
+	@catch (NSException* err) {
+		return [[[err.name stringByAppendingString:@": "] stringByAppendingString:err.reason] UTF8String];
+	}
 }

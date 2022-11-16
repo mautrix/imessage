@@ -17,13 +17,11 @@
 package mac
 
 import (
-	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -200,35 +198,6 @@ func (mac *macOSDatabase) prepareMessages() error {
 	return nil
 }
 
-type hackyAttachmentList struct {
-	List  []*imessage.Attachment
-	Index []int
-}
-
-func (h hackyAttachmentList) Len() int {
-	return len(h.List)
-}
-
-func (h hackyAttachmentList) Less(i, j int) bool {
-	return h.Index[i] < h.Index[j]
-}
-
-func (h hackyAttachmentList) Swap(i, j int) {
-	h.Index[i], h.Index[j] = h.Index[j], h.Index[i]
-	h.List[i], h.List[j] = h.List[j], h.List[i]
-}
-
-func hackyAttachmentSort(attributedBody []byte, attachments []*imessage.Attachment) {
-	list := hackyAttachmentList{
-		List:  attachments,
-		Index: make([]int, len(attachments)),
-	}
-	for i, attach := range attachments {
-		list.Index[i] = bytes.Index(attributedBody, []byte(attach.GUID))
-	}
-	sort.Sort(list)
-}
-
 func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Message, err error) {
 	for res.Next() {
 		var message imessage.Message
@@ -268,8 +237,20 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 			}
 			message.Attachments = append(message.Attachments, &attachment)
 		}
-		if len(message.Attachments) > 0 && attributedBody != nil {
-			hackyAttachmentSort(attributedBody, message.Attachments)
+		if len(attributedBody) > 0 {
+			//fmt.Println(base64.StdEncoding.EncodeToString(attributedBody))
+			var decoded *AttributedString
+			decoded, err = meowDecodeAttributedString(attributedBody)
+			if err != nil {
+				mac.log.Warnfln("Failed to decode attributedBody of %s: %v", message.GUID, err)
+			} else {
+				//d, _ := json.MarshalIndent(decoded, "", "  ")
+				//fmt.Println(string(d))
+				if len(message.Text) == 0 && len(decoded.Content) > 0 {
+					message.Text = strings.TrimSpace(decoded.Content)
+				}
+				message.Attachments = decoded.SortAttachments(mac.log, message.Attachments)
+			}
 		}
 		if len(message.Attachments) > 0 {
 			message.Attachment = message.Attachments[0]
