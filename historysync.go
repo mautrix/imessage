@@ -54,7 +54,7 @@ func (portal *Portal) unlockBackfill() {
 func (portal *Portal) forwardBackfill() {
 	defer func() {
 		if err := recover(); err != nil {
-			portal.log.Errorln("Panic while backfilling: %v\n%s", err, string(debug.Stack()))
+			portal.log.Errorfln("Panic while backfilling: %v\n%s", err, string(debug.Stack()))
 		}
 	}()
 
@@ -239,7 +239,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		portal.log.Errorln("Failed to start transaction to save batch messages:", err)
 		return true
 	}
-	portal.log.Debugfln("Inserting %d event IDs to database to finish backfill %s", eventIDs, backfillID)
+	portal.log.Debugfln("Inserting %d event IDs to database to finish backfill %s", len(eventIDs), backfillID)
 	portal.finishBackfill(txn, eventIDs, metas)
 	portal.Update(txn)
 	err = txn.Commit()
