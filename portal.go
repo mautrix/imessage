@@ -237,12 +237,37 @@ func (portal *Portal) ReceiveMatrixEvent(_ bridge.User, evt *event.Event) {
 }
 
 func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
+	var members map[id.UserID]mautrix.JoinedMember
+	if !portal.bridge.Config.Bridge.Relay.Enabled {
+		membersResp, err := portal.MainIntent().JoinedMembers(portal.MXID)
+		if err != nil {
+			portal.log.Warnfln("Failed to get members in room to remove extra members: %v", err)
+		}
+		members = membersResp.Joined
+		delete(members, portal.bridge.Bot.UserID)
+		delete(members, portal.bridge.user.MXID)
+	}
 	for _, member := range chatInfo.Members {
 		puppet := portal.bridge.GetPuppetByLocalID(member)
 		puppet.Sync()
 		err := puppet.Intent.EnsureJoined(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", member, portal.MXID, err)
+		}
+		if members != nil {
+			delete(members, puppet.MXID)
+		}
+	}
+	if members != nil {
+		for userID := range members {
+			portal.log.Debugfln("Removing %s as they don't seem to be in the group anymore", userID)
+			_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
+				Reason: "user is no longer in group",
+				UserID: userID,
+			})
+			if err != nil {
+				portal.log.Errorfln("Failed to remove %s: %v", userID, err)
+			}
 		}
 	}
 }
@@ -1455,8 +1480,7 @@ func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *dat
 	if msg.GroupActionType == imessage.GroupActionAddUser {
 		return portal.setMembership(intent, puppet, event.MembershipJoin, dbMessage.Timestamp)
 	} else if msg.GroupActionType == imessage.GroupActionRemoveUser {
-		// TODO make sure this won't break anything and enable it
-		//return portal.setMembership(intent, puppet, event.MembershipLeave, dbMessage.Timestamp)
+		return portal.setMembership(intent, puppet, event.MembershipLeave, dbMessage.Timestamp)
 	} else {
 		portal.log.Warnfln("Unexpected group action type %d in member change item", msg.GroupActionType)
 	}
