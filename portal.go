@@ -1584,8 +1584,7 @@ func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *dat
 	if msg.GroupActionType == imessage.GroupActionAddUser {
 		return portal.setMembership(intent, puppet, event.MembershipJoin, dbMessage.Timestamp)
 	} else if msg.GroupActionType == imessage.GroupActionRemoveUser {
-		// TODO make sure this won't break anything and enable it
-		//return portal.setMembership(intent, puppet, event.MembershipLeave, dbMessage.Timestamp)
+		return portal.setMembership(intent, puppet, event.MembershipLeave, dbMessage.Timestamp)
 	} else {
 		portal.log.Warnfln("Unexpected group action type %d in member change item", msg.GroupActionType)
 	}
