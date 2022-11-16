@@ -305,7 +305,7 @@ type StartSyncRequest struct {
 const BridgeStatusConnected = "CONNECTED"
 
 func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
-	br.Log.Debugln("Sending bridge status to server")
+	br.Log.Debugln("Sending bridge status to server: %+v", state)
 	if state.Timestamp == 0 {
 		state.Timestamp = time.Now().Unix()
 	}
