@@ -447,7 +447,7 @@ func (portal *Portal) handleMessageLoop() {
 		var thing string
 		select {
 		case msg := <-portal.Messages:
-			portal.HandleiMessage(msg, false)
+			portal.HandleiMessage(msg)
 			thing = "iMessage"
 		case readReceipt := <-portal.ReadReceipts:
 			portal.HandleiMessageReadReceipt(readReceipt)
@@ -1790,7 +1790,7 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 	return portal.MainIntent()
 }
 
-func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.EventID {
+func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	var dbMessage *database.Message
 	var overrideSuccess bool
 	defer func() {
@@ -1855,7 +1855,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message, isBackfill bool) id.
 
 	if len(dbMessage.MXID) > 0 {
 		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, false)
-		if !isBackfill && !msg.IsFromMe && msg.IsRead {
+		if !msg.IsFromMe && msg.IsRead {
 			err := portal.markRead(portal.bridge.user.DoublePuppetIntent, dbMessage.MXID, time.Time{})
 			if err != nil {
 				portal.log.Warnln("Failed to mark %s as read after bridging: %v", dbMessage.MXID, err)
