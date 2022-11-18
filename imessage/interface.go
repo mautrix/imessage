@@ -62,7 +62,7 @@ type API interface {
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
 	SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool)
-	SendBackfillResult(chatID, backfillID string, success bool)
+	SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID)
 	SendChatBridgeResult(guid string, mxid id.RoomID)
 	NotifyUpcomingMessage(eventID id.EventID)
 

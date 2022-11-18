@@ -86,7 +86,7 @@ func (portal *Portal) forwardBackfill() {
 	}
 	if err != nil {
 		portal.log.Errorln("Failed to fetch messages for backfilling:", err)
-		go portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, false)
+		go portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, false, nil)
 	} else if len(messages) == 0 {
 		portal.log.Debugln("Nothing to backfill")
 	} else {
@@ -169,13 +169,17 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 }
 
 func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Message, forward bool) (success bool) {
+	idMap := make(map[string][]id.EventID, len(messages))
+	for _, msg := range messages {
+		idMap[msg.GUID] = []id.EventID{}
+	}
 	defer func() {
 		err := recover()
 		if err != nil {
 			success = false
 			portal.log.Errorfln("Backfill task panicked: %v\n%s", err, debug.Stack())
 		}
-		portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, success)
+		portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, success, idMap)
 	}()
 	if !portal.bridge.Config.Bridge.Backfill.MSC2716 && !forward {
 		portal.log.Debugfln("Dropping non-forward backfill %s as MSC2716 is not enabled", backfillID)
@@ -251,6 +255,9 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 				portal.log.Warnfln("Failed to mark %s as read with double puppet: %v", lastReadEvent, err)
 			}
 		}
+	}
+	for i, meta := range metas {
+		idMap[meta.GUID] = append(idMap[meta.GUID], eventIDs[i])
 	}
 	txn, err := portal.bridge.DB.Begin()
 	if err != nil {

@@ -525,15 +525,19 @@ func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, event
 	})
 }
 
-func (ios *iOSConnector) SendBackfillResult(chatID, backfillID string, success bool) {
+func (ios *iOSConnector) SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID) {
 	if !ios.isAndroid {
 		// Only android needs message bridging confirmations
 		return
+	}
+	if idMap == nil {
+		idMap = map[string][]id.EventID{}
 	}
 	_ = ios.IPC.Send(ReqBackfillResult, &BackfillResult{
 		ChatGUID:   chatID,
 		BackfillID: backfillID,
 		Success:    success,
+		MessageIDs: idMap,
 	})
 }
 

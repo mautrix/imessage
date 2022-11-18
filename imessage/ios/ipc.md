@@ -177,8 +177,12 @@ Another error response:
   * Doesn't have an ID, so it doesn't need to be responded to.
   * Only enabled for android-sms.
 * Confirm a backfill was completed (request type `backfill_result`).
-  * `success` (bool) - Whether the batch was successful.
+  * `chat_guid` (str) - The chat where the backfill happened.
   * `backfill_id` (str) - The backfill ID, either provided in `get_recent_messages` or the `backfill` task.
+  * `success` (bool) - Whether the batch was successful.
+  * `message_ids` (object) - Map from message GUID to list of Matrix event IDs.
+     The event ID list for a given message may be empty if the message was received, but wasn't recognized.
+     When `success` is `false`, the map may be entirely empty.
 * Notification of portal room ID for a chat GUID (request type `chat_bridge_result`)
   * Has fields `chat_guid`, `mxid`
   * Only enabled for android-sms.

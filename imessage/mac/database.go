@@ -99,7 +99,8 @@ func (mac *macOSDatabase) PrepareDM(guid string) error {
 func (mac *macOSDatabase) SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool) {
 }
 
-func (mac *macOSDatabase) SendBackfillResult(chatID, backfillID string, success bool) {}
+func (mac *macOSDatabase) SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID) {
+}
 
 func (mac *macOSDatabase) SendChatBridgeResult(guid string, mxid id.RoomID) {}
 

@@ -167,7 +167,7 @@ func (imh *iMessageHandler) HandleBackfillTask(task *imessage.BackfillTask) {
 	portal := imh.bridge.GetPortalByGUID(task.ChatGUID)
 	if len(portal.MXID) == 0 {
 		portal.log.Errorfln("Tried to backfill chat %s with no portal", portal.GUID)
-		imh.bridge.IM.SendBackfillResult(portal.GUID, task.BackfillID, false)
+		imh.bridge.IM.SendBackfillResult(portal.GUID, task.BackfillID, false, nil)
 		return
 	}
 	portal.log.Debugfln("Running backfill %s in background", task.BackfillID)

@@ -145,6 +145,8 @@ type BackfillResult struct {
 	ChatGUID   string `json:"chat_guid"`
 	BackfillID string `json:"backfill_id"`
 	Success    bool   `json:"success"`
+
+	MessageIDs map[string][]id.EventID `json:"message_ids"`
 }
 
 type UpcomingMessage struct {
