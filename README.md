@@ -5,7 +5,7 @@ using a Mac with SIP disabled, while a normal Mac can be used for basic
 bridging. A [websocket proxy](https://github.com/mautrix/wsproxy)
 is required to receive appservice events from the homeserver.
 
-### Documentation
+## Documentation
 All setup and usage instructions are located on
 [docs.mau.fi](https://docs.mau.fi/bridges/go/imessage/index.html):
 
