@@ -35,6 +35,7 @@ import (
 )
 
 var PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
+var HistorySyncMarker = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
 
 func (portal *Portal) lockBackfill() {
 	portal.backfillLock.Lock()
@@ -195,6 +196,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		return true
 	}
 	var eventIDs []id.EventID
+	var baseInsertionID id.EventID
 	if portal.bridge.Config.Bridge.Backfill.MSC2716 {
 		req := &mautrix.ReqBatchSend{
 			StateEventsAtStart: nil,
@@ -230,6 +232,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 			portal.NextBatchID = resp.NextBatchID
 		}
 		eventIDs = resp.EventIDs
+		baseInsertionID = resp.BaseInsertionEventID
 	} else {
 		eventIDs = make([]id.EventID, len(events))
 		for i, evt := range events {
@@ -271,8 +274,24 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	if err != nil {
 		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
 	}
+	if portal.bridge.Config.Bridge.Backfill.MSC2716 && (!forward || portal.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry) {
+		go portal.sendPostBackfillDummy(baseInsertionID)
+	}
 	portal.log.Infofln("Finished backfill %s", backfillID)
 	return true
+}
+
+func (portal *Portal) sendPostBackfillDummy(insertionEventId id.EventID) {
+	resp, err := portal.MainIntent().SendMessageEvent(portal.MXID, HistorySyncMarker, map[string]interface{}{
+		"org.matrix.msc2716.marker.insertion": insertionEventId,
+		//"m.marker.insertion":                  insertionEventId,
+	})
+	if err != nil {
+		portal.log.Errorln("Error sending post-backfill dummy event:", err)
+		return
+	} else {
+		portal.log.Debugfln("Sent post-backfill dummy event %s", resp.EventID)
+	}
 }
 
 func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.EventID, metas []messageWithIndex) {
