@@ -47,9 +47,10 @@ type BridgeConfig struct {
 	LoginSharedSecret     string `yaml:"login_shared_secret"`
 	DoublePuppetServerURL string `yaml:"double_puppet_server_url"`
 	Backfill              struct {
-		InitialLimit      int     `yaml:"initial_limit"`
-		InitialSyncMaxAge float64 `yaml:"initial_sync_max_age"`
-		MSC2716           bool    `yaml:"msc2716"`
+		InitialLimit         int     `yaml:"initial_limit"`
+		InitialSyncMaxAge    float64 `yaml:"initial_sync_max_age"`
+		UnreadHoursThreshold int     `yaml:"unread_hours_threshold"`
+		MSC2716              bool    `yaml:"msc2716"`
 	} `yaml:"backfill"`
 	PeriodicSync       bool `yaml:"periodic_sync"`
 	FindPortalsIfEmpty bool `yaml:"find_portals_if_db_empty"`

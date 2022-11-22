@@ -121,6 +121,7 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 	events := make([]*event.Event, 0, len(messages))
 	metas := make([]messageWithIndex, 0, len(messages))
 	metaIndexes := make(map[messageIndex]int, len(messages))
+	unreadThreshold := time.Duration(portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold) * time.Hour
 	var isRead bool
 	for _, msg := range messages {
 		if msg.ItemType != imessage.ItemTypeMessage && msg.Tapback == nil {
@@ -164,7 +165,7 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 			metas = append(metas, messageWithIndex{msg, intent, nil, index})
 			metaIndexes[messageIndex{msg.GUID, index}] = len(metas)
 		}
-		isRead = msg.IsRead || msg.IsFromMe
+		isRead = msg.IsRead || msg.IsFromMe || (unreadThreshold >= 0 && time.Since(msg.Time) > unreadThreshold)
 	}
 	return events, metas, metaIndexes, isRead, nil
 }
