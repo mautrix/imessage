@@ -71,6 +71,9 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	args := mac.args
 	if mac.mergeChats {
 		args = append(args, "--enable-merged-chats")
+		mac.log.Debugln("Merged chats are enabled")
+	} else {
+		mac.log.Debugln("Merged chats are disabled")
 	}
 	mac.proc = exec.Command(mac.path, args...)
 
