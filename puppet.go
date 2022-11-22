@@ -274,7 +274,7 @@ func (puppet *Puppet) updatePortalAvatar() {
 		}
 		portal.AvatarURL = puppet.AvatarURL
 		portal.AvatarHash = puppet.AvatarHash
-		portal.Update()
+		portal.Update(nil)
 		portal.UpdateBridgeInfo()
 	})
 }
@@ -288,7 +288,7 @@ func (puppet *Puppet) updatePortalName() {
 			}
 		}
 		portal.Name = puppet.Displayname
-		portal.Update()
+		portal.Update(nil)
 		portal.UpdateBridgeInfo()
 	})
 }

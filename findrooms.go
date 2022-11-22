@@ -75,8 +75,8 @@ func (br *IMBridge) findPortal(roomID id.RoomID, state mautrix.RoomStateMap) boo
 		portal.AvatarURL = bridgeInfo.Channel.AvatarURL.ParseOrIgnore()
 		portal.Encrypted = isEncrypted
 		// TODO find last message timestamp somewhere
-		portal.BackfillStartTS = time.Now().UnixNano() / int64(time.Millisecond)
-		portal.Update()
+		portal.BackfillStartTS = time.Now().UnixMilli()
+		portal.Update(nil)
 		br.Log.Infofln("Found portal %s to %s", roomID, portal.GUID)
 		return true
 	}

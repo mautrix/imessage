@@ -155,7 +155,7 @@ Another error response:
   * Returns list of messages (see incoming messages format below)
   * List should be sorted by timestamp in ascending order
 * Get X most recent messages (request type `get_recent_messages`)
-  * Request includes `chat_guid` and `limit`
+  * Request includes `chat_guid`, `limit` and `backfill_id`
   * Same return type as with `get_messages_after`
 * Resolve an identifier into a private chat GUID (request type `resolve_identifier`)
   * `identifier` (str) - International phone number or email
@@ -176,6 +176,13 @@ Another error response:
   * Has fields `chat_guid`, `message_guid`, `event_id`, and `success`.
   * Doesn't have an ID, so it doesn't need to be responded to.
   * Only enabled for android-sms.
+* Confirm a backfill was completed (request type `backfill_result`).
+  * `chat_guid` (str) - The chat where the backfill happened.
+  * `backfill_id` (str) - The backfill ID, either provided in `get_recent_messages` or the `backfill` task.
+  * `success` (bool) - Whether the batch was successful.
+  * `message_ids` (object) - Map from message GUID to list of Matrix event IDs.
+     The event ID list for a given message may be empty if the message was received, but wasn't recognized.
+     When `success` is `false`, the map may be entirely empty.
 * Notification of portal room ID for a chat GUID (request type `chat_bridge_result`)
   * Has fields `chat_guid`, `mxid`
   * Only enabled for android-sms.
@@ -257,3 +264,6 @@ Another error response:
 * Get bridged message IDs after certain time (request type `message_ids_after_time`)
   * `chat_guid` (str) - The chat GUID to get the message IDs from.
   * `after_time` (double) - The unix timestamp after which to find messages.
+* Backfill task (request type `backfill`)
+  * `chat_guid` (str) - The chat GUID to backfill.
+  * `messages` (list of objects) - The messages to backfill. Same list format as `get_recent_messages`. Sorted from oldest to newest message.

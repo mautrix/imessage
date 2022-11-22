@@ -37,8 +37,8 @@ var (
 type API interface {
 	Start(readyCallback func()) error
 	Stop()
-	GetMessagesSinceDate(chatID string, minDate time.Time) ([]*Message, error)
-	GetMessagesWithLimit(chatID string, limit int) ([]*Message, error)
+	GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*Message, error)
+	GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*Message, error)
 	GetChatsWithMessagesAfter(minDate time.Time) ([]ChatIdentifier, error)
 	MessageChan() <-chan *Message
 	ReadReceiptChan() <-chan *ReadReceipt
@@ -46,6 +46,7 @@ type API interface {
 	ChatChan() <-chan *ChatInfo
 	ContactChan() <-chan *Contact
 	MessageStatusChan() <-chan *SendMessageStatus
+	BackfillTaskChan() <-chan *BackfillTask
 	GetContactInfo(identifier string) (*Contact, error)
 	GetContactList() ([]*Contact, error)
 	GetChatInfo(chatID, threadID string) (*ChatInfo, error)
@@ -61,6 +62,8 @@ type API interface {
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
 	SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool)
+	SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID)
+	SendChatBridgeResult(guid string, mxid id.RoomID)
 	NotifyUpcomingMessage(eventID id.EventID)
 
 	PreStartupSyncHook() (StartupSyncHookResponse, error)

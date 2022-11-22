@@ -45,6 +45,7 @@ func (imh *iMessageHandler) Start() {
 	chats := imh.bridge.IM.ChatChan()
 	contacts := imh.bridge.IM.ContactChan()
 	messageStatuses := imh.bridge.IM.MessageStatusChan()
+	backfillTasks := imh.bridge.IM.BackfillTaskChan()
 	for {
 		start := time.Now()
 		var thing string
@@ -67,13 +68,16 @@ func (imh *iMessageHandler) Start() {
 		case status := <-messageStatuses:
 			imh.HandleMessageStatus(status)
 			thing = "message status"
+		case backfillTask := <-backfillTasks:
+			imh.HandleBackfillTask(backfillTask)
+			thing = "backfill task"
 		case <-imh.stop:
 			return
 		}
 		imh.log.Debugfln(
-			"Handled %s in %s (queued: %dm/%dr/%dt/%dch/%dct/%ds)",
+			"Handled %s in %s (queued: %dm/%dr/%dt/%dch/%dct/%ds/%db)",
 			thing, time.Since(start),
-			len(messages), len(readReceipts), len(typingNotifications), len(chats), len(contacts), len(messageStatuses),
+			len(messages), len(readReceipts), len(typingNotifications), len(chats), len(contacts), len(messageStatuses), len(backfillTasks),
 		)
 	}
 }
@@ -157,6 +161,17 @@ func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
 			return
 		}
 	}
+}
+
+func (imh *iMessageHandler) HandleBackfillTask(task *imessage.BackfillTask) {
+	portal := imh.bridge.GetPortalByGUID(task.ChatGUID)
+	if len(portal.MXID) == 0 {
+		portal.log.Errorfln("Tried to backfill chat %s with no portal", portal.GUID)
+		imh.bridge.IM.SendBackfillResult(portal.GUID, task.BackfillID, false, nil)
+		return
+	}
+	portal.log.Debugfln("Running backfill %s in background", task.BackfillID)
+	go portal.sendBackfill(task.BackfillID, task.Messages, false)
 }
 
 func (imh *iMessageHandler) HandleContact(contact *imessage.Contact) {

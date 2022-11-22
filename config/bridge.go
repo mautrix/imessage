@@ -42,16 +42,18 @@ type BridgeConfig struct {
 	MaxHandleSeconds int    `yaml:"max_handle_seconds"`
 	DeviceID         string `yaml:"device_id"`
 
-	SyncWithCustomPuppets bool    `yaml:"sync_with_custom_puppets"`
-	SyncDirectChatList    bool    `yaml:"sync_direct_chat_list"`
-	LoginSharedSecret     string  `yaml:"login_shared_secret"`
-	DoublePuppetServerURL string  `yaml:"double_puppet_server_url"`
-	ChatSyncMaxAge        float64 `yaml:"chat_sync_max_age"`
-	InitialBackfillLimit  int     `yaml:"initial_backfill_limit"`
-	BackfillDisableNotifs bool    `yaml:"initial_backfill_disable_notifications"`
-	PeriodicSync          bool    `yaml:"periodic_sync"`
-	FindPortalsIfEmpty    bool    `yaml:"find_portals_if_db_empty"`
-	MediaViewer           struct {
+	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
+	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
+	LoginSharedSecret     string `yaml:"login_shared_secret"`
+	DoublePuppetServerURL string `yaml:"double_puppet_server_url"`
+	Backfill              struct {
+		InitialLimit      int     `yaml:"initial_limit"`
+		InitialSyncMaxAge float64 `yaml:"initial_sync_max_age"`
+		MSC2716           bool    `yaml:"msc2716"`
+	} `yaml:"backfill"`
+	PeriodicSync       bool `yaml:"periodic_sync"`
+	FindPortalsIfEmpty bool `yaml:"find_portals_if_db_empty"`
+	MediaViewer        struct {
 		URL        string `yaml:"url"`
 		SMSMinSize int    `yaml:"sms_min_size"`
 		IMMinSize  int    `yaml:"imessage_min_size"`
@@ -65,12 +67,10 @@ type BridgeConfig struct {
 		MimeType   string   `yaml:"mime_type"`
 		Extension  string   `yaml:"extension"`
 	} `yaml:"convert_video"`
-
-	ForceUniformDMSenders bool `yaml:"force_uniform_dm_senders"`
-
-	FederateRooms bool `yaml:"federate_rooms"`
-
-	CommandPrefix string `yaml:"command_prefix"`
+	CommandPrefix         string `yaml:"command_prefix"`
+	ForceUniformDMSenders bool   `yaml:"force_uniform_dm_senders"`
+	FederateRooms         bool   `yaml:"federate_rooms"`
+	CaptionInMessage      bool   `yaml:"caption_in_message"`
 
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 

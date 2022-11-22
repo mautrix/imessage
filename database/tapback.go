@@ -90,8 +90,11 @@ func (tapback *Tapback) Scan(row dbutil.Scannable) *Tapback {
 	return tapback
 }
 
-func (tapback *Tapback) Insert() {
-	_, err := tapback.db.Exec("INSERT INTO tapback (chat_guid, guid, message_guid, message_part, sender_guid, type, mxid) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+func (tapback *Tapback) Insert(txn dbutil.Execable) {
+	if txn == nil {
+		txn = tapback.db
+	}
+	_, err := txn.Exec("INSERT INTO tapback (chat_guid, guid, message_guid, message_part, sender_guid, type, mxid) VALUES ($1, $2, $3, $4, $5, $6, $7)",
 		tapback.ChatGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.Type, tapback.MXID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to insert tapback %s/%s.%d/%s: %v", tapback.ChatGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)

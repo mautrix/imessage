@@ -62,12 +62,19 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "sync_direct_chat_list")
 	helper.Copy(up.Str|up.Null, "bridge", "login_shared_secret")
 	helper.Copy(up.Str|up.Null, "bridge", "double_puppet_server_url")
-	helper.Copy(up.Float|up.Int, "bridge", "chat_sync_max_age")
-	helper.Copy(up.Int, "bridge", "initial_backfill_limit")
-	helper.Copy(up.Bool, "bridge", "initial_backfill_disable_notifications")
+	if legacyBackfillLimit, ok := helper.Get(up.Int, "bridge", "initial_backfill_limit"); ok {
+		helper.Set(up.Int, legacyBackfillLimit, "bridge", "backfill", "initial_limit")
+	} else {
+		helper.Copy(up.Int, "bridge", "backfill", "initial_limit")
+	}
+	if legacySyncMaxAge, ok := helper.Get(up.Float|up.Int, "bridge", "chat_sync_max_age"); ok {
+		helper.Set(up.Float, legacySyncMaxAge, "bridge", "backfill", "initial_sync_max_age")
+	} else {
+		helper.Copy(up.Float|up.Int, "bridge", "backfill", "initial_sync_max_age")
+	}
+	helper.Copy(up.Bool, "bridge", "backfill", "msc2716")
 	helper.Copy(up.Bool, "bridge", "periodic_sync")
 	helper.Copy(up.Bool, "bridge", "find_portals_if_db_empty")
-	helper.Copy(up.Bool, "bridge", "force_uniform_dm_senders")
 	if legacyMediaViewerURL, ok := helper.Get(up.Str, "bridge", "media_viewer_url"); ok && legacyMediaViewerURL != "" {
 		helper.Set(up.Str, legacyMediaViewerURL, "bridge", "media_viewer", "url")
 
@@ -88,7 +95,6 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Copy(up.Int, "bridge", "media_viewer", "imessage_min_size")
 		helper.Copy(up.Str, "bridge", "media_viewer", "template")
 	}
-	helper.Copy(up.Bool, "bridge", "federate_rooms")
 	helper.Copy(up.Bool, "bridge", "convert_heif")
 	helper.Copy(up.Bool, "bridge", "convert_tiff")
 	helper.Copy(up.Bool, "bridge", "convert_video", "enabled")
@@ -96,6 +102,9 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "bridge", "convert_video", "extension")
 	helper.Copy(up.Str, "bridge", "convert_video", "mime_type")
 	helper.Copy(up.Str, "bridge", "command_prefix")
+	helper.Copy(up.Bool, "bridge", "force_uniform_dm_senders")
+	helper.Copy(up.Bool, "bridge", "federate_rooms")
+	helper.Copy(up.Bool, "bridge", "caption_in_message")
 
 	helper.Copy(up.Bool, "bridge", "encryption", "allow")
 	helper.Copy(up.Bool, "bridge", "encryption", "default")

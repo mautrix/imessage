@@ -102,8 +102,7 @@ type Message struct {
 }
 
 func (msg *Message) Time() time.Time {
-	// Add 1 ms to avoid rounding down
-	return time.Unix(msg.Timestamp/1000, ((msg.Timestamp%1000)+1)*int64(time.Millisecond))
+	return time.UnixMilli(msg.Timestamp)
 }
 
 func (msg *Message) Scan(row dbutil.Scannable) *Message {
@@ -117,8 +116,11 @@ func (msg *Message) Scan(row dbutil.Scannable) *Message {
 	return msg
 }
 
-func (msg *Message) Insert() {
-	_, err := msg.db.Exec("INSERT INTO message (chat_guid, guid, part, mxid, sender_guid, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
+func (msg *Message) Insert(txn dbutil.Execable) {
+	if txn == nil {
+		txn = msg.db
+	}
+	_, err := txn.Exec("INSERT INTO message (chat_guid, guid, part, mxid, sender_guid, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
 		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp)
 	if err != nil {
 		msg.log.Warnfln("Failed to insert %s.%d@%s: %v", msg.GUID, msg.Part, msg.ChatGUID, err)

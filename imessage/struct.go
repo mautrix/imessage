@@ -57,6 +57,8 @@ type Message struct {
 	ReplyToPart int      `json:"thread_originator_part,omitempty"`
 	Tapback     *Tapback `json:"associated_message,omitempty"`
 
+	ReplyProcessed bool `json:"-"`
+
 	// Deprecated: use attachments array
 	Attachment *Attachment `json:"attachment,omitempty"`
 
@@ -275,6 +277,12 @@ type SendMessageStatus struct {
 	Service    string `json:"service"`
 	Message    string `json:"message,omitempty"`
 	StatusCode string `json:"status_code,omitempty"`
+}
+
+type BackfillTask struct {
+	ChatGUID   string     `json:"chat_guid"`
+	Messages   []*Message `json:"messages"`
+	BackfillID string     `json:"backfill_id"`
 }
 
 type StartupSyncHookResponse struct {

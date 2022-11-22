@@ -39,6 +39,3 @@ NSArray<CNLabeledValue<CNPhoneNumber*>*>* meowGetPhoneNumbersFromContact(CNConta
 NSString* meowGetPhoneArrayItem(NSArray<CNLabeledValue<CNPhoneNumber*>*>* arr, unsigned long i);
 NSString* meowGetEmailArrayItem(NSArray<CNLabeledValue<NSString*>*>* arr, unsigned long i);
 unsigned long meowGetArrayLength(NSArray* arr);
-
-NSAutoreleasePool* meowMakePool();
-void meowReleasePool(NSAutoreleasePool* pool);
