@@ -243,6 +243,7 @@ func (id Identifier) String() string {
 type SendResponse struct {
 	GUID     string    `json:"guid"`
 	Service  string    `json:"service"`
+	ChatGUID string    `json:"chat_guid"`
 	Time     time.Time `json:"-"`
 	UnixTime float64   `json:"timestamp"`
 }
@@ -255,7 +256,8 @@ type ConnectorCapabilities struct {
 	SendCaptions             bool
 	BridgeState              bool
 	MessageStatusCheckpoints bool
-	MergedChats              bool
+	LegacyMergedChats        bool
+	ContactChatMerging       bool
 	RichLinks                bool
 	ChatBridgeResult         bool
 }

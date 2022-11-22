@@ -106,11 +106,6 @@ func (mac *macOSDatabase) SendChatBridgeResult(guid string, mxid id.RoomID) {}
 
 func (mac *macOSDatabase) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
-		MessageSendResponses:    false,
-		SendTapbacks:            false,
-		SendReadReceipts:        false,
-		SendTypingNotifications: false,
-		SendCaptions:            false,
-		BridgeState:             false,
+		ContactChatMerging: true,
 	}
 }

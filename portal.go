@@ -496,7 +496,7 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 	}
 	portal.log.Debugfln("Processing message status with type %v for event %s/%s %s/%s", msgStatus.Status, string(eventID), portal.MXID, msgStatus.GUID, portal.GUID)
 	if msgStatus.Status == "sent" {
-		portal.sendSuccessCheckpoint(eventID, msgStatus.Service)
+		portal.sendSuccessCheckpoint(eventID, msgStatus.Service, msgStatus.ChatGUID)
 	} else if msgStatus.Status == "failed" {
 		evt, err := portal.MainIntent().GetEvent(portal.MXID, eventID)
 		if err != nil {
@@ -515,7 +515,7 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 		} else if len(msgStatus.StatusCode) != 0 {
 			errString = msgStatus.StatusCode
 		}
-		portal.sendErrorMessage(evt, errors.New(errString), humanReadableError, true, status.MsgStatusPermFailure)
+		portal.sendErrorMessage(evt, errors.New(errString), humanReadableError, true, status.MsgStatusPermFailure, msgStatus.ChatGUID)
 	} else {
 		portal.log.Infofln("Ignoring unused message status type %v for event %s/%s %s/%s", msgStatus.Status, string(eventID), portal.MXID, msgStatus.GUID, portal.GUID)
 		return
@@ -867,7 +867,7 @@ func (portal *Portal) encryptFile(data []byte, mimeType string) (string, *event.
 	return "application/octet-stream", file
 }
 
-func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanReadableError string, isCertain bool, checkpointStatus status.MessageCheckpointStatus) {
+func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanReadableError string, isCertain bool, checkpointStatus status.MessageCheckpointStatus, handle string) {
 	portal.bridge.SendMessageCheckpoint(evt, status.MsgStepRemote, rootErr, checkpointStatus, 0)
 
 	possibility := "may not have been"
@@ -904,8 +904,14 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanRea
 			Message: humanReadableError,
 		}
 		content.FillLegacyBooleans()
-
-		_, err := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &content)
+		extraContent := map[string]any{}
+		if handle != "" && portal.bridge.IM.Capabilities().ContactChatMerging {
+			extraContent["fi.mau.imessage.handle"] = extraContent
+		}
+		_, err := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &event.Content{
+			Parsed: &content,
+			Raw:    extraContent,
+		})
 		if err != nil {
 			portal.log.Warnfln("Failed to send message send status event:", err)
 			return
@@ -923,7 +929,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanRea
 	}
 }
 
-func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, service string, sendCheckpoint bool) {
+func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, service, handle string, sendCheckpoint bool) {
 	if portal.bridge.Config.Bridge.DeliveryReceipts {
 		err := portal.bridge.Bot.MarkRead(portal.MXID, eventID)
 		if err != nil {
@@ -932,11 +938,11 @@ func (portal *Portal) sendDeliveryReceipt(eventID id.EventID, service string, se
 	}
 
 	if sendCheckpoint {
-		portal.sendSuccessCheckpoint(eventID, service)
+		portal.sendSuccessCheckpoint(eventID, service, handle)
 	}
 }
 
-func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) {
+func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle string) {
 	// We don't have access to the entire event, so we are omitting some
 	// metadata here. However, that metadata can be inferred from previous
 	// checkpoints.
@@ -960,11 +966,16 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service string) 
 			Status: event.MessageStatusSuccess,
 		}
 		mainContent.FillLegacyBooleans()
+		var extraContent map[string]any
+		if portal.bridge.IM.Capabilities().ContactChatMerging {
+			extraContent = map[string]any{
+				"fi.mau.imessage.service": service,
+				"fi.mau.imessage.handle":  handle,
+			}
+		}
 		content := &event.Content{
 			Parsed: mainContent,
-			Raw: map[string]interface{}{
-				bridgeInfoService: service,
-			},
+			Raw:    extraContent,
 		}
 
 		statusIntent := portal.bridge.Bot
@@ -1036,7 +1047,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout)
+		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout, "")
 		return
 	}
 
@@ -1081,14 +1092,14 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 				statusCode = status.MsgStatusTimeout
 			}
 		}
-		portal.sendErrorMessage(evt, err, ipcErr.Message, certain, statusCode)
+		portal.sendErrorMessage(evt, err, ipcErr.Message, certain, statusCode, "")
 	} else if resp != nil {
 		dbMessage := portal.bridge.DB.Message.New()
 		dbMessage.ChatGUID = portal.GUID
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
 		dbMessage.Timestamp = resp.Time.UnixMilli()
-		portal.sendDeliveryReceipt(evt.ID, resp.Service, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
+		portal.sendDeliveryReceipt(evt.ID, resp.Service, resp.ChatGUID, !portal.bridge.IM.Capabilities().MessageStatusCheckpoints)
 		dbMessage.Insert(nil)
 		portal.log.Debugln("Handled Matrix message", evt.ID, "->", resp.GUID)
 	} else {
@@ -1107,7 +1118,7 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		url, err = msg.URL.Parse()
 	}
 	if err != nil {
-		portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), "malformed attachment URL", true, status.MsgStatusPermFailure)
+		portal.sendErrorMessage(evt, fmt.Errorf("malformed attachment URL: %w", err), "malformed attachment URL", true, status.MsgStatusPermFailure, "")
 		portal.log.Warnfln("Malformed content URI in %s: %v", evt.ID, err)
 		return nil, nil
 	}
@@ -1165,14 +1176,14 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 	var data []byte
 	data, err = portal.MainIntent().DownloadBytes(url)
 	if err != nil {
-		portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), "failed to download attachment", true, status.MsgStatusPermFailure)
+		portal.sendErrorMessage(evt, fmt.Errorf("failed to download attachment: %w", err), "failed to download attachment", true, status.MsgStatusPermFailure, "")
 		portal.log.Errorfln("Failed to download media in %s: %v", evt.ID, err)
 		return
 	}
 	if file != nil {
 		err = file.DecryptInPlace(data)
 		if err != nil {
-			portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), "failed to decrypt attachment", true, status.MsgStatusPermFailure)
+			portal.sendErrorMessage(evt, fmt.Errorf("failed to decrypt attachment: %w", err), "failed to decrypt attachment", true, status.MsgStatusPermFailure, "")
 			portal.log.Errorfln("Failed to decrypt media in %s: %v", evt.ID, err)
 			return
 		}
@@ -1285,7 +1296,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout)
+		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout, "")
 		return
 	}
 
@@ -1344,7 +1355,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 
 	if err := portal.shouldHandleMessage(evt); err != nil {
 		portal.log.Debug(err)
-		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout)
+		portal.sendErrorMessage(evt, err, err.Error(), true, status.MsgStatusTimeout, "")
 		return
 	}
 
@@ -1425,7 +1436,7 @@ func (portal *Portal) isDuplicate(dbMessage *database.Message, msg *imessage.Mes
 		dbMessage.MXID = dedup.EventID
 		dbMessage.Timestamp = msg.Time.UnixMilli()
 		dbMessage.Insert(nil)
-		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, true)
+		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, msg.ChatGUID, true)
 		return true
 	}
 	portal.messageDedupLock.Unlock()
@@ -1510,8 +1521,6 @@ func (portal *Portal) convertIMAttachment(msg *imessage.Message, attach *imessag
 			portal.log.Errorf("Failed to convert audio message to ogg/opus: %v - sending without conversion", err)
 		}
 	}
-
-	extraContent[bridgeInfoService] = msg.Service
 
 	if CanConvertHEIF && portal.bridge.Config.Bridge.ConvertHEIF && (mimeType == "image/heic" || mimeType == "image/heif") {
 		convertedData, err := ConvertHEIF(data)
@@ -1640,9 +1649,7 @@ func (portal *Portal) convertIMText(msg *imessage.Message) *ConvertedMessage {
 		content.FormattedBody = fmt.Sprintf("<strong>%s</strong><br>%s", event.TextToHTML(msg.Subject), event.TextToHTML(content.Body))
 		content.Body = fmt.Sprintf("**%s**\n%s", msg.Subject, msg.Text)
 	}
-	extraAttrs := map[string]any{
-		bridgeInfoService: msg.Service,
-	}
+	extraAttrs := map[string]any{}
 	if msg.RichLink != nil {
 		portal.log.Debugfln("Handling rich link in iMessage %s", msg.GUID)
 		linkPreview := portal.convertRichLinkToBeeper(msg.RichLink)
@@ -1692,6 +1699,13 @@ func (portal *Portal) GetReplyEvent(msg *imessage.Message) (id.EventID, *event.E
 	return "", nil
 }
 
+func (portal *Portal) addSourceMetadata(msg *imessage.Message, to map[string]any) {
+	if portal.bridge.IM.Capabilities().ContactChatMerging {
+		to["fi.mau.imessage.service"] = msg.Service
+		to["fi.mau.imessage.handle"] = msg.ChatGUID
+	}
+}
+
 func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.IntentAPI) []*ConvertedMessage {
 	attachments := portal.convertIMAttachments(msg, intent)
 	text := portal.convertIMText(msg)
@@ -1703,6 +1717,9 @@ func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.
 		attach.FormattedBody = text.Content.FormattedBody
 	} else if text != nil {
 		attachments = append(attachments, text)
+	}
+	for _, part := range attachments {
+		portal.addSourceMetadata(msg, part.Extra)
 	}
 	if msg.ReplyToGUID != "" {
 		replyToMXID, replyToEvt := portal.GetReplyEvent(msg)
@@ -1752,7 +1769,9 @@ func (portal *Portal) handleIMError(msg *imessage.Message, dbMessage *database.M
 		} else if replyToMXID != "" {
 			content.RelatesTo = (&event.RelatesTo{}).SetReplyTo(replyToMXID)
 		}
-		resp, err := portal.sendMessage(intent, event.EventMessage, content, map[string]interface{}{}, dbMessage.Timestamp)
+		extra := map[string]any{}
+		portal.addSourceMetadata(msg, extra)
+		resp, err := portal.sendMessage(intent, event.EventMessage, content, extra, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send error notice %s: %v", msg.GUID, err)
 			return
@@ -1854,7 +1873,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	}
 
 	if len(dbMessage.MXID) > 0 {
-		portal.sendDeliveryReceipt(dbMessage.MXID, msg.Service, false)
+		portal.sendDeliveryReceipt(dbMessage.MXID, "", "", false)
 		if !msg.IsFromMe && msg.IsRead {
 			err := portal.markRead(portal.bridge.user.DoublePuppetIntent, dbMessage.MXID, time.Time{})
 			if err != nil {

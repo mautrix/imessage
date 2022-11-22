@@ -209,7 +209,8 @@ func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendCaptions:             true,
 		BridgeState:              true,
 		MessageStatusCheckpoints: true,
-		MergedChats:              mac.mergeChats,
+		LegacyMergedChats:        mac.mergeChats,
+		ContactChatMerging:       true,
 		RichLinks:                true,
 	}
 }

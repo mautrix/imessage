@@ -185,7 +185,7 @@ func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMRespon
 	prepareDM := func() (*Portal, error) {
 		// this is done if and only if ActuallyStart is true, so that the user can see that they would only have SMS behavior
 		// this ensures that an iMessage room is created, instead of a bricked SMS room + an iMessage room
-		if mx.bridge.IM.Capabilities().MergedChats {
+		if mx.bridge.IM.Capabilities().LegacyMergedChats {
 			parsed := imessage.ParseIdentifier(resp.GUID)
 			parsed.Service = "iMessage"
 			resp.GUID = parsed.String()
