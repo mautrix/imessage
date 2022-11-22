@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
@@ -49,21 +48,15 @@ func (br *IMBridge) ParsePuppetMXID(mxid id.UserID) (string, bool) {
 	}
 
 	localID := match[1]
-
-	if strings.Contains(localID, "=40") {
-		localpart, err := id.DecodeUserLocalpart(localID)
-		if err != nil {
-			br.Log.Debugfln("Failed to decode user localpart '%s': %v", localID, err)
-			return "", false
-		}
+	if number, err := strconv.Atoi(localID); err == nil {
+		return fmt.Sprintf("+%d", number), true
+	} else if localpart, err := id.DecodeUserLocalpart(localID); err == nil {
 		return localpart, true
 	} else {
-		number, err := strconv.Atoi(localID)
-		if err != nil {
-			return "", false
-		}
-		return fmt.Sprintf("+%d", number), true
+		br.Log.Debugfln("Failed to decode user localpart '%s': %v", localID, err)
+		return "", false
 	}
+
 }
 
 func (br *IMBridge) GetPuppetByMXID(mxid id.UserID) *Puppet {
