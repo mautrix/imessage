@@ -18,7 +18,7 @@ homeserver:
 appservice:
     # Database config.
     database:
-        # The database type. "sqlite3-fk-wal" is recommended to enable foreign keys, but "sqlite3" can be used too.
+        # The database type. Only "sqlite3-fk-wal" is supported.
         type: sqlite3-fk-wal
         # SQLite database path. A raw file path is supported, but `file:<path>?_txlock=immediate` is recommended.
         uri: file:mautrix-imessage.db?_txlock=immediate
