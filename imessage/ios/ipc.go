@@ -46,9 +46,18 @@ const (
 	IncomingBackfillTask       ipc.Command = "backfill"
 )
 
-func floatToTime(unix float64) time.Time {
+func floatToTime(unix float64) (time.Time, bool) {
 	sec, dec := math.Modf(unix)
-	return time.Unix(int64(sec), int64(dec*(1e9)))
+	intSec := int64(sec)
+	if intSec < 1e10 {
+		return time.Unix(intSec, int64(dec*(1e9))), false
+	} else if intSec < 1e13 {
+		return time.UnixMilli(intSec), true
+	} else if intSec < 1e16 {
+		return time.UnixMicro(intSec), true
+	} else {
+		return time.Unix(0, intSec), true
+	}
 }
 
 func timeToFloat(time time.Time) float64 {
@@ -130,7 +139,7 @@ func (ios *iOSConnector) Start(readyCallback func()) error {
 
 func (ios *iOSConnector) Stop() {}
 
-func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
+func (ios *iOSConnector) postprocessMessage(message *imessage.Message, source string) {
 	if len(message.Service) == 0 {
 		message.Service = imessage.ParseIdentifier(message.ChatGUID).Service
 	}
@@ -145,8 +154,15 @@ func (ios *iOSConnector) postprocessMessage(message *imessage.Message) {
 	if len(message.JSONTargetGUID) > 0 {
 		message.Target = imessage.ParseIdentifier(message.JSONTargetGUID)
 	}
-	message.Time = floatToTime(message.JSONUnixTime)
-	message.ReadAt = floatToTime(message.JSONUnixReadAt)
+	var warn bool
+	message.Time, warn = floatToTime(message.JSONUnixTime)
+	if warn {
+		ios.log.Warnfln("Incorrect precision timestamp in %s (from %s): %v", message.GUID, source, message.JSONUnixTime)
+	}
+	message.ReadAt, warn = floatToTime(message.JSONUnixReadAt)
+	if warn {
+		ios.log.Warnfln("Incorrect precision read at timestamp in %s (from %s): %v", message.GUID, source, message.JSONUnixReadAt)
+	}
 	if message.Tapback != nil {
 		_, err := message.Tapback.Parse()
 		if err != nil {
@@ -175,7 +191,7 @@ func (ios *iOSConnector) handleIncomingMessage(data json.RawMessage) interface{}
 		ios.log.Warnln("Failed to parse incoming message: %v", err)
 		return nil
 	}
-	ios.postprocessMessage(&message)
+	ios.postprocessMessage(&message, "incoming message")
 	select {
 	case ios.messageChan <- &message:
 	default:
@@ -191,7 +207,11 @@ func (ios *iOSConnector) handleIncomingReadReceipt(data json.RawMessage) interfa
 		ios.log.Warnln("Failed to parse incoming read receipt: %v", err)
 		return nil
 	}
-	receipt.ReadAt = floatToTime(receipt.JSONUnixReadAt)
+	var warn bool
+	receipt.ReadAt, warn = floatToTime(receipt.JSONUnixReadAt)
+	if warn {
+		ios.log.Warnfln("Incorrect precision timestamp in incoming read receipt for %s: %v", receipt.ReadUpTo, receipt.JSONUnixReadAt)
+	}
 
 	select {
 	case ios.receiptChan <- &receipt:
@@ -269,8 +289,12 @@ func (ios *iOSConnector) handleMessageIDQuery(data json.RawMessage) interface{} 
 		ios.log.Warnln("Failed to parse message ID query:", err)
 		return nil
 	}
+	ts, warn := floatToTime(query.AfterTime)
+	if warn {
+		ios.log.Warnfln("Incorrect precision timestamp in message ID query for %s: %v", query.ChatGUID, query.AfterTime)
+	}
 	return &MessageIDQueryResponse{
-		IDs: ios.bridge.GetMessagesSince(query.ChatGUID, floatToTime(query.AfterTime)),
+		IDs: ios.bridge.GetMessagesSince(query.ChatGUID, ts),
 	}
 }
 
@@ -361,7 +385,7 @@ func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time, 
 		BackfillID: backfillID,
 	}, &resp)
 	for _, msg := range resp {
-		ios.postprocessMessage(msg)
+		ios.postprocessMessage(msg, "messages since date")
 	}
 	return resp, err
 }
@@ -374,7 +398,7 @@ func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int, backfill
 		BackfillID: backfillID,
 	}, &resp)
 	for _, msg := range resp {
-		ios.postprocessMessage(msg)
+		ios.postprocessMessage(msg, "messages with limit")
 	}
 	return resp, err
 }
@@ -448,7 +472,11 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 		Metadata:    metadata,
 	}, &resp)
 	if err == nil {
-		resp.Time = floatToTime(resp.UnixTime)
+		var warn bool
+		resp.Time, warn = floatToTime(resp.UnixTime)
+		if warn {
+			ios.log.Warnfln("Incorrect precision timestamp in message send response %s: %v", resp.GUID, resp.UnixTime)
+		}
 	}
 	if len(resp.Service) == 0 {
 		resp.Service = imessage.ParseIdentifier(chatID).Service
@@ -472,7 +500,11 @@ func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk stri
 		Metadata:       metadata,
 	}, &resp)
 	if err == nil {
-		resp.Time = floatToTime(resp.UnixTime)
+		var warn bool
+		resp.Time, warn = floatToTime(resp.UnixTime)
+		if warn {
+			ios.log.Warnfln("Incorrect precision timestamp in file message send response %s: %v", resp.GUID, resp.UnixTime)
+		}
 	}
 	return &resp, err
 }
