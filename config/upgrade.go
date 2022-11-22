@@ -42,7 +42,6 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "imessage", "log_ipc_payloads")
 	helper.Copy(up.Int, "imessage", "ping_interval_seconds")
 	helper.Copy(up.Bool, "imessage", "chat_merging")
-	helper.Copy(up.Bool, "imessage", "tombstone_old_rooms")
 
 	helper.Copy(up.Str, "bridge", "user")
 	helper.Copy(up.Str, "bridge", "username_template")
