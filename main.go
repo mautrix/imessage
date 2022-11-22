@@ -29,6 +29,7 @@ import (
 
 	flag "maunium.net/go/mauflag"
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix/event"
 
@@ -191,6 +192,10 @@ func (br *IMBridge) Init() {
 	br.IPC.SetHandler("ping", br.ipcPing)
 	br.IPC.SetHandler("ping-server", br.ipcPingServer)
 	br.IPC.SetHandler("stop", br.ipcStop)
+
+	if br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		br.Config.IMessage.ChatMerging = false
+	}
 
 	br.Log.Debugln("Initializing iMessage connector")
 	var err error
