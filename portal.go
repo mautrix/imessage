@@ -828,11 +828,17 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 func (portal *Portal) encrypt(intent *appservice.IntentAPI, content *event.Content, eventType event.Type) (event.Type, error) {
 	if portal.Encrypted && portal.bridge.Crypto != nil {
 		intent.AddDoublePuppetValue(content)
+		handle, ok := content.Raw["fi.mau.imessage.handle"].(string)
 		err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, content)
 		if err != nil {
 			return eventType, fmt.Errorf("failed to encrypt event: %w", err)
 		}
 		eventType = event.EventEncrypted
+		if ok && content.Raw == nil {
+			content.Raw = map[string]any{
+				"fi.mau.imessage.handle": handle,
+			}
+		}
 	}
 	return eventType, nil
 }
