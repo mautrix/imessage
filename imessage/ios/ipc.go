@@ -84,7 +84,6 @@ type iOSConnector struct {
 	messageStatusChan chan *imessage.SendMessageStatus
 	backfillTaskChan  chan *imessage.BackfillTask
 	isAndroid         bool
-	isNoSIP           bool
 }
 
 func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
@@ -99,7 +98,6 @@ func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC 
 		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
 		backfillTaskChan:  make(chan *imessage.BackfillTask, 32),
 		isAndroid:         bridge.GetConnectorConfig().Platform == "android",
-		isNoSIP:           bridge.GetConnectorConfig().Platform == "mac-nosip",
 	}
 }
 
