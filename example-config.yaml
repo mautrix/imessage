@@ -57,6 +57,9 @@ imessage:
     imessage_rest_args: []
     # Whether to log the contents of IPC payloads
     log_ipc_payloads: false
+    # Path to unix socket for Barcelona communication.
+    # Uses stdio if null.
+    unix_socket: null
     # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.
     ping_interval_seconds: 15
     # Whether to merge iMessage and SMS portals into one

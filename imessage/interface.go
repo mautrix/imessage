@@ -122,6 +122,7 @@ type PlatformConfig struct {
 	IMRestPath     string   `yaml:"imessage_rest_path"`
 	IMRestArgs     []string `yaml:"imessage_rest_args"`
 	LogIPCPayloads bool     `yaml:"log_ipc_payloads"`
+	UnixSocket     string   `yaml:"unix_socket"`
 
 	PingInterval int64 `yaml:"ping_interval_seconds"`
 
