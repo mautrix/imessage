@@ -1,4 +1,4 @@
--- v0 -> v17: Latest schema
+-- v0 -> v18: Latest schema
 
 CREATE TABLE portal (
 	guid              TEXT    PRIMARY KEY,
@@ -54,4 +54,11 @@ CREATE TABLE tapback (
 CREATE TABLE kv_store (
 	key   TEXT PRIMARY KEY,
 	value TEXT NOT NULL
+);
+
+CREATE TABLE merged_chat (
+	source_guid TEXT PRIMARY KEY,
+	target_guid TEXT NOT NULL,
+
+	CONSTRAINT merged_chat_portal_fkey FOREIGN KEY (target_guid) REFERENCES portal(guid) ON DELETE CASCADE ON UPDATE CASCADE
 );

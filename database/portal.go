@@ -24,6 +24,8 @@ import (
 
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util/dbutil"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 type PortalQuery struct {
@@ -48,21 +50,28 @@ func (pq *PortalQuery) Count() (count int) {
 }
 
 const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space, thread_id, first_event_id, next_batch_id"
+const selectPortal = "SELECT " + portalColumns + " FROM portal"
+const selectMergedPortalByGUID = "SELECT " + portalColumns + " FROM merged_chat LEFT JOIN portal ON merged_chat.target_guid=portal.guid WHERE source_guid=$1"
 
 func (pq *PortalQuery) GetAll() []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
+	return pq.getAll(selectPortal)
 }
 
 func (pq *PortalQuery) GetByGUID(guid string) *Portal {
-	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE guid=$1", portalColumns), guid)
+	parsed := imessage.ParseIdentifier(guid)
+	if parsed.IsGroup {
+		return pq.get(selectPortal+" WHERE guid=$1", guid)
+	} else {
+		return pq.get(selectMergedPortalByGUID, guid)
+	}
 }
 
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
-	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
+	return pq.get(selectPortal+" WHERE mxid=$1", mxid)
 }
 
 func (pq *PortalQuery) FindPrivateChats() []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE guid LIKE '%%;-;%%'", portalColumns))
+	return pq.getAll(selectPortal + " WHERE guid LIKE '%%;-;%%'")
 }
 
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
