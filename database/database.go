@@ -42,10 +42,6 @@ func New(parent *dbutil.Database, log maulogger.Logger) *Database {
 		Database: parent,
 	}
 	db.UpgradeTable = upgrades.Table
-	_, err := db.Exec("PRAGMA foreign_keys = ON")
-	if err != nil {
-		log.Warnln("Failed to enable foreign keys:", err)
-	}
 
 	db.User = &UserQuery{
 		db:  db,
