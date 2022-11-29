@@ -37,3 +37,21 @@ func (mcq *MergedChatQuery) Remove(guid string) error {
 	_, err := mcq.db.Exec("DELETE FROM merged_chat WHERE source_guid=$1", guid)
 	return err
 }
+
+func (mcq *MergedChatQuery) GetAllForTarget(guid string) (sources []string) {
+	rows, err := mcq.db.Query("SELECT source_guid FROM merged_chat WHERE target_guid=$1", guid)
+	if err != nil {
+		mcq.log.Errorfln("Failed to get merge sources for %s: %v", guid, err)
+		return
+	}
+	for rows.Next() {
+		var source string
+		err = rows.Scan(&source)
+		if err != nil {
+			mcq.log.Errorfln("Failed to scan merge source: %v", err)
+		} else {
+			sources = append(sources, source)
+		}
+	}
+	return
+}

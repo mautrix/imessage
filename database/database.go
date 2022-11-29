@@ -28,12 +28,13 @@ import (
 type Database struct {
 	*dbutil.Database
 
-	User    *UserQuery
-	Portal  *PortalQuery
-	Puppet  *PuppetQuery
-	Message *MessageQuery
-	Tapback *TapbackQuery
-	KV      *KeyValueQuery
+	User       *UserQuery
+	Portal     *PortalQuery
+	Puppet     *PuppetQuery
+	Message    *MessageQuery
+	Tapback    *TapbackQuery
+	KV         *KeyValueQuery
+	MergedChat *MergedChatQuery
 }
 
 func New(parent *dbutil.Database, log maulogger.Logger) *Database {
@@ -69,6 +70,10 @@ func New(parent *dbutil.Database, log maulogger.Logger) *Database {
 	db.KV = &KeyValueQuery{
 		db:  db,
 		log: log.Sub("KeyValue"),
+	}
+	db.MergedChat = &MergedChatQuery{
+		db:  db,
+		log: log.Sub("MergedChat"),
 	}
 	return db
 }

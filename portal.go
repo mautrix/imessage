@@ -141,6 +141,12 @@ func (br *IMBridge) loadDBPortal(dbPortal *database.Portal, guid string) *Portal
 	}
 	portal := br.NewPortal(dbPortal)
 	br.portalsByGUID[portal.GUID] = portal
+	if portal.IsPrivateChat() {
+		portal.SecondaryGUIDs = br.DB.MergedChat.GetAllForTarget(portal.GUID)
+		for _, sourceGUID := range portal.SecondaryGUIDs {
+			br.portalsByGUID[sourceGUID] = portal
+		}
+	}
 	if len(portal.MXID) > 0 {
 		br.portalsByMXID[portal.MXID] = portal
 	}
@@ -197,6 +203,8 @@ type Portal struct {
 
 	bridge *IMBridge
 	log    log.Logger
+
+	SecondaryGUIDs []string
 
 	Messages         chan *imessage.Message
 	ReadReceipts     chan *imessage.ReadReceipt
@@ -305,12 +313,6 @@ func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string)
 		return false
 	}
 	portal.Delete()
-	if storedPortal := portal.bridge.portalsByGUID[portal.GUID]; storedPortal == portal && len(portal.GUID) != 0 {
-		portal.bridge.portalsByGUID[portal.GUID] = nil
-	}
-	if storedPortal := portal.bridge.portalsByMXID[portal.MXID]; storedPortal == portal && len(portal.MXID) != 0 {
-		portal.bridge.portalsByMXID[portal.MXID] = nil
-	}
 	return true
 }
 
@@ -1964,6 +1966,11 @@ func (portal *Portal) Delete() {
 	portal.Portal.Delete()
 	portal.bridge.portalsLock.Lock()
 	delete(portal.bridge.portalsByGUID, portal.GUID)
+	for _, guid := range portal.SecondaryGUIDs {
+		if storedPortal := portal.bridge.portalsByGUID[guid]; storedPortal == portal {
+			portal.bridge.portalsByGUID[guid] = nil
+		}
+	}
 	if len(portal.MXID) > 0 {
 		delete(portal.bridge.portalsByMXID, portal.MXID)
 	}
