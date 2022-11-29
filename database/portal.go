@@ -152,6 +152,8 @@ func (portal *Portal) Insert() {
 		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID, portal.FirstEventID, portal.NextBatchID)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
+	} else {
+		portal.log.Debugfln("Inserted new portal %s", portal.GUID)
 	}
 }
 

@@ -25,17 +25,21 @@ type MergedChatQuery struct {
 	log log.Logger
 }
 
-func (mcq *MergedChatQuery) Set(source, target string) error {
+func (mcq *MergedChatQuery) Set(source, target string) {
 	_, err := mcq.db.Exec(`
 		INSERT INTO merged_chat (source_guid, target_guid) VALUES ($1, $2)
 		ON CONFLICT (source_guid) DO UPDATE SET target_guid=excluded.target_guid
 	`, source, target)
-	return err
+	if err != nil {
+		mcq.log.Warnfln("Failed to insert %s->%s: %v", source, target, err)
+	}
 }
 
-func (mcq *MergedChatQuery) Remove(guid string) error {
+func (mcq *MergedChatQuery) Remove(guid string) {
 	_, err := mcq.db.Exec("DELETE FROM merged_chat WHERE source_guid=$1", guid)
-	return err
+	if err != nil {
+		mcq.log.Warnfln("Failed to remove %s: %v", guid, err)
+	}
 }
 
 func (mcq *MergedChatQuery) GetAllForTarget(guid string) (sources []string) {
