@@ -830,7 +830,7 @@ func (portal *Portal) sendMainIntentMessage(content interface{}) (*mautrix.RespS
 func (portal *Portal) encrypt(intent *appservice.IntentAPI, content *event.Content, eventType event.Type) (event.Type, error) {
 	if portal.Encrypted && portal.bridge.Crypto != nil {
 		intent.AddDoublePuppetValue(content)
-		handle, ok := content.Raw["fi.mau.imessage.handle"].(string)
+		handle, ok := content.Raw[bridgeInfoHandle].(string)
 		err := portal.bridge.Crypto.Encrypt(portal.MXID, eventType, content)
 		if err != nil {
 			return eventType, fmt.Errorf("failed to encrypt event: %w", err)
@@ -838,7 +838,7 @@ func (portal *Portal) encrypt(intent *appservice.IntentAPI, content *event.Conte
 		eventType = event.EventEncrypted
 		if ok && content.Raw == nil {
 			content.Raw = map[string]any{
-				"fi.mau.imessage.handle": handle,
+				bridgeInfoHandle: handle,
 			}
 		}
 	}
@@ -914,7 +914,8 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanRea
 		content.FillLegacyBooleans()
 		extraContent := map[string]any{}
 		if handle != "" && portal.bridge.IM.Capabilities().ContactChatMerging {
-			extraContent["fi.mau.imessage.handle"] = extraContent
+			extraContent[bridgeInfoHandle] = extraContent
+			content.MutateEventKey = bridgeInfoHandle
 		}
 		_, err := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &event.Content{
 			Parsed: &content,
@@ -977,9 +978,10 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 		var extraContent map[string]any
 		if portal.bridge.IM.Capabilities().ContactChatMerging {
 			extraContent = map[string]any{
-				"fi.mau.imessage.service": service,
-				"fi.mau.imessage.handle":  handle,
+				bridgeInfoService: service,
+				bridgeInfoHandle:  handle,
 			}
+			mainContent.MutateEventKey = bridgeInfoHandle
 		}
 		content := &event.Content{
 			Parsed: mainContent,
@@ -1709,8 +1711,8 @@ func (portal *Portal) GetReplyEvent(msg *imessage.Message) (id.EventID, *event.E
 
 func (portal *Portal) addSourceMetadata(msg *imessage.Message, to map[string]any) {
 	if portal.bridge.IM.Capabilities().ContactChatMerging {
-		to["fi.mau.imessage.service"] = msg.Service
-		to["fi.mau.imessage.handle"] = msg.ChatGUID
+		to[bridgeInfoService] = msg.Service
+		to[bridgeInfoHandle] = msg.ChatGUID
 	}
 }
 

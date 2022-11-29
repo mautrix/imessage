@@ -23,6 +23,8 @@ import (
 )
 
 const bridgeInfoProto = "fi.mau.imessage"
+const bridgeInfoHandle = "fi.mau.imessage.handle"
+const bridgeInfoService = "fi.mau.imessage.service"
 
 type CustomBridgeInfoSection struct {
 	event.BridgeInfoSection
