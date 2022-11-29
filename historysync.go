@@ -77,18 +77,20 @@ func (portal *Portal) forwardBackfill() {
 		backfillID = fmt.Sprintf("bridge-catchup-ts-%s::%d::%d", portal.Identifier.LocalID, startTime.UnixMilli(), time.Now().UnixMilli())
 		messages, err = portal.bridge.IM.GetMessagesSinceDate(portal.GUID, startTime, backfillID)
 	}
+	allSkipped := true
 	for index, msg := range messages {
 		if portal.bridge.DB.Message.GetByGUID(msg.ChatGUID, msg.GUID, 0) != nil {
 			portal.log.Debugfln("Skipping duplicate message %s at start of forward backfill batch", msg.GUID)
 			continue
 		}
+		allSkipped = false
 		messages = messages[index:]
 		break
 	}
 	if err != nil {
 		portal.log.Errorln("Failed to fetch messages for backfilling:", err)
 		go portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, false, nil)
-	} else if len(messages) == 0 {
+	} else if len(messages) == 0 || allSkipped {
 		portal.log.Debugln("Nothing to backfill")
 	} else {
 		portal.sendBackfill(backfillID, messages, true)
