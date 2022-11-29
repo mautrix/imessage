@@ -310,7 +310,7 @@ type StartSyncRequest struct {
 const BridgeStatusConnected = "CONNECTED"
 
 func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
-	br.Log.Debugln("Sending bridge status to server: %+v", state)
+	br.Log.Debugfln("Sending bridge status to server: %+v", state)
 	if state.Timestamp == 0 {
 		state.Timestamp = time.Now().Unix()
 	}
@@ -362,7 +362,10 @@ func (br *IMBridge) SetPushKey(req *imessage.PushKeyRequest) {
 }
 
 func (br *IMBridge) RequestStartSync() {
-	if !br.Config.Bridge.Encryption.Appservice || br.Crypto == nil || !br.AS.HasWebsocket() {
+	if !br.Config.Bridge.Encryption.Appservice ||
+		br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry ||
+		br.Crypto == nil ||
+		!br.AS.HasWebsocket() {
 		return
 	}
 	resp := map[string]interface{}{}
