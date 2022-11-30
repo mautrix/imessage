@@ -27,8 +27,7 @@ type MergedChatQuery struct {
 
 func (mcq *MergedChatQuery) Set(source, target string) {
 	_, err := mcq.db.Exec(`
-		INSERT INTO merged_chat (source_guid, target_guid) VALUES ($1, $2)
-		ON CONFLICT (source_guid) DO UPDATE SET target_guid=excluded.target_guid
+		INSERT OR REPLACE INTO merged_chat (source_guid, target_guid) VALUES ($1, $2)
 	`, source, target)
 	if err != nil {
 		mcq.log.Warnfln("Failed to insert %s->%s: %v", source, target, err)

@@ -1105,7 +1105,8 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		portal.sendErrorMessage(evt, err, ipcErr.Message, certain, statusCode, "")
 	} else if resp != nil {
 		dbMessage := portal.bridge.DB.Message.New()
-		dbMessage.ChatGUID = portal.GUID
+		dbMessage.PortalGUID = portal.GUID
+		dbMessage.HandleGUID = resp.ChatGUID
 		dbMessage.GUID = resp.GUID
 		dbMessage.MXID = evt.ID
 		dbMessage.Timestamp = resp.Time.UnixMilli()
@@ -1329,7 +1330,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 			portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, 0)
 		}
 		tapback := portal.bridge.DB.Tapback.New()
-		tapback.ChatGUID = portal.GUID
+		tapback.PortalGUID = portal.GUID
 		tapback.GUID = resp.GUID
 		tapback.MessageGUID = target.GUID
 		tapback.MessagePart = target.Part
@@ -1831,8 +1832,14 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 		if hasMXID {
 			eventID = dbMessage.MXID
 		}
-		portal.bridge.IM.SendMessageBridgeResult(portal.GUID, msg.GUID, eventID, overrideSuccess || hasMXID)
+		portal.bridge.IM.SendMessageBridgeResult(msg.ChatGUID, msg.GUID, eventID, overrideSuccess || hasMXID)
 	}()
+
+	if portal.IsPrivateChat() && msg.ChatGUID != portal.LastSeenHandle {
+		portal.log.Debugfln("Updating last seen handle from %s to %s", portal.LastSeenHandle, msg.ChatGUID)
+		portal.LastSeenHandle = msg.ChatGUID
+		portal.Update(nil)
+	}
 
 	if msg.Tapback != nil {
 		portal.HandleiMessageTapback(msg)
@@ -1846,7 +1853,8 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 
 	portal.log.Debugfln("Starting handling of iMessage %s (type: %d, attachments: %d, text: %d)", msg.GUID, msg.ItemType, len(msg.Attachments), len(msg.Text))
 	dbMessage = portal.bridge.DB.Message.New()
-	dbMessage.ChatGUID = portal.GUID
+	dbMessage.PortalGUID = portal.GUID
+	dbMessage.HandleGUID = msg.ChatGUID
 	dbMessage.SenderGUID = msg.Sender.String()
 	dbMessage.GUID = msg.GUID
 	dbMessage.Timestamp = msg.Time.UnixMilli()
@@ -1948,10 +1956,11 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 
 	if existing == nil {
 		tapback := portal.bridge.DB.Tapback.New()
-		tapback.ChatGUID = portal.GUID
+		tapback.PortalGUID = portal.GUID
 		tapback.MessageGUID = target.GUID
 		tapback.MessagePart = target.Part
 		tapback.SenderGUID = senderGUID
+		tapback.HandleGUID = msg.ChatGUID
 		tapback.GUID = msg.GUID
 		tapback.Type = msg.Tapback.Type
 		tapback.MXID = resp.EventID
@@ -1960,6 +1969,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		existing.GUID = msg.GUID
 		existing.Type = msg.Tapback.Type
 		existing.MXID = resp.EventID
+		existing.HandleGUID = msg.ChatGUID
 		existing.Update()
 	}
 }

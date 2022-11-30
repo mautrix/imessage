@@ -10,6 +10,7 @@ CREATE TABLE portal (
 	backfill_start_ts BIGINT NOT NULL DEFAULT 0,
 	in_space          BOOLEAN NOT NULL DEFAULT false,
 	thread_id         TEXT NOT NULL DEFAULT '',
+	last_seen_handle  TEXT NOT NULL DEFAULT '',
 	first_event_id    TEXT NOT NULL DEFAULT '',
 	next_batch_id     TEXT NOT NULL DEFAULT ''
 );
@@ -31,24 +32,26 @@ CREATE TABLE "user" (
 );
 
 CREATE TABLE message (
-	chat_guid     TEXT REFERENCES portal(guid) ON DELETE CASCADE ON UPDATE CASCADE,
+	portal_guid   TEXT REFERENCES portal(guid) ON DELETE CASCADE ON UPDATE CASCADE,
 	guid          TEXT,
 	part          INTEGER,
 	mxid          TEXT NOT NULL UNIQUE,
 	sender_guid   TEXT NOT NULL,
+	handle_guid   TEXT NOT NULL DEFAULT '',
 	timestamp     BIGINT NOT NULL,
-	PRIMARY KEY (chat_guid, guid, part)
+	PRIMARY KEY (portal_guid, guid, part)
 );
 
 CREATE TABLE tapback (
-	chat_guid    TEXT,
+	portal_guid  TEXT,
 	message_guid TEXT,
 	message_part INTEGER,
 	sender_guid  TEXT,
+	handle_guid  TEXT NOT NULL DEFAULT '',
 	type         INTEGER NOT NULL,
 	mxid         TEXT NOT NULL UNIQUE, guid TEXT DEFAULT NULL,
-	PRIMARY KEY (chat_guid, message_guid, message_part, sender_guid),
-	FOREIGN KEY (chat_guid, message_guid, message_part) REFERENCES message(chat_guid, guid, part) ON DELETE CASCADE ON UPDATE CASCADE
+	PRIMARY KEY (portal_guid, message_guid, message_part, sender_guid),
+	FOREIGN KEY (portal_guid, message_guid, message_part) REFERENCES message(portal_guid, guid, part) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE kv_store (
