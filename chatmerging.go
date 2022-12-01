@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"maunium.net/go/mautrix"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
@@ -31,20 +32,29 @@ func (portal *Portal) Merge(others []*Portal) {
 	if portal.MXID != "" {
 		roomIDs = append(roomIDs, portal.MXID)
 	}
+	var newRoomID id.RoomID
+	var req *mautrix.ReqBeeperMergeRoom
 	portal.log.Debugfln("Merging room with %v (%v)", guids, roomIDs)
-	req := &mautrix.ReqBeeperMergeRoom{
-		NewRoom: *portal.getRoomCreateContent(),
-		Key:     bridgeInfoHandle,
-		Rooms:   roomIDs,
-		User:    portal.MainIntent().UserID,
+	if len(roomIDs) > 1 && portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		req = &mautrix.ReqBeeperMergeRoom{
+			NewRoom: *portal.getRoomCreateContent(),
+			Key:     bridgeInfoHandle,
+			Rooms:   roomIDs,
+			User:    portal.MainIntent().UserID,
+		}
+		resp, err := portal.MainIntent().BeeperMergeRooms(req)
+		if err != nil {
+			portal.log.Errorfln("Failed to merge room: %v", err)
+			return
+		}
+		portal.log.Debugfln("Got merged room ID %s", resp.RoomID)
+		newRoomID = resp.RoomID
+	} else if len(roomIDs) > 1 {
+		portal.log.Debugfln("Deleting old rooms as homeserver doesn't support merging")
+		for _, other := range others {
+			other.Cleanup(false)
+		}
 	}
-	resp, err := portal.MainIntent().BeeperMergeRooms(req)
-	if err != nil {
-		portal.log.Errorfln("Failed to merge room: %v", err)
-		return
-	}
-	portal.log.Debugfln("Got merged room ID %s", resp.RoomID)
-	portal.bridge.portalsLock.Lock()
 	defer portal.bridge.portalsLock.Unlock()
 
 	txn, err := portal.bridge.DB.Begin()
@@ -56,29 +66,33 @@ func (portal *Portal) Merge(others []*Portal) {
 	portal.bridge.DB.Message.MergePortalGUID(txn, portal.GUID, guids...)
 	portal.log.Debugln("Updating merged chat table")
 	portal.bridge.DB.MergedChat.Set(txn, portal.GUID, guids...)
-	portal.log.Debugln("Updating in-memory caches")
-	for _, roomID := range roomIDs {
-		delete(portal.bridge.portalsByMXID, roomID)
-	}
-	portal.bridge.portalsByMXID[resp.RoomID] = portal
 	for _, guid := range guids {
 		portal.bridge.portalsByGUID[guid] = portal
 	}
-	portal.MXID = resp.RoomID
-	portal.InSpace = false
-	portal.FirstEventID = ""
-	portal.Update(txn)
 	portal.SecondaryGUIDs = guids
+	if newRoomID != "" {
+		portal.log.Debugln("Updating in-memory caches")
+		for _, roomID := range roomIDs {
+			delete(portal.bridge.portalsByMXID, roomID)
+		}
+		portal.bridge.portalsByMXID[newRoomID] = portal
+		portal.MXID = newRoomID
+		portal.InSpace = false
+		portal.FirstEventID = ""
+		portal.Update(txn)
+	}
 	err = txn.Commit()
 	if err != nil {
 		portal.log.Errorln("Failed to commit room merge transaction:", err)
 	} else {
-		portal.log.Infofln("Finished merging %v -> %s / %v -> %s", roomIDs, resp.RoomID, guids, portal.GUID)
-		portal.addToSpace(portal.bridge.user)
-		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{portal.GetDMPuppet().MXID: {portal.MXID}})
-	}
-	for _, user := range req.NewRoom.Invite {
-		portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipJoin)
+		portal.log.Infofln("Finished merging %v -> %s / %v -> %s", guids, portal.GUID, roomIDs, newRoomID)
+		if newRoomID != "" {
+			portal.addToSpace(portal.bridge.user)
+			portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{portal.GetDMPuppet().MXID: {portal.MXID}})
+			for _, user := range req.NewRoom.Invite {
+				portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipJoin)
+			}
+		}
 	}
 }
 
@@ -127,30 +141,33 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 		}
 		br.DB.MergedChat.Set(txn, primaryGUID, guids...)
 	}
-	resp, err := portal.MainIntent().BeeperSplitRoom(&mautrix.ReqBeeperSplitRoom{
-		RoomID: portal.MXID,
-		Key:    bridgeInfoHandle,
-		Parts:  reqParts,
-	})
-	if err != nil {
-		log.Fatalfln("Failed to split rooms: %v", err)
-		os.Exit(60)
-	}
-	log.Debugfln("Room splitting response: %+v", resp.RoomIDs)
-	delete(br.portalsByMXID, portal.MXID)
-	for guid, partPortal := range portals {
-		roomID, ok := resp.RoomIDs[guid]
-		if !ok {
-			log.Warnfln("Merge didn't return new room ID for %s", guid)
-		} else {
-			log.Debugfln("Split got room ID for %s: %s", guid, roomID)
-			partPortal.MXID = roomID
-			partPortal.FirstEventID = ""
-			partPortal.InSpace = false
-			partPortal.Update(txn)
-			br.portalsByMXID[roomID] = partPortal
-			for _, user := range portalReq[guid].NewRoom.Invite {
-				portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipJoin)
+	if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		var resp *mautrix.RespBeeperSplitRoom
+		resp, err = portal.MainIntent().BeeperSplitRoom(&mautrix.ReqBeeperSplitRoom{
+			RoomID: portal.MXID,
+			Key:    bridgeInfoHandle,
+			Parts:  reqParts,
+		})
+		if err != nil {
+			log.Fatalfln("Failed to split rooms: %v", err)
+			os.Exit(60)
+		}
+		log.Debugfln("Room splitting response: %+v", resp.RoomIDs)
+		delete(br.portalsByMXID, portal.MXID)
+		for guid, partPortal := range portals {
+			roomID, ok := resp.RoomIDs[guid]
+			if !ok {
+				log.Warnfln("Merge didn't return new room ID for %s", guid)
+			} else {
+				log.Debugfln("Split got room ID for %s: %s", guid, roomID)
+				partPortal.MXID = roomID
+				partPortal.FirstEventID = ""
+				partPortal.InSpace = false
+				partPortal.Update(txn)
+				br.portalsByMXID[roomID] = partPortal
+				for _, user := range portalReq[guid].NewRoom.Invite {
+					portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipJoin)
+				}
 			}
 		}
 	}
