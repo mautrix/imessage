@@ -270,7 +270,7 @@ func (br *IMBridge) PingServer() (start, serverTs, end time.Time) {
 		br.AS.StopWebsocket(fmt.Errorf("websocket ping returned error in %s: %w", end.Sub(start), err))
 	} else {
 		serverTs = time.Unix(0, resp.Timestamp*int64(time.Millisecond))
-		br.Log.Debugfln("Websocket ping returned success: request took %s, response took %s", serverTs.Sub(start), end.Sub(serverTs))
+		br.Log.Debugfln("Websocket ping returned success in %s (request: %s, response: %s)", end.Sub(start), serverTs.Sub(start), end.Sub(serverTs))
 	}
 	return
 }
