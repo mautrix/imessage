@@ -18,6 +18,8 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
@@ -79,6 +81,46 @@ func (mq *MessageQuery) GetLastInChat(chat string) *Message {
 		return nil
 	}
 	return msg
+}
+
+func (mq *MessageQuery) MergePortalGUID(txn dbutil.Execable, to string, from ...string) int64 {
+	if txn == nil {
+		txn = mq.db
+	}
+	args := make([]any, len(from)+1)
+	args[0] = to
+	for i, fr := range from {
+		args[i+1] = fr
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(from)), ",")
+	res, err := txn.Exec(fmt.Sprintf("UPDATE message SET portal_guid=? WHERE portal_guid IN (%s)", placeholders), args...)
+	if err != nil {
+		mq.log.Errorfln("Failed to update portal GUID for messages (%v -> %s): %v", err, from, to)
+		return -1
+	} else {
+		affected, err := res.RowsAffected()
+		if err != nil {
+			mq.log.Warnfln("Failed to get number of rows affected by merge: %v", err)
+		}
+		return affected
+	}
+}
+
+func (mq *MessageQuery) SplitPortalGUID(txn dbutil.Execable, fromHandle, fromPortal, to string) int64 {
+	if txn == nil {
+		txn = mq.db
+	}
+	res, err := txn.Exec("UPDATE message SET portal_guid=?1 WHERE portal_guid=?2 AND handle_guid=?3", to, fromPortal, fromHandle)
+	if err != nil {
+		mq.log.Errorfln("Failed to split portal GUID for messages (%s in %s -> %s): %v", fromHandle, fromPortal, to, err)
+		return -1
+	} else {
+		affected, err := res.RowsAffected()
+		if err != nil {
+			mq.log.Warnfln("Failed to get number of rows affected by split: %v", err)
+		}
+		return affected
+	}
 }
 
 func (mq *MessageQuery) get(query string, args ...interface{}) *Message {

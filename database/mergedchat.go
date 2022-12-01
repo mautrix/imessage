@@ -17,7 +17,11 @@
 package database
 
 import (
+	"fmt"
+	"strings"
+
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type MergedChatQuery struct {
@@ -25,12 +29,20 @@ type MergedChatQuery struct {
 	log log.Logger
 }
 
-func (mcq *MergedChatQuery) Set(source, target string) {
-	_, err := mcq.db.Exec(`
-		INSERT OR REPLACE INTO merged_chat (source_guid, target_guid) VALUES ($1, $2)
-	`, source, target)
+func (mcq *MergedChatQuery) Set(txn dbutil.Execable, target string, sources ...string) {
+	if txn == nil {
+		txn = mcq.db
+	}
+	placeholders := make([]string, len(sources))
+	args := make([]any, len(sources)+1)
+	args[0] = target
+	for i, source := range sources {
+		args[i+1] = source
+		placeholders[i] = fmt.Sprintf("(?1, ?%d)", i+2)
+	}
+	_, err := txn.Exec(fmt.Sprintf("INSERT OR REPLACE INTO merged_chat (target_guid, source_guid) VALUES %s", strings.Join(placeholders, ", ")), args...)
 	if err != nil {
-		mcq.log.Warnfln("Failed to insert %s->%s: %v", source, target, err)
+		mcq.log.Warnfln("Failed to insert %s->%s: %v", sources, target, err)
 	}
 }
 

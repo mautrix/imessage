@@ -29,6 +29,7 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
+	"maunium.net/go/mautrix/util/dbutil"
 	"maunium.net/go/mautrix/util/jsontime"
 
 	"maunium.net/go/mautrix"
@@ -50,7 +51,7 @@ func (br *IMBridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 	defer br.portalsLock.Unlock()
 	portal, ok := br.portalsByMXID[mxid]
 	if !ok {
-		return br.loadDBPortal(br.DB.Portal.GetByMXID(mxid), "")
+		return br.loadDBPortal(nil, br.DB.Portal.GetByMXID(mxid), "")
 	}
 	return portal
 }
@@ -60,7 +61,7 @@ func (br *IMBridge) GetPortalByGUID(guid string) *Portal {
 	defer br.portalsLock.Unlock()
 	portal, ok := br.portalsByGUID[guid]
 	if !ok {
-		return br.loadDBPortal(br.DB.Portal.GetByGUID(guid), guid)
+		return br.loadDBPortal(nil, br.DB.Portal.GetByGUID(guid), guid)
 	}
 	return portal
 }
@@ -75,7 +76,7 @@ func (br *IMBridge) ReIDPortal(oldGUID, newGUID string) bool {
 
 	portal, ok := br.portalsByGUID[oldGUID]
 	if !ok {
-		portal = br.loadDBPortal(br.DB.Portal.GetByGUID(oldGUID), "")
+		portal = br.loadDBPortal(nil, br.DB.Portal.GetByGUID(oldGUID), "")
 		if portal == nil {
 			br.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
 			return false
@@ -84,7 +85,7 @@ func (br *IMBridge) ReIDPortal(oldGUID, newGUID string) bool {
 
 	newPortal, ok := br.portalsByGUID[newGUID]
 	if !ok {
-		newPortal = br.loadDBPortal(br.DB.Portal.GetByGUID(newGUID), "")
+		newPortal = br.loadDBPortal(nil, br.DB.Portal.GetByGUID(newGUID), "")
 	}
 	if newPortal != nil {
 		br.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", oldGUID, newGUID)
@@ -123,21 +124,21 @@ func (br *IMBridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {
 		}
 		portal, ok := br.portalsByGUID[dbPortal.GUID]
 		if !ok {
-			portal = br.loadDBPortal(dbPortal, "")
+			portal = br.loadDBPortal(nil, dbPortal, "")
 		}
 		output[index] = portal
 	}
 	return output
 }
 
-func (br *IMBridge) loadDBPortal(dbPortal *database.Portal, guid string) *Portal {
+func (br *IMBridge) loadDBPortal(txn dbutil.Execable, dbPortal *database.Portal, guid string) *Portal {
 	if dbPortal == nil {
 		if guid == "" {
 			return nil
 		}
 		dbPortal = br.DB.Portal.New()
 		dbPortal.GUID = guid
-		dbPortal.Insert()
+		dbPortal.Insert(txn)
 	}
 	portal := br.NewPortal(dbPortal)
 	br.portalsByGUID[portal.GUID] = portal
@@ -695,6 +696,17 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 	}
 }
 
+func (portal *Portal) preCreateDMSync(profileOverride *ProfileOverride) {
+	puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
+	puppet.Sync()
+	if profileOverride != nil {
+		puppet.SyncWithProfileOverride(*profileOverride)
+	}
+	portal.Name = puppet.Displayname
+	portal.AvatarURL = puppet.AvatarURL
+	portal.AvatarHash = puppet.AvatarHash
+}
+
 func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverride *ProfileOverride) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
@@ -724,14 +736,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	}
 
 	if portal.IsPrivateChat() {
-		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
-		puppet.Sync()
-		if profileOverride != nil {
-			puppet.SyncWithProfileOverride(*profileOverride)
-		}
-		portal.Name = puppet.Displayname
-		portal.AvatarURL = puppet.AvatarURL
-		portal.AvatarHash = puppet.AvatarHash
+		portal.preCreateDMSync(profileOverride)
 	} else {
 		avatar, err := portal.bridge.IM.GetGroupAvatar(portal.GUID)
 		if err != nil {
@@ -786,8 +791,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 			portal.SyncParticipants(chatInfo)
 		}
 	} else {
-		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
-		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
+		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{portal.GetDMPuppet().MXID: {portal.MXID}})
 	}
 	if portal.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
 		firstEventResp, err := portal.MainIntent().SendMessageEvent(portal.MXID, PortalCreationDummyEvent, struct{}{})

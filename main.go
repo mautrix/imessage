@@ -192,6 +192,8 @@ func (br *IMBridge) Init() {
 	br.IPC.SetHandler("ping", br.ipcPing)
 	br.IPC.SetHandler("ping-server", br.ipcPingServer)
 	br.IPC.SetHandler("stop", br.ipcStop)
+	br.IPC.SetHandler("merge-rooms", br.ipcMergeRooms)
+	br.IPC.SetHandler("split-rooms", br.ipcSplitRooms)
 
 	if br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 		br.Config.IMessage.ChatMerging = false
@@ -295,6 +297,49 @@ func (br *IMBridge) ipcPingServer(_ json.RawMessage) interface{} {
 		Server: server.UnixNano(),
 		End:    end.UnixNano(),
 	}
+}
+
+type ipcMergeRequest struct {
+	GUIDs []string `json:"guids"`
+}
+
+type ipcMergeResponse struct {
+	MXID id.RoomID `json:"mxid"`
+}
+
+func (br *IMBridge) ipcMergeRooms(rawReq json.RawMessage) interface{} {
+	var req ipcMergeRequest
+	err := json.Unmarshal(rawReq, &req)
+	if err != nil {
+		return err
+	}
+	var portals []*Portal
+	for _, guid := range req.GUIDs {
+		portals = append(portals, br.GetPortalByGUID(guid))
+	}
+	if len(portals) < 2 {
+		return fmt.Errorf("must pass at least 2 portals to merge")
+	}
+	portals[0].Merge(portals[1:])
+	return ipcMergeResponse{MXID: portals[0].MXID}
+}
+
+type ipcSplitRequest struct {
+	GUID  string              `json:"guid"`
+	Parts map[string][]string `json:"parts"`
+}
+
+type ipcSplitResponse struct{}
+
+func (br *IMBridge) ipcSplitRooms(rawReq json.RawMessage) interface{} {
+	var req ipcSplitRequest
+	err := json.Unmarshal(rawReq, &req)
+	if err != nil {
+		return err
+	}
+	sourcePortal := br.GetPortalByGUID(req.GUID)
+	sourcePortal.Split(req.Parts)
+	return ipcSplitResponse{}
 }
 
 const defaultReconnectBackoff = 2 * time.Second

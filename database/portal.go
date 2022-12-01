@@ -148,8 +148,11 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 	return nil
 }
 
-func (portal *Portal) Insert() {
-	_, err := portal.db.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)", portalColumns),
+func (portal *Portal) Insert(txn dbutil.Execable) {
+	if txn == nil {
+		txn = portal.db
+	}
+	_, err := txn.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)", portalColumns),
 		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID, portal.LastSeenHandle, portal.FirstEventID, portal.NextBatchID)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
