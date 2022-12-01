@@ -57,6 +57,7 @@ func NewWebsocketCommandHandler(br *IMBridge) *WebsocketCommandHandler {
 	br.AS.SetWebsocketCommandHandler("start_dm", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("resolve_identifier", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("list_contacts", handler.handleWSGetContacts)
+	br.AS.SetWebsocketCommandHandler("upload_contacts", handler.handleWSUploadContacts)
 	br.AS.SetWebsocketCommandHandler("edit_ghost", handler.handleWSEditGhost)
 	return handler
 }
@@ -176,6 +177,19 @@ func (mx *WebsocketCommandHandler) handleWSGetContacts(_ appservice.WebsocketCom
 		return false, err
 	}
 	return true, contacts
+}
+
+type UploadContactsRequest struct {
+	Contacts []*imessage.Contact `json:"contacts"`
+}
+
+func (mx *WebsocketCommandHandler) handleWSUploadContacts(cmd appservice.WebsocketCommand) (bool, any) {
+	var req UploadContactsRequest
+	if err := json.Unmarshal(cmd.Data, &req); err != nil {
+		return false, fmt.Errorf("failed to parse request: %w", err)
+	}
+	mx.bridge.UpdateMerges(req.Contacts)
+	return true, nil
 }
 
 func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMResponse, error) {

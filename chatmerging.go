@@ -7,13 +7,22 @@ import (
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
+
+func (br *IMBridge) UpdateMerges(contacts []*imessage.Contact) {
+	br.Log.Infofln("Updating chat merges with %d contacts", len(contacts))
+}
 
 func (portal *Portal) Merge(others []*Portal) {
 	roomIDs := make([]id.RoomID, 0, len(others))
 	guids := make([]string, 0, len(others))
 	alreadyAdded := map[string]struct{}{}
 	for _, other := range others {
+		if other == portal {
+			continue
+		}
 		if _, ok := alreadyAdded[other.GUID]; ok {
 			continue
 		}

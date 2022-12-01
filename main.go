@@ -194,6 +194,7 @@ func (br *IMBridge) Init() {
 	br.IPC.SetHandler("stop", br.ipcStop)
 	br.IPC.SetHandler("merge-rooms", br.ipcMergeRooms)
 	br.IPC.SetHandler("split-rooms", br.ipcSplitRooms)
+	br.IPC.SetHandler("do-auto-merge", br.ipcDoAutoMerge)
 
 	br.Log.Debugln("Initializing iMessage connector")
 	var err error
@@ -336,6 +337,15 @@ func (br *IMBridge) ipcSplitRooms(rawReq json.RawMessage) interface{} {
 	sourcePortal := br.GetPortalByGUID(req.GUID)
 	sourcePortal.Split(req.Parts)
 	return ipcSplitResponse{}
+}
+
+func (br *IMBridge) ipcDoAutoMerge(_ json.RawMessage) any {
+	contacts, err := br.IM.GetContactList()
+	if err != nil {
+		return fmt.Errorf("failed to get contact list: %w", err)
+	}
+	br.UpdateMerges(contacts)
+	return struct{}{}
 }
 
 const defaultReconnectBackoff = 2 * time.Second
