@@ -55,6 +55,7 @@ func (portal *Portal) Merge(others []*Portal) {
 			other.Cleanup(false)
 		}
 	}
+	portal.bridge.portalsLock.Lock()
 	defer portal.bridge.portalsLock.Unlock()
 
 	txn, err := portal.bridge.DB.Begin()
