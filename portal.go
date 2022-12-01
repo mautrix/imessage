@@ -139,6 +139,12 @@ func (br *IMBridge) loadDBPortal(txn dbutil.Execable, dbPortal *database.Portal,
 		dbPortal = br.DB.Portal.New()
 		dbPortal.GUID = guid
 		dbPortal.Insert(txn)
+	} else if guid != dbPortal.GUID {
+		aliasedPortal, ok := br.portalsByGUID[dbPortal.GUID]
+		if ok {
+			br.portalsByGUID[guid] = aliasedPortal
+			return aliasedPortal
+		}
 	}
 	portal := br.NewPortal(dbPortal)
 	br.portalsByGUID[portal.GUID] = portal
