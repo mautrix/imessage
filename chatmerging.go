@@ -141,6 +141,7 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 		}
 		br.DB.MergedChat.Set(txn, primaryGUID, guids...)
 	}
+	wasSplit := false
 	if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 		var resp *mautrix.RespBeeperSplitRoom
 		resp, err = portal.MainIntent().BeeperSplitRoom(&mautrix.ReqBeeperSplitRoom{
@@ -153,6 +154,7 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 			os.Exit(60)
 		}
 		log.Debugfln("Room splitting response: %+v", resp.RoomIDs)
+		wasSplit = true
 		delete(br.portalsByMXID, portal.MXID)
 		for guid, partPortal := range portals {
 			roomID, ok := resp.RoomIDs[guid]
@@ -165,9 +167,6 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 				partPortal.InSpace = false
 				partPortal.Update(txn)
 				br.portalsByMXID[roomID] = partPortal
-				for _, user := range portalReq[guid].NewRoom.Invite {
-					portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipJoin)
-				}
 			}
 		}
 	}
@@ -176,10 +175,15 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 		log.Errorln("Failed to commit room split transaction:", err)
 	}
 	log.Debugfln("Finished splitting room into %+v", splitParts)
-	for _, partPortal := range portals {
+	for guid, partPortal := range portals {
 		if partPortal.MXID != "" {
 			partPortal.addToSpace(br.user)
 			br.user.UpdateDirectChats(map[id.UserID][]id.RoomID{partPortal.GetDMPuppet().MXID: {partPortal.MXID}})
+			if wasSplit {
+				for _, user := range portalReq[guid].NewRoom.Invite {
+					br.StateStore.SetMembership(partPortal.MXID, user, event.MembershipJoin)
+				}
+			}
 		}
 	}
 }
