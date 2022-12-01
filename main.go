@@ -195,10 +195,6 @@ func (br *IMBridge) Init() {
 	br.IPC.SetHandler("merge-rooms", br.ipcMergeRooms)
 	br.IPC.SetHandler("split-rooms", br.ipcSplitRooms)
 
-	if br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
-		br.Config.IMessage.ChatMerging = false
-	}
-
 	br.Log.Debugln("Initializing iMessage connector")
 	var err error
 	br.IM, err = imessage.NewAPI(br)

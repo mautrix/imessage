@@ -62,8 +62,6 @@ imessage:
     unix_socket: null
     # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.
     ping_interval_seconds: 15
-    # Whether to merge iMessage and SMS portals into one
-    chat_merging: false
 
 # Bridge config
 bridge:

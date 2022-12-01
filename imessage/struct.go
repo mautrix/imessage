@@ -256,7 +256,6 @@ type ConnectorCapabilities struct {
 	SendCaptions             bool
 	BridgeState              bool
 	MessageStatusCheckpoints bool
-	LegacyMergedChats        bool
 	ContactChatMerging       bool
 	RichLinks                bool
 	ChatBridgeResult         bool

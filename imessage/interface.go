@@ -125,8 +125,6 @@ type PlatformConfig struct {
 	UnixSocket     string   `yaml:"unix_socket"`
 
 	PingInterval int64 `yaml:"ping_interval_seconds"`
-
-	ChatMerging bool `yaml:"chat_merging"`
 }
 
 func (pc *PlatformConfig) BridgeName() string {

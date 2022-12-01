@@ -49,7 +49,6 @@ type MacNoSIPConnector struct {
 	printPayloadContent bool
 	pingInterval        time.Duration
 	stopPinger          chan bool
-	mergeChats          bool
 	unixSocket          string
 }
 
@@ -65,7 +64,6 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
 		pingInterval:        time.Duration(bridge.GetConnectorConfig().PingInterval) * time.Second,
 		stopPinger:          make(chan bool, 8),
-		mergeChats:          bridge.GetConnectorConfig().ChatMerging,
 		unixSocket:          bridge.GetConnectorConfig().UnixSocket,
 	}, nil
 }
@@ -73,12 +71,6 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	mac.log.Debugln("Preparing to execute", mac.path)
 	args := mac.args
-	if mac.mergeChats {
-		args = append(args, "--enable-merged-chats")
-		mac.log.Debugln("Merged chats are enabled")
-	} else {
-		mac.log.Debugln("Merged chats are disabled")
-	}
 	if mac.unixSocket != "" {
 		args = append(args, "--unix-socket", mac.unixSocket)
 	}
@@ -243,7 +235,6 @@ func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendCaptions:             true,
 		BridgeState:              true,
 		MessageStatusCheckpoints: true,
-		LegacyMergedChats:        mac.mergeChats,
 		ContactChatMerging:       true,
 		RichLinks:                true,
 	}

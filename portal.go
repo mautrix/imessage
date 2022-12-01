@@ -160,26 +160,6 @@ func (br *IMBridge) loadDBPortal(txn dbutil.Execable, dbPortal *database.Portal,
 	return portal
 }
 
-// newDummyPortal returns an initialized Portal with no event processing capabilities
-func (br *IMBridge) newDummyPortal(dbPortal *database.Portal) *Portal {
-	portal := &Portal{
-		Portal: dbPortal,
-		bridge: br,
-		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
-
-		Identifier:      imessage.ParseIdentifier(dbPortal.GUID),
-		Messages:        make(chan *imessage.Message, 0),
-		ReadReceipts:    make(chan *imessage.ReadReceipt, 0),
-		MessageStatuses: make(chan *imessage.SendMessageStatus, 0),
-		MatrixMessages:  make(chan *event.Event, 0),
-		backfillStart:   make(chan struct{}),
-	}
-	if !br.IM.Capabilities().MessageSendResponses {
-		portal.messageDedup = make(map[string]SentMessage)
-	}
-	return portal
-}
-
 func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 	portal := &Portal{
 		Portal: dbPortal,
