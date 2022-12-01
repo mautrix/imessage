@@ -79,6 +79,9 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	} else {
 		mac.log.Debugln("Merged chats are disabled")
 	}
+	if mac.unixSocket != "" {
+		args = append(args, "--unix-socket", mac.unixSocket)
+	}
 	mac.proc = exec.Command(mac.path, args...)
 	mac.proc.Stderr = os.Stderr
 
@@ -98,7 +101,6 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 		if err != nil {
 			return fmt.Errorf("failed to open unix socket: %w", err)
 		}
-		args = append(args, "--unix-socket", mac.unixSocket)
 	} else {
 		input, err = mac.proc.StdoutPipe()
 		if err != nil {
