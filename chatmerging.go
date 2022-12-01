@@ -119,6 +119,7 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 			reqParts[i].UserID = portal.MainIntent().UserID
 			reqParts[i].NewRoom = *portal.getRoomCreateContent()
 			reqParts[i].Values = guids
+			portal.LastSeenHandle = portal.GUID
 			portals[portal.GUID] = portal
 			portalReq[portal.GUID] = &reqParts[i]
 			continue
@@ -129,6 +130,7 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 		}
 		partPortal := br.loadDBPortal(txn, nil, primaryGUID)
 		partPortal.SecondaryGUIDs = guids
+		partPortal.LastSeenHandle = primaryGUID
 		partPortal.preCreateDMSync(nil)
 		portals[partPortal.GUID] = partPortal
 		portalReq[partPortal.GUID] = &reqParts[i]
