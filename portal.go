@@ -244,9 +244,9 @@ func (portal *Portal) ReceiveMatrixEvent(_ bridge.User, evt *event.Event) {
 	portal.MatrixMessages <- evt
 }
 
-func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
+func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) (memberIDs []id.UserID) {
 	var members map[id.UserID]mautrix.JoinedMember
-	if !portal.bridge.Config.Bridge.Relay.Enabled {
+	if !portal.bridge.Config.Bridge.Relay.Enabled && portal.MXID != "" {
 		membersResp, err := portal.MainIntent().JoinedMembers(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to get members in room to remove extra members: %v", err)
@@ -258,9 +258,12 @@ func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
 	for _, member := range chatInfo.Members {
 		puppet := portal.bridge.GetPuppetByLocalID(member)
 		puppet.Sync()
-		err := puppet.Intent.EnsureJoined(portal.MXID)
-		if err != nil {
-			portal.log.Warnfln("Failed to make puppet of %s join %s: %v", member, portal.MXID, err)
+		memberIDs = append(memberIDs, puppet.MXID)
+		if portal.MXID != "" {
+			err := puppet.Intent.EnsureJoined(portal.MXID)
+			if err != nil {
+				portal.log.Warnfln("Failed to make puppet of %s join %s: %v", member, portal.MXID, err)
+			}
 		}
 		if members != nil {
 			delete(members, puppet.MXID)
@@ -278,6 +281,7 @@ func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
 			}
 		}
 	}
+	return memberIDs
 }
 
 func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.EventID {
@@ -627,6 +631,70 @@ func (portal *Portal) GetEncryptionEventContent() (evt *event.EncryptionEventCon
 	return
 }
 
+func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
+	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
+
+	initialState := []*event.Event{{
+		Type: event.StatePowerLevels,
+		Content: event.Content{
+			Parsed: portal.GetBasePowerLevels(),
+		},
+	}, {
+		Type:     event.StateBridge,
+		Content:  event.Content{Parsed: bridgeInfo},
+		StateKey: &bridgeInfoStateKey,
+	}, {
+		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
+		Type:     event.StateHalfShotBridge,
+		Content:  event.Content{Parsed: bridgeInfo},
+		StateKey: &bridgeInfoStateKey,
+	}}
+	if !portal.AvatarURL.IsEmpty() {
+		initialState = append(initialState, &event.Event{
+			Type: event.StateRoomAvatar,
+			Content: event.Content{
+				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
+			},
+		})
+	}
+
+	var invite []id.UserID
+
+	if portal.bridge.Config.Bridge.Encryption.Default {
+		initialState = append(initialState, &event.Event{
+			Type: event.StateEncryption,
+			Content: event.Content{
+				Parsed: portal.GetEncryptionEventContent(),
+			},
+		})
+		portal.Encrypted = true
+	}
+	if portal.IsPrivateChat() {
+		invite = append(invite, portal.bridge.Bot.UserID)
+	}
+
+	autoJoinInvites := portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry
+	if autoJoinInvites {
+		invite = append(invite, portal.bridge.user.MXID)
+	}
+
+	creationContent := make(map[string]interface{})
+	if !portal.bridge.Config.Bridge.FederateRooms {
+		creationContent["m.federate"] = false
+	}
+	return &mautrix.ReqCreateRoom{
+		Visibility:      "private",
+		Name:            portal.Name,
+		Invite:          invite,
+		Preset:          "private_chat",
+		IsDirect:        portal.IsPrivateChat(),
+		InitialState:    initialState,
+		CreationContent: creationContent,
+
+		BeeperAutoJoinInvites: autoJoinInvites,
+	}
+}
+
 func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverride *ProfileOverride) error {
 	portal.roomCreateLock.Lock()
 	defer portal.roomCreateLock.Unlock()
@@ -673,60 +741,11 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 		}
 	}
 
-	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
-
-	initialState := []*event.Event{{
-		Type: event.StatePowerLevels,
-		Content: event.Content{
-			Parsed: portal.GetBasePowerLevels(),
-		},
-	}, {
-		Type:     event.StateBridge,
-		Content:  event.Content{Parsed: bridgeInfo},
-		StateKey: &bridgeInfoStateKey,
-	}, {
-		// TODO remove this once https://github.com/matrix-org/matrix-doc/pull/2346 is in spec
-		Type:     event.StateHalfShotBridge,
-		Content:  event.Content{Parsed: bridgeInfo},
-		StateKey: &bridgeInfoStateKey,
-	}}
-	if !portal.AvatarURL.IsEmpty() {
-		initialState = append(initialState, &event.Event{
-			Type: event.StateRoomAvatar,
-			Content: event.Content{
-				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
-			},
-		})
+	req := portal.getRoomCreateContent()
+	if req.BeeperAutoJoinInvites && !portal.IsPrivateChat() {
+		req.Invite = append(req.Invite, portal.SyncParticipants(chatInfo)...)
 	}
-
-	var invite []id.UserID
-
-	if portal.bridge.Config.Bridge.Encryption.Default {
-		initialState = append(initialState, &event.Event{
-			Type: event.StateEncryption,
-			Content: event.Content{
-				Parsed: portal.GetEncryptionEventContent(),
-			},
-		})
-		portal.Encrypted = true
-	}
-	if portal.IsPrivateChat() {
-		invite = append(invite, portal.bridge.Bot.UserID)
-	}
-
-	creationContent := make(map[string]interface{})
-	if !portal.bridge.Config.Bridge.FederateRooms {
-		creationContent["m.federate"] = false
-	}
-	resp, err := intent.CreateRoom(&mautrix.ReqCreateRoom{
-		Visibility:      "private",
-		Name:            portal.Name,
-		Invite:          invite,
-		Preset:          "private_chat",
-		IsDirect:        portal.IsPrivateChat(),
-		InitialState:    initialState,
-		CreationContent: creationContent,
-	})
+	resp, err := intent.CreateRoom(req)
 	if err != nil {
 		return err
 	}
@@ -740,11 +759,15 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	portal.bridge.portalsLock.Unlock()
 
 	portal.log.Debugln("Updating state store with initial memberships")
-	for _, user := range invite {
-		portal.bridge.StateStore.SetMembership(portal.MXID, user, event.MembershipInvite)
+	inviteeMembership := event.MembershipInvite
+	if req.BeeperAutoJoinInvites {
+		inviteeMembership = event.MembershipJoin
+	}
+	for _, user := range req.Invite {
+		portal.bridge.StateStore.SetMembership(portal.MXID, user, inviteeMembership)
 	}
 
-	if portal.Encrypted {
+	if portal.Encrypted && !req.BeeperAutoJoinInvites {
 		portal.log.Debugln("Ensuring bridge bot is joined to portal")
 		err = portal.bridge.Bot.EnsureJoined(portal.MXID)
 		if err != nil {
@@ -752,26 +775,28 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 		}
 	}
 
-	portal.ensureUserInvited(portal.bridge.user)
+	if !req.BeeperAutoJoinInvites {
+		portal.ensureUserInvited(portal.bridge.user)
+	}
 	portal.addToSpace(portal.bridge.user)
 
 	if !portal.IsPrivateChat() {
-		portal.log.Debugln("New portal is group chat, syncing participants")
-		portal.SyncParticipants(chatInfo)
+		if !req.BeeperAutoJoinInvites {
+			portal.log.Debugln("New portal is group chat, syncing participants")
+			portal.SyncParticipants(chatInfo)
+		}
 	} else {
 		puppet := portal.bridge.GetPuppetByLocalID(portal.Identifier.LocalID)
 		portal.bridge.user.UpdateDirectChats(map[id.UserID][]id.RoomID{puppet.MXID: {portal.MXID}})
 	}
-	if portal.bridge.user.DoublePuppetIntent != nil {
-		portal.log.Debugln("Ensuring double puppet for", portal.bridge.user.MXID, "is joined to portal")
-		_ = portal.bridge.user.DoublePuppetIntent.EnsureJoined(portal.MXID)
-	}
-	firstEventResp, err := portal.MainIntent().SendMessageEvent(portal.MXID, PortalCreationDummyEvent, struct{}{})
-	if err != nil {
-		portal.log.Errorln("Failed to send dummy event to mark portal creation:", err)
-	} else {
-		portal.FirstEventID = firstEventResp.EventID
-		portal.Update(nil)
+	if portal.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
+		firstEventResp, err := portal.MainIntent().SendMessageEvent(portal.MXID, PortalCreationDummyEvent, struct{}{})
+		if err != nil {
+			portal.log.Errorln("Failed to send dummy event to mark portal creation:", err)
+		} else {
+			portal.FirstEventID = firstEventResp.EventID
+			portal.Update(nil)
+		}
 	}
 	go func() {
 		portal.log.Debugln("Starting initial backfill")
