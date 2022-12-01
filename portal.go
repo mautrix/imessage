@@ -111,7 +111,7 @@ func (br *IMBridge) ReIDPortal(oldGUID, newGUID string) bool {
 }
 
 func (br *IMBridge) GetAllPortals() []*Portal {
-	return br.dbPortalsToPortals(br.DB.Portal.GetAll())
+	return br.dbPortalsToPortals(br.DB.Portal.GetAllWithMXID())
 }
 
 func (br *IMBridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {

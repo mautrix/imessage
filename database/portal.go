@@ -53,8 +53,8 @@ const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, bac
 const selectPortal = "SELECT " + portalColumns + " FROM portal"
 const selectMergedPortalByGUID = "SELECT " + portalColumns + " FROM merged_chat LEFT JOIN portal ON merged_chat.target_guid=portal.guid WHERE source_guid=$1"
 
-func (pq *PortalQuery) GetAll() []*Portal {
-	return pq.getAll(selectPortal)
+func (pq *PortalQuery) GetAllWithMXID() []*Portal {
+	return pq.getAll(selectPortal + " WHERE mxid<>''")
 }
 
 func (pq *PortalQuery) GetByGUID(guid string) *Portal {
