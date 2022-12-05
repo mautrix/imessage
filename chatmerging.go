@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
@@ -13,6 +14,72 @@ import (
 
 func (br *IMBridge) UpdateMerges(contacts []*imessage.Contact) {
 	br.Log.Infofln("Updating chat merges with %d contacts", len(contacts))
+
+	alreadyHandledGUIDs := make(map[string]struct{}, len(contacts)*2)
+	portals := make([]*Portal, 0, 16)
+	noPortals := make([]string, 0, 16)
+	collect := func(localID string) {
+		guid := imessage.Identifier{Service: "iMessage", LocalID: localID}.String()
+		if _, alreadyHandled := alreadyHandledGUIDs[guid]; alreadyHandled {
+			return
+		}
+		alreadyHandledGUIDs[guid] = struct{}{}
+		portal := br.GetPortalByGUIDIfExists(guid)
+		if portal == nil {
+			noPortals = append(noPortals, guid)
+		} else if portal.GUID == guid {
+			portals = append(portals, portal)
+		} // else: the ID has already been merged into something else, so ignore it for now
+	}
+
+	for _, contact := range contacts {
+		portals = portals[:0]
+		noPortals = noPortals[:0]
+
+		// Find all the portals from the contact (except ones that have already been merged into another GUID)
+		for _, phone := range contact.Phones {
+			if !strings.HasPrefix(phone, "+") {
+				continue
+			}
+			collect(phone)
+		}
+		for _, email := range contact.Emails {
+			collect(email)
+		}
+
+		// If we found more than one existing portal, merge them into the best one
+		if len(portals) > 1 {
+			bestPortal := portals[0]
+			bestPortalIndex := 0
+			for i, portal := range portals {
+				alreadyHandledGUIDs[portal.GUID] = struct{}{}
+				for _, secondaryGUID := range portal.SecondaryGUIDs {
+					alreadyHandledGUIDs[secondaryGUID] = struct{}{}
+				}
+				if len(portal.SecondaryGUIDs) > len(bestPortal.SecondaryGUIDs) {
+					bestPortal = portal
+					bestPortalIndex = i
+				}
+			}
+			portals[bestPortalIndex], portals[0] = portals[0], portals[bestPortalIndex]
+			bestPortal.Merge(portals[1:])
+		}
+		// If we found any identifiers without a portal, just mark them as merged in the database.
+		if len(noPortals) > 1 || (len(noPortals) == 1 && len(portals) > 0) {
+			var targetPortal *Portal
+			mergeList := noPortals
+			if len(portals) == 0 {
+				targetPortal = br.GetPortalByGUID(noPortals[0])
+				mergeList = noPortals[1:]
+			} else {
+				targetPortal = portals[0]
+			}
+			br.Log.Debugfln("Merging %v (with no portals created) into portal %s", mergeList, targetPortal.GUID)
+			br.DB.MergedChat.Set(nil, targetPortal.GUID, mergeList...)
+			targetPortal.addSecondaryGUIDs(mergeList)
+		}
+	}
+	br.Log.Infoln("Finished merging with contact list")
 }
 
 func (portal *Portal) Merge(others []*Portal) {
@@ -79,7 +146,7 @@ func (portal *Portal) Merge(others []*Portal) {
 	for _, guid := range guids {
 		portal.bridge.portalsByGUID[guid] = portal
 	}
-	portal.SecondaryGUIDs = guids
+	portal.addSecondaryGUIDs(guids)
 	if newRoomID != "" {
 		portal.log.Debugln("Updating in-memory caches")
 		for _, roomID := range roomIDs {
@@ -138,7 +205,7 @@ func (portal *Portal) Split(splitParts map[string][]string) {
 			delete(br.portalsByGUID, guid)
 		}
 		partPortal := br.loadDBPortal(txn, nil, primaryGUID)
-		partPortal.SecondaryGUIDs = guids
+		partPortal.addSecondaryGUIDs(guids)
 		partPortal.LastSeenHandle = primaryGUID
 		partPortal.preCreateDMSync(nil)
 		portals[partPortal.GUID] = partPortal

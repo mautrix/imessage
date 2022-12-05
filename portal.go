@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,16 @@ func (br *IMBridge) GetPortalByGUID(guid string) *Portal {
 	portal, ok := br.portalsByGUID[guid]
 	if !ok {
 		return br.loadDBPortal(nil, br.DB.Portal.GetByGUID(guid), guid)
+	}
+	return portal
+}
+
+func (br *IMBridge) GetPortalByGUIDIfExists(guid string) *Portal {
+	br.portalsLock.Lock()
+	defer br.portalsLock.Unlock()
+	portal, ok := br.portalsByGUID[guid]
+	if !ok {
+		return br.loadDBPortal(nil, br.DB.Portal.GetByGUID(guid), "")
 	}
 	return portal
 }
@@ -229,6 +240,18 @@ func (portal *Portal) MarkEncrypted() {
 
 func (portal *Portal) ReceiveMatrixEvent(_ bridge.User, evt *event.Event) {
 	portal.MatrixMessages <- evt
+}
+
+func (portal *Portal) addSecondaryGUIDs(guids []string) {
+	portal.SecondaryGUIDs = append(portal.SecondaryGUIDs, guids...)
+	sort.Strings(portal.SecondaryGUIDs)
+	filtered := portal.SecondaryGUIDs[:0]
+	for i, guid := range portal.SecondaryGUIDs {
+		if i >= len(portal.SecondaryGUIDs)-1 || guid != portal.SecondaryGUIDs[i+1] {
+			filtered = append(filtered, guid)
+		}
+	}
+	portal.SecondaryGUIDs = filtered
 }
 
 func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) (memberIDs []id.UserID) {

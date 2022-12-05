@@ -17,6 +17,8 @@
 package database
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -67,6 +69,14 @@ func (mcq *MergedChatQuery) GetAllForTarget(guid string) (sources []string) {
 		} else {
 			sources = append(sources, source)
 		}
+	}
+	return
+}
+
+func (mcq *MergedChatQuery) Get(guid string) (target string) {
+	err := mcq.db.QueryRow("SELECT target_guid FROM merged_chat WHERE source_guid=$1", guid).Scan(&target)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		mcq.log.Errorfln("Failed to get merge target for %s: %v", guid, err)
 	}
 	return
 }
