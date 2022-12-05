@@ -242,10 +242,11 @@ func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) {
 		membersResp, err := portal.MainIntent().JoinedMembers(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to get members in room to remove extra members: %v", err)
+		} else {
+			members = membersResp.Joined
+			delete(members, portal.bridge.Bot.UserID)
+			delete(members, portal.bridge.user.MXID)
 		}
-		members = membersResp.Joined
-		delete(members, portal.bridge.Bot.UserID)
-		delete(members, portal.bridge.user.MXID)
 	}
 	for _, member := range chatInfo.Members {
 		puppet := portal.bridge.GetPuppetByLocalID(member)
@@ -319,7 +320,9 @@ func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	if len(chatInfo.DisplayName) > 0 {
 		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 	}
-	portal.SyncParticipants(chatInfo)
+	if !portal.IsPrivateChat() {
+		portal.SyncParticipants(chatInfo)
+	}
 	if update {
 		portal.Update(nil)
 		portal.UpdateBridgeInfo()
