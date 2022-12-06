@@ -176,10 +176,6 @@ func (ipc *Processor) RequestAsync(cmd Command, data interface{}) (<-chan *Messa
 	ipc.lock.Unlock()
 	if err != nil {
 		panic(fmt.Errorf("error sending IPC command: %w", err))
-//		ipc.waiterLock.Lock()
-//		delete(ipc.waiters, reqID)
-//		ipc.waiterLock.Unlock()
-//		close(respChan)
 	}
 	return respChan, reqID, err
 }

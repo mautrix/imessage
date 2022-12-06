@@ -305,7 +305,7 @@ func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.Event
 			} else {
 				// TODO can existing tapbacks be modified in backfill?
 				dbTapback := portal.bridge.DB.Tapback.New()
-				dbTapback.ChatGUID = portal.GUID
+				dbTapback.PortalGUID = portal.GUID
 				dbTapback.SenderGUID = info.Sender.String()
 				dbTapback.MessageGUID = info.TapbackTarget.GUID
 				dbTapback.MessagePart = info.TapbackTarget.Part
@@ -316,7 +316,7 @@ func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.Event
 			}
 		} else {
 			dbMessage := portal.bridge.DB.Message.New()
-			dbMessage.ChatGUID = portal.GUID
+			dbMessage.PortalGUID = portal.GUID
 			dbMessage.SenderGUID = info.Sender.String()
 			dbMessage.GUID = info.GUID
 			dbMessage.Part = info.Index

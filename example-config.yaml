@@ -62,8 +62,6 @@ imessage:
     unix_socket: null
     # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.
     ping_interval_seconds: 15
-    # Whether to merge iMessage and SMS portals into one
-    chat_merging: false
 
 # Bridge config
 bridge:
@@ -164,6 +162,8 @@ bridge:
     # This is helpful when the sender ID shifts depending on the device they use, since
     # the bridge is unable to add participants to the chat post-creation.
     force_uniform_dm_senders: true
+    # Should SMS chats always be in the same room as iMessage chats with the same phone number?
+    disable_sms_portals: false
     # Whether or not created rooms should have federation enabled.
     # If false, created portal rooms will never be federated.
     federate_rooms: true

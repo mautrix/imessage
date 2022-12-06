@@ -18,6 +18,8 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 
 	log "maunium.net/go/maulogger/v2"
@@ -39,7 +41,7 @@ func (mq *MessageQuery) New() *Message {
 }
 
 func (mq *MessageQuery) GetIDsSince(chat string, since time.Time) (messages []string) {
-	rows, err := mq.db.Query("SELECT guid FROM message WHERE chat_guid=$1 AND timestamp>=$2 AND part=0 ORDER BY timestamp ASC", chat, since.Unix()*1000)
+	rows, err := mq.db.Query("SELECT guid FROM message WHERE portal_guid=$1 AND timestamp>=$2 AND part=0 ORDER BY timestamp ASC", chat, since.Unix()*1000)
 	if err != nil || rows == nil {
 		return nil
 	}
@@ -57,28 +59,68 @@ func (mq *MessageQuery) GetIDsSince(chat string, since time.Time) (messages []st
 }
 
 func (mq *MessageQuery) GetLastByGUID(chat string, guid string) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
-		"FROM message WHERE chat_guid=$1 AND guid=$2 ORDER BY part DESC LIMIT 1", chat, guid)
+	return mq.get("SELECT portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp "+
+		"FROM message WHERE portal_guid=$1 AND guid=$2 ORDER BY part DESC LIMIT 1", chat, guid)
 }
 
 func (mq *MessageQuery) GetByGUID(chat string, guid string, part int) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
-		"FROM message WHERE chat_guid=$1 AND guid=$2 AND part=$3", chat, guid, part)
+	return mq.get("SELECT portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp "+
+		"FROM message WHERE portal_guid=$1 AND guid=$2 AND part=$3", chat, guid, part)
 }
 
 func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
-	return mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
+	return mq.get("SELECT portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp "+
 		"FROM message WHERE mxid=$1", mxid)
 }
 
 func (mq *MessageQuery) GetLastInChat(chat string) *Message {
-	msg := mq.get("SELECT chat_guid, guid, part, mxid, sender_guid, timestamp "+
-		"FROM message WHERE chat_guid=$1 ORDER BY timestamp DESC LIMIT 1", chat)
+	msg := mq.get("SELECT portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp "+
+		"FROM message WHERE portal_guid=$1 ORDER BY timestamp DESC LIMIT 1", chat)
 	if msg == nil || msg.Timestamp == 0 {
 		// Old db, we don't know what the last message is.
 		return nil
 	}
 	return msg
+}
+
+func (mq *MessageQuery) MergePortalGUID(txn dbutil.Execable, to string, from ...string) int64 {
+	if txn == nil {
+		txn = mq.db
+	}
+	args := make([]any, len(from)+1)
+	args[0] = to
+	for i, fr := range from {
+		args[i+1] = fr
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(from)), ",")
+	res, err := txn.Exec(fmt.Sprintf("UPDATE message SET portal_guid=? WHERE portal_guid IN (%s)", placeholders), args...)
+	if err != nil {
+		mq.log.Errorfln("Failed to update portal GUID for messages (%v -> %s): %v", err, from, to)
+		return -1
+	} else {
+		affected, err := res.RowsAffected()
+		if err != nil {
+			mq.log.Warnfln("Failed to get number of rows affected by merge: %v", err)
+		}
+		return affected
+	}
+}
+
+func (mq *MessageQuery) SplitPortalGUID(txn dbutil.Execable, fromHandle, fromPortal, to string) int64 {
+	if txn == nil {
+		txn = mq.db
+	}
+	res, err := txn.Exec("UPDATE message SET portal_guid=?1 WHERE portal_guid=?2 AND handle_guid=?3", to, fromPortal, fromHandle)
+	if err != nil {
+		mq.log.Errorfln("Failed to split portal GUID for messages (%s in %s -> %s): %v", fromHandle, fromPortal, to, err)
+		return -1
+	} else {
+		affected, err := res.RowsAffected()
+		if err != nil {
+			mq.log.Warnfln("Failed to get number of rows affected by split: %v", err)
+		}
+		return affected
+	}
 }
 
 func (mq *MessageQuery) get(query string, args ...interface{}) *Message {
@@ -93,11 +135,12 @@ type Message struct {
 	db  *Database
 	log log.Logger
 
-	ChatGUID   string
+	PortalGUID string
 	GUID       string
 	Part       int
 	MXID       id.EventID
 	SenderGUID string
+	HandleGUID string
 	Timestamp  int64
 }
 
@@ -106,7 +149,7 @@ func (msg *Message) Time() time.Time {
 }
 
 func (msg *Message) Scan(row dbutil.Scannable) *Message {
-	err := row.Scan(&msg.ChatGUID, &msg.GUID, &msg.Part, &msg.MXID, &msg.SenderGUID, &msg.Timestamp)
+	err := row.Scan(&msg.PortalGUID, &msg.GUID, &msg.Part, &msg.MXID, &msg.SenderGUID, &msg.HandleGUID, &msg.Timestamp)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			msg.log.Errorln("Database scan failed:", err)
@@ -120,16 +163,16 @@ func (msg *Message) Insert(txn dbutil.Execable) {
 	if txn == nil {
 		txn = msg.db
 	}
-	_, err := txn.Exec("INSERT INTO message (chat_guid, guid, part, mxid, sender_guid, timestamp) VALUES ($1, $2, $3, $4, $5, $6)",
-		msg.ChatGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.Timestamp)
+	_, err := txn.Exec("INSERT INTO message (portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+		msg.PortalGUID, msg.GUID, msg.Part, msg.MXID, msg.SenderGUID, msg.HandleGUID, msg.Timestamp)
 	if err != nil {
-		msg.log.Warnfln("Failed to insert %s.%d@%s: %v", msg.GUID, msg.Part, msg.ChatGUID, err)
+		msg.log.Warnfln("Failed to insert %s.%d@%s: %v", msg.GUID, msg.Part, msg.PortalGUID, err)
 	}
 }
 
 func (msg *Message) Delete() {
-	_, err := msg.db.Exec("DELETE FROM message WHERE chat_guid=$1 AND guid=$2", msg.ChatGUID, msg.GUID)
+	_, err := msg.db.Exec("DELETE FROM message WHERE portal_guid=$1 AND guid=$2", msg.PortalGUID, msg.GUID)
 	if err != nil {
-		msg.log.Warnfln("Failed to delete %s.%d@%s: %v", msg.GUID, msg.Part, msg.ChatGUID, err)
+		msg.log.Warnfln("Failed to delete %s.%d@%s: %v", msg.GUID, msg.Part, msg.PortalGUID, err)
 	}
 }

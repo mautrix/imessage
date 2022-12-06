@@ -140,12 +140,7 @@ func (ios *iOSConnector) postprocessMessage(message *imessage.Message, source st
 		message.Service = imessage.ParseIdentifier(message.ChatGUID).Service
 	}
 	if !message.IsFromMe {
-		sender := imessage.ParseIdentifier(message.JSONSenderGUID)
-		if ios.Capabilities().LegacyMergedChats {
-			sender.Service = "iMessage"
-			message.JSONSenderGUID = sender.String()
-		}
-		message.Sender = sender
+		message.Sender = imessage.ParseIdentifier(message.JSONSenderGUID)
 	}
 	if len(message.JSONTargetGUID) > 0 {
 		message.Target = imessage.ParseIdentifier(message.JSONTargetGUID)
@@ -265,7 +260,7 @@ func (ios *iOSConnector) handleChatIDChange(data json.RawMessage) interface{} {
 		return nil
 	}
 	return &ChatIDChangeResponse{
-		Changed: ios.bridge.ReIDPortal(chatIDChange.OldGUID, chatIDChange.NewGUID),
+		Changed: ios.bridge.ReIDPortal(chatIDChange.OldGUID, chatIDChange.NewGUID, false),
 	}
 }
 
@@ -623,7 +618,6 @@ func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 		SendTypingNotifications:  !ios.isAndroid,
 		SendCaptions:             ios.isAndroid,
 		BridgeState:              false,
-		LegacyMergedChats:        false,
 		ContactChatMerging:       !ios.isAndroid,
 		ChatBridgeResult:         ios.isAndroid,
 	}

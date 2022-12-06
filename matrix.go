@@ -57,6 +57,7 @@ func NewWebsocketCommandHandler(br *IMBridge) *WebsocketCommandHandler {
 	br.AS.SetWebsocketCommandHandler("start_dm", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("resolve_identifier", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("list_contacts", handler.handleWSGetContacts)
+	br.AS.SetWebsocketCommandHandler("upload_contacts", handler.handleWSUploadContacts)
 	br.AS.SetWebsocketCommandHandler("edit_ghost", handler.handleWSEditGhost)
 	return handler
 }
@@ -178,30 +179,29 @@ func (mx *WebsocketCommandHandler) handleWSGetContacts(_ appservice.WebsocketCom
 	return true, contacts
 }
 
+type UploadContactsRequest struct {
+	Contacts []*imessage.Contact `json:"contacts"`
+}
+
+func (mx *WebsocketCommandHandler) handleWSUploadContacts(cmd appservice.WebsocketCommand) (bool, any) {
+	var req UploadContactsRequest
+	if err := json.Unmarshal(cmd.Data, &req); err != nil {
+		return false, fmt.Errorf("failed to parse request: %w", err)
+	}
+	mx.bridge.UpdateMerges(req.Contacts)
+	return true, nil
+}
+
 func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMResponse, error) {
 	var resp StartDMResponse
 	var err error
-
-	prepareDM := func() (*Portal, error) {
-		// this is done if and only if ActuallyStart is true, so that the user can see that they would only have SMS behavior
-		// this ensures that an iMessage room is created, instead of a bricked SMS room + an iMessage room
-		if mx.bridge.IM.Capabilities().LegacyMergedChats {
-			parsed := imessage.ParseIdentifier(resp.GUID)
-			parsed.Service = "iMessage"
-			resp.GUID = parsed.String()
-		}
-		if err := mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
-			return nil, err
-		}
-		return mx.bridge.GetPortalByGUID(resp.GUID), nil
-	}
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
 		resp.RoomID = portal.MXID
 		return &resp, nil
-	} else if portal, err = prepareDM(); err != nil {
+	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
 		return nil, fmt.Errorf("failed to prepare DM: %w", err)
 	} else if err = portal.CreateMatrixRoom(nil, &req.ProfileOverride); err != nil {
 		return nil, fmt.Errorf("failed to create Matrix room: %w", err)

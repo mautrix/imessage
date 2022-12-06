@@ -24,6 +24,8 @@ import (
 
 	"maunium.net/go/mautrix/id"
 	"maunium.net/go/mautrix/util/dbutil"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 type PortalQuery struct {
@@ -47,22 +49,29 @@ func (pq *PortalQuery) Count() (count int) {
 	return
 }
 
-const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space, thread_id, first_event_id, next_batch_id"
+const portalColumns = "guid, mxid, name, avatar_hash, avatar_url, encrypted, backfill_start_ts, in_space, thread_id, last_seen_handle, first_event_id, next_batch_id"
+const selectPortal = "SELECT " + portalColumns + " FROM portal"
+const selectMergedPortalByGUID = "SELECT " + portalColumns + " FROM merged_chat LEFT JOIN portal ON merged_chat.target_guid=portal.guid WHERE source_guid=$1"
 
-func (pq *PortalQuery) GetAll() []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal", portalColumns))
+func (pq *PortalQuery) GetAllWithMXID() []*Portal {
+	return pq.getAll(selectPortal + " WHERE mxid<>''")
 }
 
 func (pq *PortalQuery) GetByGUID(guid string) *Portal {
-	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE guid=$1", portalColumns), guid)
+	parsed := imessage.ParseIdentifier(guid)
+	if parsed.IsGroup {
+		return pq.get(selectPortal+" WHERE guid=$1", guid)
+	} else {
+		return pq.get(selectMergedPortalByGUID, guid)
+	}
 }
 
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
-	return pq.get(fmt.Sprintf("SELECT %s FROM portal WHERE mxid=$1", portalColumns), mxid)
+	return pq.get(selectPortal+" WHERE mxid=$1", mxid)
 }
 
 func (pq *PortalQuery) FindPrivateChats() []*Portal {
-	return pq.getAll(fmt.Sprintf("SELECT %s FROM portal WHERE guid LIKE '%%;-;%%'", portalColumns))
+	return pq.getAll(selectPortal + " WHERE guid LIKE '%%;-;%%'")
 }
 
 func (pq *PortalQuery) getAll(query string, args ...interface{}) (portals []*Portal) {
@@ -99,6 +108,7 @@ type Portal struct {
 	BackfillStartTS int64
 	InSpace         bool
 	ThreadID        string
+	LastSeenHandle  string
 
 	FirstEventID id.EventID
 	NextBatchID  id.BatchID
@@ -114,7 +124,7 @@ func (portal *Portal) avatarHashSlice() []byte {
 func (portal *Portal) Scan(row dbutil.Scannable) *Portal {
 	var mxid, avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace, &portal.ThreadID, &portal.FirstEventID, &portal.NextBatchID)
+	err := row.Scan(&portal.GUID, &mxid, &portal.Name, &avatarHashSlice, &avatarURL, &portal.Encrypted, &portal.BackfillStartTS, &portal.InSpace, &portal.ThreadID, &portal.LastSeenHandle, &portal.FirstEventID, &portal.NextBatchID)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			portal.log.Errorln("Database scan failed:", err)
@@ -138,11 +148,16 @@ func (portal *Portal) mxidPtr() *id.RoomID {
 	return nil
 }
 
-func (portal *Portal) Insert() {
-	_, err := portal.db.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)", portalColumns),
-		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID, portal.FirstEventID, portal.NextBatchID)
+func (portal *Portal) Insert(txn dbutil.Execable) {
+	if txn == nil {
+		txn = portal.db
+	}
+	_, err := txn.Exec(fmt.Sprintf("INSERT INTO portal (%s) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)", portalColumns),
+		portal.GUID, portal.mxidPtr(), portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID, portal.LastSeenHandle, portal.FirstEventID, portal.NextBatchID)
 	if err != nil {
 		portal.log.Warnfln("Failed to insert %s: %v", portal.GUID, err)
+	} else {
+		portal.log.Debugfln("Inserted new portal %s", portal.GUID)
 	}
 }
 
@@ -154,8 +169,8 @@ func (portal *Portal) Update(txn dbutil.Execable) {
 	if len(portal.MXID) > 0 {
 		mxid = &portal.MXID
 	}
-	_, err := txn.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, thread_id=$8, first_event_id=$9, next_batch_id=$10 WHERE guid=$11",
-		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID, portal.FirstEventID, portal.NextBatchID, portal.GUID)
+	_, err := txn.Exec("UPDATE portal SET mxid=$1, name=$2, avatar_hash=$3, avatar_url=$4, encrypted=$5, backfill_start_ts=$6, in_space=$7, thread_id=$8, last_seen_handle=$9, first_event_id=$10, next_batch_id=$11 WHERE guid=$12",
+		mxid, portal.Name, portal.avatarHashSlice(), portal.AvatarURL.String(), portal.Encrypted, portal.BackfillStartTS, portal.InSpace, portal.ThreadID, portal.LastSeenHandle, portal.FirstEventID, portal.NextBatchID, portal.GUID)
 	if err != nil {
 		portal.log.Warnfln("Failed to update %s: %v", portal.GUID, err)
 	}
