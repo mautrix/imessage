@@ -60,19 +60,30 @@ func (br *IMBridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 func (br *IMBridge) GetPortalByGUID(guid string) *Portal {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
-	portal, ok := br.portalsByGUID[guid]
-	if !ok {
-		return br.loadDBPortal(nil, br.DB.Portal.GetByGUID(guid), guid)
-	}
-	return portal
+	return br.maybeGetPortalByGUID(guid, true)
 }
 
 func (br *IMBridge) GetPortalByGUIDIfExists(guid string) *Portal {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
+	return br.maybeGetPortalByGUID(guid, false)
+}
+
+func (br *IMBridge) maybeGetPortalByGUID(guid string, createIfNotExist bool) *Portal {
+	if br.Config.Bridge.DisableSMSPortals && strings.HasPrefix(guid, "SMS;-;") {
+		parsed := imessage.ParseIdentifier(guid)
+		if !parsed.IsGroup && parsed.Service == "SMS" {
+			parsed.Service = "iMessage"
+			guid = parsed.String()
+		}
+	}
+	fallbackGUID := guid
+	if !createIfNotExist {
+		fallbackGUID = ""
+	}
 	portal, ok := br.portalsByGUID[guid]
 	if !ok {
-		return br.loadDBPortal(nil, br.DB.Portal.GetByGUID(guid), "")
+		return br.loadDBPortal(nil, br.DB.Portal.GetByGUID(guid), fallbackGUID)
 	}
 	return portal
 }
@@ -81,30 +92,37 @@ func (br *IMBridge) GetMessagesSince(chatGUID string, since time.Time) (out []st
 	return br.DB.Message.GetIDsSince(chatGUID, since)
 }
 
-func (br *IMBridge) ReIDPortal(oldGUID, newGUID string) bool {
+func (br *IMBridge) ReIDPortal(oldGUID, newGUID string, mergeExisting bool) bool {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
-
-	portal, ok := br.portalsByGUID[oldGUID]
-	if !ok {
-		portal = br.loadDBPortal(nil, br.DB.Portal.GetByGUID(oldGUID), "")
-		if portal == nil {
-			br.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
-			return false
-		}
+	portal := br.maybeGetPortalByGUID(oldGUID, false)
+	if portal == nil {
+		br.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
+		return false
 	}
 
-	newPortal, ok := br.portalsByGUID[newGUID]
-	if !ok {
-		newPortal = br.loadDBPortal(nil, br.DB.Portal.GetByGUID(newGUID), "")
+	return portal.reIDInto(newGUID, false, mergeExisting)
+}
+
+func (portal *Portal) reIDInto(newGUID string, lock, mergeExisting bool) bool {
+	br := portal.bridge
+	if lock {
+		br.portalsLock.Lock()
+		defer br.portalsLock.Unlock()
 	}
+	newPortal := br.maybeGetPortalByGUID(newGUID, false)
 	if newPortal != nil {
-		br.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", oldGUID, newGUID)
-		portal.Delete()
-		if len(portal.MXID) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
-			_, _ = portal.bridge.user.DoublePuppetIntent.LeaveRoom(portal.MXID)
+		if mergeExisting && portal.MXID != "" && br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+			br.Log.Infofln("Got chat ID change %s->%s, but portal with new ID already exists. Merging portals in background", portal.GUID, newGUID)
+			go newPortal.Merge([]*Portal{portal})
+		} else {
+			br.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", portal.GUID, newGUID)
+			portal.Delete()
+			if len(portal.MXID) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
+				_, _ = portal.bridge.user.DoublePuppetIntent.LeaveRoom(portal.MXID)
+			}
+			portal.Cleanup(false)
 		}
-		portal.Cleanup(false)
 		return false
 	}
 
@@ -313,22 +331,6 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 		}
 	}
 	return nil
-}
-
-// mergeIntoPortal creates a tombstone event redirecting the user to a different room.
-// If the event is successfully created, the portal is deleted from the database and returns true. Otherwise, returns false.
-func (portal *Portal) mergeIntoPortal(roomID id.RoomID, tombstoneMessage string) bool {
-	portal.log.Infofln("Merging portal %s into %s: %s", portal.MXID, roomID, tombstoneMessage)
-	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateTombstone, "", event.TombstoneEventContent{
-		Body:            tombstoneMessage,
-		ReplacementRoom: roomID,
-	})
-	if err != nil {
-		portal.log.Errorfln("Error while tombstoning %s: %v", portal.MXID, err)
-		return false
-	}
-	portal.Delete()
-	return true
 }
 
 func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {

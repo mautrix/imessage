@@ -260,7 +260,7 @@ func (ios *iOSConnector) handleChatIDChange(data json.RawMessage) interface{} {
 		return nil
 	}
 	return &ChatIDChangeResponse{
-		Changed: ios.bridge.ReIDPortal(chatIDChange.OldGUID, chatIDChange.NewGUID),
+		Changed: ios.bridge.ReIDPortal(chatIDChange.OldGUID, chatIDChange.NewGUID, false),
 	}
 }
 

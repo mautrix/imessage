@@ -108,7 +108,7 @@ type Bridge interface {
 	GetConnectorConfig() *PlatformConfig
 	PingServer() (start, serverTs, end time.Time)
 	SendBridgeStatus(state BridgeStatus)
-	ReIDPortal(oldGUID, newGUID string) bool
+	ReIDPortal(oldGUID, newGUID string, mergeExisting bool) bool
 	GetMessagesSince(chatGUID string, since time.Time) []string
 	SetPushKey(req *PushKeyRequest)
 }
