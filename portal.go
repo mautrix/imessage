@@ -112,9 +112,12 @@ func (portal *Portal) reIDInto(newGUID string, lock, mergeExisting bool) bool {
 	}
 	newPortal := br.maybeGetPortalByGUID(newGUID, false)
 	if newPortal != nil {
-		if mergeExisting && portal.MXID != "" && br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+		if mergeExisting && portal.MXID != "" && newPortal.MXID != "" && br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 			br.Log.Infofln("Got chat ID change %s->%s, but portal with new ID already exists. Merging portals in background", portal.GUID, newGUID)
 			go newPortal.Merge([]*Portal{portal})
+		} else if newPortal.MXID == "" && portal.MXID != "" {
+			br.Log.Infofln("Got chat ID change %s->%s. Portal with new ID already exists, but it doesn't have a room. Nuking new portal row", portal.GUID, newGUID)
+			newPortal.Delete()
 		} else {
 			br.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", portal.GUID, newGUID)
 			portal.Delete()
