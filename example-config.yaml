@@ -1,10 +1,13 @@
 # Homeserver details.
 homeserver:
     # The address that this appservice can use to connect to the homeserver.
-    address: https://example.com
-    websocket_proxy: ws://localhost:29331
+    address: https://matrix.example.com
+    # The address to mautrix-wsproxy (which should usually be next to the homeserver behind a reverse proxy).
+    # Only the /_matrix/client/unstable/fi.mau.as_sync websocket endpoint is used on this address.
+    websocket_proxy: wss://matrix.example.com
+    # How often should the websocket be pinged? Pinging will be disabled if this is zero.
     ping_interval_seconds: 0
-    # The domain of the homeserver (for MXIDs, etc).
+    # The domain of the homeserver (also known as server_name, used for MXIDs, etc).
     domain: example.com
 
     # What software is the homeserver running?
