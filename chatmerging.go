@@ -130,6 +130,9 @@ func (portal *Portal) Merge(others []*Portal) {
 		for _, other := range others {
 			other.Cleanup(false)
 		}
+	} else if len(roomIDs) == 1 && portal.MXID == "" {
+		portal.log.Debugfln("Using old room ID as new one")
+		newRoomID = roomIDs[0]
 	}
 	portal.bridge.portalsLock.Lock()
 	defer portal.bridge.portalsLock.Unlock()
