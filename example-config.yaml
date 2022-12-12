@@ -4,6 +4,8 @@ homeserver:
     address: https://matrix.example.com
     # The address to mautrix-wsproxy (which should usually be next to the homeserver behind a reverse proxy).
     # Only the /_matrix/client/unstable/fi.mau.as_sync websocket endpoint is used on this address.
+    #
+    # Set to null to disable using the websocket. When not using the websocket, make sure hostname and port are set in the appservice section.
     websocket_proxy: wss://matrix.example.com
     # How often should the websocket be pinged? Pinging will be disabled if this is zero.
     ping_interval_seconds: 0
@@ -19,6 +21,16 @@ homeserver:
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
 appservice:
+    # The hostname and port where this appservice should listen.
+    # The default method of deploying mautrix-imessage is using a websocket proxy, so it doesn't need a http server
+    # To use a http server instead of a websocket, set websocket_proxy to null in the homeserver section,
+    # and set the port below to a real port.
+    hostname: 0.0.0.0
+    port: null
+    # Optional TLS certificates to listen for https instead of http connections.
+    tls_key: null
+    tls_cert: null
+
     # Database config.
     database:
         # The database type. Only "sqlite3-fk-wal" is supported.

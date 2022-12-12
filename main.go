@@ -542,8 +542,16 @@ func (br *IMBridge) Start() {
 		}
 	}
 
-	br.Log.Debugln("Starting application service websocket")
-	go br.startWebsocket(&startupGroup)
+	if br.Config.Homeserver.WSProxy != "" {
+		br.Log.Debugln("Starting application service websocket")
+		go br.startWebsocket(&startupGroup)
+	} else {
+		if br.Config.AppService.Port == 0 {
+			br.Log.Fatalln("Both the websocket proxy and appservice listener are disabled, can't receive events")
+			os.Exit(23)
+		}
+		br.Log.Debugln("Websocket proxy not configured, not starting application service websocket")
+	}
 
 	br.Log.Debugln("Starting iMessage handler")
 	go br.IMHandler.Start()
