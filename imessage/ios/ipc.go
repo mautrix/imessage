@@ -431,7 +431,10 @@ func (ios *iOSConnector) BackfillTaskChan() <-chan *imessage.BackfillTask {
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
 	var resp imessage.Contact
 	err := ios.IPC.Request(context.Background(), ReqGetContact, &GetContactRequest{UserGUID: identifier}, &resp)
-	return &resp, err
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (ios *iOSConnector) GetContactList() ([]*imessage.Contact, error) {
