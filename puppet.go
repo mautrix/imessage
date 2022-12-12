@@ -18,6 +18,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,6 +35,7 @@ import (
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
+	"go.mau.fi/mautrix-imessage/ipc"
 )
 
 var userIDRegex *regexp.Regexp
@@ -293,7 +295,7 @@ func (puppet *Puppet) Sync() {
 	}
 
 	contact, err := puppet.bridge.IM.GetContactInfo(puppet.ID)
-	if err != nil {
+	if err != nil && !errors.Is(err, ipc.ErrUnknownCommand) {
 		puppet.log.Errorln("Failed to get contact info:", err)
 	} else if contact == nil {
 		puppet.log.Debugln("No contact info found")
