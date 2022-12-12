@@ -135,10 +135,13 @@ type Contact struct {
 }
 
 func (contact *Contact) HasName() bool {
-	return len(contact.FirstName) > 0 || len(contact.LastName) > 0 || len(contact.Nickname) > 0
+	return contact != nil && (len(contact.FirstName) > 0 || len(contact.LastName) > 0 || len(contact.Nickname) > 0)
 }
 
 func (contact *Contact) Name() string {
+	if contact == nil {
+		return ""
+	}
 	if len(contact.FirstName) > 0 {
 		if len(contact.LastName) > 0 {
 			return fmt.Sprintf("%s %s", contact.FirstName, contact.LastName)

@@ -175,21 +175,17 @@ func (puppet *Puppet) UpdateName(contact *imessage.Contact) bool {
 	if puppet.NameOverridden {
 		// Never replace custom names with contact list names
 		return false
-	} else if puppet.Displayname != "" && (contact == nil || !contact.HasName()) {
+	} else if puppet.Displayname != "" && !contact.HasName() {
 		// Don't update displayname if there's no contact list name available
 		return false
 	}
-	if contact != nil {
-		return puppet.UpdateNameDirect(contact.Name())
-	} else {
-		// TODO format if phone numbers
-		return puppet.UpdateNameDirect(puppet.ID)
-	}
+	return puppet.UpdateNameDirect(contact.Name())
 }
 
 func (puppet *Puppet) UpdateNameDirect(name string) bool {
 	if len(name) == 0 {
-		return false
+		// TODO format if phone numbers
+		name = puppet.ID
 	}
 	newName := puppet.bridge.Config.Bridge.FormatDisplayname(name)
 	if puppet.Displayname != newName {
