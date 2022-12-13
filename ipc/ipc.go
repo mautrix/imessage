@@ -68,7 +68,11 @@ func (err Error) Error() string {
 func (err Error) Is(other error) bool {
 	otherErr, ok := other.(Error)
 	if !ok {
-		return false
+		otherErrPtr, ok := other.(*Error)
+		if !ok || otherErrPtr == nil {
+			return false
+		}
+		otherErr = *otherErrPtr
 	}
 	return otherErr.Code == err.Code
 }
