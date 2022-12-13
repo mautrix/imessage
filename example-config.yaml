@@ -125,6 +125,8 @@ bridge:
     double_puppet_server_url: null
     # Backfill settings
     backfill:
+        # Should backfilling be enabled at all?
+        enable: true
         # Maximum number of messages to backfill for new portal rooms.
         initial_limit: 100
         # Maximum age of chats to sync in days.

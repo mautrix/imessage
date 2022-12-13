@@ -164,6 +164,11 @@ func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
 }
 
 func (imh *iMessageHandler) HandleBackfillTask(task *imessage.BackfillTask) {
+	if !imh.bridge.Config.Bridge.Backfill.Enable {
+		imh.log.Warnfln("Connector sent backfill task, but backfill is disabled in bridge config")
+		imh.bridge.IM.SendBackfillResult(task.ChatGUID, task.BackfillID, false, nil)
+		return
+	}
 	portal := imh.bridge.GetPortalByGUID(task.ChatGUID)
 	if len(portal.MXID) == 0 {
 		portal.log.Errorfln("Tried to backfill chat %s with no portal", portal.GUID)

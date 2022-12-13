@@ -71,6 +71,7 @@ func DoUpgrade(helper *up.Helper) {
 	} else {
 		helper.Copy(up.Float|up.Int, "bridge", "backfill", "initial_sync_max_age")
 	}
+	helper.Copy(up.Bool, "bridge", "backfill", "enable")
 	helper.Copy(up.Bool, "bridge", "backfill", "msc2716")
 	helper.Copy(up.Int, "bridge", "backfill", "unread_hours_threshold")
 	helper.Copy(up.Bool, "bridge", "periodic_sync")

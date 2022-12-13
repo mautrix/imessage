@@ -389,7 +389,7 @@ func (portal *Portal) Sync(backfill bool) {
 		puppet.Sync()
 	}
 
-	if backfill {
+	if backfill && portal.bridge.Config.Bridge.Backfill.Enable {
 		portal.log.Debugln("Locking backfill (sync)")
 		portal.lockBackfill()
 		portal.log.Debugln("Starting sync backfill")
@@ -771,8 +771,10 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	if err != nil {
 		return err
 	}
-	portal.log.Debugln("Locking backfill (create)")
-	portal.lockBackfill()
+	if portal.bridge.Config.Bridge.Backfill.Enable {
+		portal.log.Debugln("Locking backfill (create)")
+		portal.lockBackfill()
+	}
 	portal.MXID = resp.RoomID
 	portal.log.Debugln("Storing created room ID", portal.MXID, "in database")
 	portal.Update(nil)
@@ -819,12 +821,14 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 			portal.Update(nil)
 		}
 	}
-	go func() {
-		portal.log.Debugln("Starting initial backfill")
-		portal.forwardBackfill()
-		portal.log.Debugln("Unlocking backfill (create)")
-		portal.unlockBackfill()
-	}()
+	if portal.bridge.Config.Bridge.Backfill.Enable {
+		go func() {
+			portal.log.Debugln("Starting initial backfill")
+			portal.forwardBackfill()
+			portal.log.Debugln("Unlocking backfill (create)")
+			portal.unlockBackfill()
+		}()
+	}
 	portal.log.Debugln("Finished creating Matrix room")
 
 	if portal.bridge.IM.Capabilities().ChatBridgeResult {
