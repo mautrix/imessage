@@ -1692,6 +1692,9 @@ func (portal *Portal) convertIMAttachments(msg *imessage.Message, intent *appser
 	for index, attach := range msg.Attachments {
 		portal.log.Debugfln("Converting iMessage attachment %s.%d", msg.GUID, index)
 		content, extra, err := portal.convertIMAttachment(msg, attach, intent)
+		if extra == nil {
+			extra = map[string]interface{}{}
+		}
 		if err != nil {
 			content = &event.MessageEventContent{
 				MsgType: event.MsgNotice,
