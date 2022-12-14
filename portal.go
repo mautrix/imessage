@@ -1643,21 +1643,19 @@ func (portal *Portal) convertIMAttachment(msg *imessage.Message, attach *imessag
 	if portal.bridge.Config.Homeserver.AsyncMedia {
 		uploaded, err := intent.UnstableUploadAsync(req)
 		if err != nil {
+			portal.log.Errorfln("Failed to asynchronously upload attachment in %s: %v", msg.GUID, err)
 			return nil, nil, err
 		}
 		mxc = uploaded.ContentURI
 	} else {
 		uploaded, err := intent.UploadMedia(req)
 		if err != nil {
+			portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
 			return nil, nil, err
 		}
 		mxc = uploaded.ContentURI
 	}
 
-	if err != nil {
-		portal.log.Errorfln("Failed to upload attachment in %s: %v", msg.GUID, err)
-		return nil, nil, fmt.Errorf("failed to upload attachment")
-	}
 	var content event.MessageEventContent
 	if uploadInfo != nil {
 		uploadInfo.URL = mxc.CUString()
