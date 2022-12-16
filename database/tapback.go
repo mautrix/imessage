@@ -95,7 +95,7 @@ func (tapback *Tapback) Insert(txn dbutil.Execable) {
 	if txn == nil {
 		txn = tapback.db
 	}
-	_, err := txn.Exec("INSERT INTO tapback (portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8",
+	_, err := txn.Exec("INSERT INTO tapback (portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
 		tapback.PortalGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.HandleGUID, tapback.Type, tapback.MXID)
 	if err != nil {
 		tapback.log.Warnfln("Failed to insert tapback %s/%s.%d/%s: %v", tapback.PortalGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
