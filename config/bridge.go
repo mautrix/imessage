@@ -57,6 +57,7 @@ type BridgeConfig struct {
 	FindPortalsIfEmpty bool `yaml:"find_portals_if_db_empty"`
 	MediaViewer        struct {
 		URL        string `yaml:"url"`
+		Homeserver string `yaml:"homeserver"`
 		SMSMinSize int    `yaml:"sms_min_size"`
 		IMMinSize  int    `yaml:"imessage_min_size"`
 		Template   string `yaml:"template"`

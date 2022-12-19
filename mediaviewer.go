@@ -96,10 +96,14 @@ func (br *IMBridge) createMediaViewerURL(content *event.Content) (string, error)
 	}
 
 	var reqDataBytes bytes.Buffer
+	mediaHomeserver := br.Config.Bridge.MediaViewer.Homeserver
+	if mediaHomeserver == "" {
+		mediaHomeserver = br.Config.Homeserver.Domain
+	}
 	reqData := mediaViewerCreateRequest{
 		Ciphertext: base64.RawStdEncoding.EncodeToString(ciphertext),
 		AuthToken:  base64.RawStdEncoding.EncodeToString(authToken),
-		Homeserver: br.Config.Homeserver.Domain,
+		Homeserver: mediaHomeserver,
 	}
 	var respData mediaViewerCreateResponse
 

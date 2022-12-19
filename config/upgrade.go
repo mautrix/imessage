@@ -92,6 +92,7 @@ func DoUpgrade(helper *up.Helper) {
 		}
 	} else {
 		helper.Copy(up.Str|up.Null, "bridge", "media_viewer", "url")
+		helper.Copy(up.Str|up.Null, "bridge", "media_viewer", "homeserver")
 		helper.Copy(up.Int, "bridge", "media_viewer", "sms_min_size")
 		helper.Copy(up.Int, "bridge", "media_viewer", "imessage_min_size")
 		helper.Copy(up.Str, "bridge", "media_viewer", "template")
