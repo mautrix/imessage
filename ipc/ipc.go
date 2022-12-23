@@ -191,7 +191,7 @@ func (ipc *Processor) Request(ctx context.Context, cmd Command, reqData interfac
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	hardTimeout := time.After(1 * time.Minute)
+	hardTimeout := time.After(5 * time.Minute)
 	for {
 		select {
 		case rawData := <-respChan:
