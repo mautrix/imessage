@@ -19,6 +19,7 @@ package ipc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,6 +37,7 @@ const (
 )
 
 var (
+	ErrIPCTimeout        = errors.New("ipc request timeout")
 	ErrUnknownCommand    = Error{"unknown-command", "Unknown command"}
 	ErrSizeLimitExceeded = Error{Code: "size_limit_exceeded"}
 	ErrTimeoutError      = Error{Code: "timeout"}
@@ -189,6 +191,7 @@ func (ipc *Processor) Request(ctx context.Context, cmd Command, reqData interfac
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
+	hardTimeout := time.After(1 * time.Minute)
 	for {
 		select {
 		case rawData := <-respChan:
@@ -208,9 +211,12 @@ func (ipc *Processor) Request(ctx context.Context, cmd Command, reqData interfac
 			}
 			return nil
 		case <-ctx.Done():
-			return fmt.Errorf("context finished: %w", ctx.Err())
+			return ctx.Err()
 		case <-time.After(5 * time.Second):
 			ipc.log.Debugfln("Still waiting for response to %s/%d", cmd, reqID)
+		case <-hardTimeout:
+			ipc.log.Errorfln("Didn't get response to %s/%d after %v, giving up", cmd, reqID, hardTimeout)
+			return ErrIPCTimeout
 		}
 	}
 }
