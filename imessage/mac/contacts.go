@@ -31,8 +31,9 @@ import (
 )
 
 type ContactStore struct {
-	int       *C.CNContactStore
-	HasAccess bool
+	int *C.CNContactStore
+
+	HasContactAccess bool
 }
 
 var actualAuthCallback = make(chan error)
@@ -54,17 +55,17 @@ func NewContactStore() *ContactStore {
 	}
 }
 
-func (cs *ContactStore) RequestAccess() error {
+func (cs *ContactStore) RequestContactAccess() error {
 	switch C.meowCheckAuth() {
 	case C.CNAuthorizationStatusNotDetermined:
 		go C.meowRequestAuth(cs.int)
 		err := <-actualAuthCallback
-		cs.HasAccess = err == nil
+		cs.HasContactAccess = err == nil
 		return err
 	case C.CNAuthorizationStatusDenied:
-		cs.HasAccess = false
+		cs.HasContactAccess = false
 	case C.CNAuthorizationStatusAuthorized:
-		cs.HasAccess = true
+		cs.HasContactAccess = true
 	}
 	return nil
 }
@@ -110,8 +111,8 @@ func cncontactToContact(ns *C.CNContact, includeAvatar bool) *imessage.Contact {
 	return &contact
 }
 
-func (mac *macOSDatabase) GetContactInfo(identifier string) (*imessage.Contact, error) {
-	if !mac.contactStore.HasAccess || len(identifier) == 0 {
+func (cs *ContactStore) GetContactInfo(identifier string) (*imessage.Contact, error) {
+	if !cs.HasContactAccess || len(identifier) == 0 {
 		return nil, nil
 	} else if len(identifier) == 0 {
 		return nil, fmt.Errorf("can't get contact info of empty identifier")
@@ -125,9 +126,9 @@ func (mac *macOSDatabase) GetContactInfo(identifier string) (*imessage.Contact, 
 
 	var cnContact *C.CNContact
 	if identifier[0] == '+' {
-		cnContact = C.meowGetContactByPhone(mac.contactStore.int, C.CString(identifier))
+		cnContact = C.meowGetContactByPhone(cs.int, C.CString(identifier))
 	} else {
-		cnContact = C.meowGetContactByEmail(mac.contactStore.int, C.CString(identifier))
+		cnContact = C.meowGetContactByEmail(cs.int, C.CString(identifier))
 	}
 	goContact := cncontactToContact(cnContact, true)
 
@@ -138,15 +139,15 @@ func (mac *macOSDatabase) GetContactInfo(identifier string) (*imessage.Contact, 
 	return goContact, nil
 }
 
-func (mac *macOSDatabase) GetContactList() ([]*imessage.Contact, error) {
-	if !mac.contactStore.HasAccess {
+func (cs *ContactStore) GetContactList() ([]*imessage.Contact, error) {
+	if !cs.HasContactAccess {
 		return []*imessage.Contact{}, nil
 	}
 
 	runtime.LockOSThread()
 	pool := C.meowMakePool()
 
-	cnContacts := C.meowGetContactList(mac.contactStore.int)
+	cnContacts := C.meowGetContactList(cs.int)
 	contacts := make([]*imessage.Contact, C.meowGetArrayLength(cnContacts))
 	for i := range contacts {
 		contacts[i] = cncontactToContact(C.meowGetContactArrayItem(cnContacts, C.ulong(i)), false)

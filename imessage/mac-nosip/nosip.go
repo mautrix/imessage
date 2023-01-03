@@ -52,11 +52,36 @@ type MacNoSIPConnector struct {
 	unixSocket          string
 }
 
+type NoopContacts struct{}
+
+func (n NoopContacts) GetContactInfo(_ string) (*imessage.Contact, error) {
+	return nil, nil
+}
+
+func (n NoopContacts) GetContactList() ([]*imessage.Contact, error) {
+	return []*imessage.Contact{}, nil
+}
+
 func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	logger := bridge.GetLog().Sub("iMessage").Sub("Mac-noSIP")
 	processLogger := bridge.GetLog().Sub("iMessage").Sub("Barcelona")
+	iosConn := ios.NewPlainiOSConnector(logger, bridge)
+	contactsMode := bridge.GetConnectorConfig().ContactsMode
+	switch bridge.GetConnectorConfig().ContactsMode {
+	case "mac":
+		contactProxy, err := setupContactProxy(logger)
+		if err != nil {
+			return nil, err
+		}
+		iosConn.SetContactProxy(contactProxy)
+	case "disable":
+		iosConn.SetContactProxy(NoopContacts{})
+	case "ipc":
+	default:
+		return nil, fmt.Errorf("unknown contacts mode %q", contactsMode)
+	}
 	return &MacNoSIPConnector{
-		APIWithIPC:          ios.NewPlainiOSConnector(logger, bridge),
+		APIWithIPC:          iosConn,
 		path:                bridge.GetConnectorConfig().IMRestPath,
 		args:                bridge.GetConnectorConfig().IMRestArgs,
 		log:                 logger,

@@ -34,6 +34,11 @@ var (
 	ErrNotLoggedIn = errors.New("you're not logged into iMessage")
 )
 
+type ContactAPI interface {
+	GetContactInfo(identifier string) (*Contact, error)
+	GetContactList() ([]*Contact, error)
+}
+
 type API interface {
 	Start(readyCallback func()) error
 	Stop()
@@ -47,8 +52,7 @@ type API interface {
 	ContactChan() <-chan *Contact
 	MessageStatusChan() <-chan *SendMessageStatus
 	BackfillTaskChan() <-chan *BackfillTask
-	GetContactInfo(identifier string) (*Contact, error)
-	GetContactList() ([]*Contact, error)
+	ContactAPI
 	GetChatInfo(chatID, threadID string) (*ChatInfo, error)
 	GetGroupAvatar(chatID string) (*Attachment, error)
 
@@ -121,6 +125,7 @@ type PlatformConfig struct {
 
 	IMRestPath     string   `yaml:"imessage_rest_path"`
 	IMRestArgs     []string `yaml:"imessage_rest_args"`
+	ContactsMode   string   `yaml:"contacts_mode"`
 	LogIPCPayloads bool     `yaml:"log_ipc_payloads"`
 	UnixSocket     string   `yaml:"unix_socket"`
 

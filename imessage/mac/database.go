@@ -50,7 +50,7 @@ type macOSDatabase struct {
 	stopWatching         chan struct{}
 	stopWait             sync.WaitGroup
 
-	contactStore *ContactStore
+	*ContactStore
 }
 
 func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
@@ -68,11 +68,11 @@ func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
 		return nil, fmt.Errorf("failed to open group database: %w", err)
 	}
 
-	mac.contactStore = NewContactStore()
-	err = mac.contactStore.RequestAccess()
+	mac.ContactStore = NewContactStore()
+	err = mac.ContactStore.RequestContactAccess()
 	if err != nil {
 		mac.log.Errorln("Failed to get contact access:", err)
-	} else if mac.contactStore.HasAccess {
+	} else if mac.ContactStore.HasContactAccess {
 		mac.log.Infoln("Contact access is allowed")
 	} else {
 		mac.log.Warnln("Contact access is not allowed")

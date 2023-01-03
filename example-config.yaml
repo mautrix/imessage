@@ -70,6 +70,11 @@ imessage:
     imessage_rest_path: darwin-barcelona-mautrix
     # Additional arguments to pass to the mac-nosip connector
     imessage_rest_args: []
+    # The mode for fetching contacts in the no-SIP connector.
+    # The default mode is `ipc` which will ask Barcelona. However, recent versions of Barcelona have removed contact support.
+    # You can specify `mac` to use Contacts.framework directly instead of through Barcelona.
+    # You can also specify `disable` to not try to use contacts at all.
+    contacts_mode: ipc
     # Whether to log the contents of IPC payloads
     log_ipc_payloads: false
     # Path to unix socket for Barcelona communication.

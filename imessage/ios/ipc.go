@@ -70,6 +70,7 @@ func timeToFloat(time time.Time) float64 {
 type APIWithIPC interface {
 	imessage.API
 	SetIPC(*ipc.Processor)
+	SetContactProxy(api imessage.ContactAPI)
 }
 
 type iOSConnector struct {
@@ -84,6 +85,7 @@ type iOSConnector struct {
 	messageStatusChan chan *imessage.SendMessageStatus
 	backfillTaskChan  chan *imessage.BackfillTask
 	isAndroid         bool
+	contactProxy      imessage.ContactAPI
 }
 
 func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
@@ -114,6 +116,10 @@ func init() {
 
 func (ios *iOSConnector) SetIPC(proc *ipc.Processor) {
 	ios.IPC = proc
+}
+
+func (ios *iOSConnector) SetContactProxy(api imessage.ContactAPI) {
+	ios.contactProxy = api
 }
 
 func (ios *iOSConnector) Start(readyCallback func()) error {
@@ -429,6 +435,9 @@ func (ios *iOSConnector) BackfillTaskChan() <-chan *imessage.BackfillTask {
 }
 
 func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, error) {
+	if ios.contactProxy != nil {
+		return ios.contactProxy.GetContactInfo(identifier)
+	}
 	var resp imessage.Contact
 	err := ios.IPC.Request(context.Background(), ReqGetContact, &GetContactRequest{UserGUID: identifier}, &resp)
 	if err != nil {
@@ -438,6 +447,9 @@ func (ios *iOSConnector) GetContactInfo(identifier string) (*imessage.Contact, e
 }
 
 func (ios *iOSConnector) GetContactList() ([]*imessage.Contact, error) {
+	if ios.contactProxy != nil {
+		return ios.contactProxy.GetContactList()
+	}
 	var resp GetContactListResponse
 	err := ios.IPC.Request(context.Background(), ReqGetContactList, nil, &resp)
 	return resp.Contacts, err
