@@ -125,6 +125,8 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 		if err != nil {
 			return fmt.Errorf("failed to open unix socket: %w", err)
 		}
+		mac.proc.Stdout = mac.procLog.Sub("Stdout").Writer(log.LevelInfo)
+		mac.proc.Stderr = mac.procLog.Sub("Stderr").Writer(log.LevelError)
 	} else {
 		input, err = mac.proc.StdoutPipe()
 		if err != nil {
