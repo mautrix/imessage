@@ -50,6 +50,7 @@ type MacNoSIPConnector struct {
 	pingInterval        time.Duration
 	stopPinger          chan bool
 	unixSocket          string
+	unixServer          net.Listener
 }
 
 type NoopContacts struct{}
@@ -110,11 +111,17 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 
 	var input io.Reader
 	var output io.Writer
-	var unixServer net.Listener
 	var err error
 	if mac.unixSocket != "" {
 		mac.proc.Stdout = os.Stdout
-		unixServer, err = net.Listen("unix", mac.unixSocket)
+		if _, err = os.Stat(mac.unixSocket); err == nil {
+			mac.log.Debugln("Unlinking existing unix socket")
+			err = syscall.Unlink(mac.unixSocket)
+			if err != nil {
+				mac.log.Warnln("Error unlinking existing unix socket:", err)
+			}
+		}
+		mac.unixServer, err = net.Listen("unix", mac.unixSocket)
 		if err != nil {
 			return fmt.Errorf("failed to open unix socket: %w", err)
 		}
@@ -140,12 +147,16 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 		} else {
 			mac.log.Errorfln("Barcelona died with exit code %d, exiting bridge...", mac.proc.ProcessState.ExitCode())
 		}
+		if mac.unixServer != nil {
+			_ = mac.unixServer.Close()
+			_ = syscall.Unlink(mac.unixSocket)
+		}
 		os.Exit(mac.proc.ProcessState.ExitCode())
 	}()
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
 
-	if unixServer != nil {
-		conn, err := unixServer.Accept()
+	if mac.unixServer != nil {
+		conn, err := mac.unixServer.Accept()
 		if err != nil {
 			mac.log.Errorfln("Error accepting unix socket connection: %v", err)
 			os.Exit(44)
@@ -248,6 +259,10 @@ func (mac *MacNoSIPConnector) Stop() {
 	err = mac.proc.Wait()
 	if err != nil {
 		mac.log.Warnln("Error waiting for Barcelona process:", err)
+	}
+	if mac.unixServer != nil {
+		_ = mac.unixServer.Close()
+		_ = syscall.Unlink(mac.unixSocket)
 	}
 }
 
