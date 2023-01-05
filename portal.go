@@ -972,7 +972,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanRea
 			Raw:    extraContent,
 		})
 		if err != nil {
-			portal.log.Warnfln("Failed to send message send status event:", err)
+			portal.log.Warnln("Failed to send message send status event:", err)
 			return
 		}
 	}
@@ -1044,7 +1044,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 		}
 		_, err := statusIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, content)
 		if err != nil {
-			portal.log.Warnfln("Failed to send message send status event:", err)
+			portal.log.Warnln("Failed to send message send status event:", err)
 		}
 	}
 }
