@@ -964,7 +964,7 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanRea
 		content.FillLegacyBooleans()
 		extraContent := map[string]any{}
 		if handle != "" && portal.bridge.IM.Capabilities().ContactChatMerging {
-			extraContent[bridgeInfoHandle] = extraContent
+			extraContent[bridgeInfoHandle] = handle
 			content.MutateEventKey = bridgeInfoHandle
 		}
 		_, err := errorIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, &event.Content{
