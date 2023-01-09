@@ -165,6 +165,7 @@ func (mx *WebsocketCommandHandler) handleWSStartDM(cmd appservice.WebsocketComma
 	req.ActuallyStart = cmd.Command == "start_dm"
 	resp, err := mx.StartChat(req)
 	if err != nil {
+		mx.log.Errorfln("Error in %s handler: %v", cmd.Command, err)
 		return false, err
 	} else {
 		return true, resp
