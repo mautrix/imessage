@@ -961,7 +961,6 @@ func (portal *Portal) sendErrorMessage(evt *event.Event, rootErr error, humanRea
 			Error:   rootErr.Error(),
 			Message: humanReadableError,
 		}
-		content.FillLegacyBooleans()
 		extraContent := map[string]any{}
 		if handle != "" && portal.bridge.IM.Capabilities().ContactChatMerging {
 			extraContent[bridgeInfoHandle] = handle
@@ -1024,7 +1023,6 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 			},
 			Status: event.MessageStatusSuccess,
 		}
-		mainContent.FillLegacyBooleans()
 		var extraContent map[string]any
 		if portal.bridge.IM.Capabilities().ContactChatMerging {
 			extraContent = map[string]any{
@@ -1304,7 +1302,6 @@ func (portal *Portal) sendUnsupportedCheckpoint(evt *event.Event, step status.Me
 			Reason: event.MessageStatusUnsupported,
 			Error:  err.Error(),
 		}
-		content.FillLegacyBooleans()
 
 		errorIntent := portal.bridge.Bot
 		if !portal.Encrypted {
