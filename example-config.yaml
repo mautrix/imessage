@@ -13,6 +13,8 @@ homeserver:
     # Does the homeserver support https://github.com/matrix-org/matrix-spec-proposals/pull/2246?
     async_media: false
 
+    asmux: true
+
 # Application service host/registration related details.
 # Changing these values requires regeneration of the registration.
 appservice:
