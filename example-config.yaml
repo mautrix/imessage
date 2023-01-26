@@ -189,6 +189,9 @@ bridge:
     force_uniform_dm_senders: true
     # Should SMS chats always be in the same room as iMessage chats with the same phone number?
     disable_sms_portals: false
+    # iMessage has weird IDs for group chats, so getting all messages in the same MMS group chat into the same Matrix room
+    # may require rerouting some messages based on the fake ReplyToGUID that iMessage adds.
+    reroute_mms_group_replies: false
     # Whether or not created rooms should have federation enabled.
     # If false, created portal rooms will never be federated.
     federate_rooms: true

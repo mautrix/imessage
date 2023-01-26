@@ -84,10 +84,69 @@ func (imh *iMessageHandler) Start() {
 
 const PortalBufferTimeout = 10 * time.Second
 
+func (imh *iMessageHandler) rerouteGroupMMS(portal *Portal, msg *imessage.Message) *Portal {
+	if !imh.bridge.Config.Bridge.RerouteSMSGroupReplies ||
+		!portal.Identifier.IsGroup ||
+		portal.Identifier.Service != "SMS" ||
+		msg.ReplyToGUID == "" ||
+		portal.MXID != "" {
+		return portal
+	}
+	mergedChatGUID := imh.bridge.DB.MergedChat.Get(portal.GUID)
+	if mergedChatGUID != "" && mergedChatGUID != portal.GUID {
+		newPortal := imh.bridge.GetPortalByGUID(mergedChatGUID)
+		if newPortal.MXID != "" {
+			imh.log.Debugfln("Rerouted %s from %s to %s based on merged_chat table", msg.GUID, msg.ChatGUID, portal.GUID)
+			return newPortal
+		}
+	}
+	checkedChatGUIDs := []string{msg.ChatGUID}
+	isCheckedGUID := func(guid string) bool {
+		for _, checkedGUID := range checkedChatGUIDs {
+			if guid == checkedGUID {
+				return true
+			}
+		}
+		return false
+	}
+	replyMsg := msg
+	for i := 0; i < 20; i++ {
+		chatGUID := imh.bridge.DB.Message.FindChatByGUID(replyMsg.ReplyToGUID)
+		if chatGUID != "" && !isCheckedGUID(chatGUID) {
+			newPortal := imh.bridge.GetPortalByGUID(chatGUID)
+			if newPortal.MXID != "" {
+				imh.log.Debugfln("Rerouted %s from %s to %s based on reply metadata (found reply in local db)", msg.GUID, msg.ChatGUID, portal.GUID)
+				imh.log.Debugfln("Merging %+v -> %s", checkedChatGUIDs, newPortal.GUID)
+				imh.bridge.DB.MergedChat.Set(nil, newPortal.GUID, checkedChatGUIDs...)
+				return newPortal
+			}
+			checkedChatGUIDs = append(checkedChatGUIDs, chatGUID)
+		}
+		var err error
+		replyMsg, err = imh.bridge.IM.GetMessage(replyMsg.ReplyToGUID)
+		if err != nil {
+			imh.log.Warnfln("Failed to get reply target %s for rerouting %s: %v", replyMsg.ReplyToGUID, msg.GUID, err)
+			break
+		}
+		if !isCheckedGUID(replyMsg.ChatGUID) {
+			newPortal := imh.bridge.GetPortalByGUID(chatGUID)
+			if newPortal.MXID != "" {
+				imh.log.Debugfln("Rerouted %s from %s to %s based on reply metadata (got reply msg from connector)", msg.GUID, msg.ChatGUID, portal.GUID)
+				imh.log.Debugfln("Merging %+v -> %s", checkedChatGUIDs, newPortal.GUID)
+				imh.bridge.DB.MergedChat.Set(nil, newPortal.GUID, checkedChatGUIDs...)
+				return newPortal
+			}
+			checkedChatGUIDs = append(checkedChatGUIDs, chatGUID)
+		}
+	}
+	imh.log.Debugfln("Didn't find any existing room to reroute %s into (checked portals %+v)", msg.GUID, checkedChatGUIDs)
+	return portal
+}
+
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	// TODO trace log
 	//imh.log.Debugfln("Received incoming message: %+v", msg)
-	portal := imh.bridge.GetPortalByGUID(msg.ChatGUID)
+	portal := imh.rerouteGroupMMS(imh.bridge.GetPortalByGUID(msg.ChatGUID), msg)
 	if len(portal.MXID) == 0 {
 		if portal.ThreadID == "" {
 			portal.ThreadID = msg.ThreadID

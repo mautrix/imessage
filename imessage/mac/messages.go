@@ -59,6 +59,10 @@ WHERE message.ROWID > $1
 ORDER BY message.date ASC
 `
 
+var singleMessageQuery = baseMessagesQuery + `
+WHERE message.guid = $1
+`
+
 var messagesQuery = baseMessagesQuery + `
 WHERE (chat.guid=$1 OR $1='') AND message.date>$2
 ORDER BY message.date ASC
@@ -144,20 +148,27 @@ func (mac *macOSDatabase) prepareMessages() error {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
+		singleMessageQuery = strings.ReplaceAll(singleMessageQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 	}
 	if !columnExists(mac.chatDB, "message", "thread_originator_part") {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
+		singleMessageQuery = strings.ReplaceAll(singleMessageQuery, "COALESCE(message.thread_originator_part, '')", "''")
 	}
 	if !columnExists(mac.chatDB, "message", "group_action_type") {
 		messagesQuery = strings.ReplaceAll(messagesQuery, "message.group_action_type", "0")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "message.group_action_type", "0")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "message.group_action_type", "0")
+		singleMessageQuery = strings.ReplaceAll(singleMessageQuery, "message.group_action_type", "0")
 	}
 	mac.messagesQuery, err = mac.chatDB.Prepare(messagesQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare message query: %w", err)
+	}
+	mac.singleMessageQuery, err = mac.chatDB.Prepare(singleMessageQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare single message query: %w", err)
 	}
 	mac.attachmentsQuery, err = mac.chatDB.Prepare(attachmentsQuery)
 	if err != nil {
@@ -311,6 +322,21 @@ func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time,
 		return nil, fmt.Errorf("error querying messages after date: %w", err)
 	}
 	return mac.scanMessages(res)
+}
+
+func (mac *macOSDatabase) GetMessage(guid string) (*imessage.Message, error) {
+	res, err := mac.singleMessageQuery.Query(guid)
+	if err != nil {
+		return nil, fmt.Errorf("error querying single message: %w", err)
+	}
+	msgs, err := mac.scanMessages(res)
+	if err != nil {
+		return nil, err
+	}
+	if len(msgs) > 0 {
+		return msgs[1], nil
+	}
+	return nil, nil
 }
 
 func (mac *macOSDatabase) getMessagesSinceRowID(rowID int) ([]*imessage.Message, error) {

@@ -18,6 +18,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -61,6 +62,14 @@ func (mq *MessageQuery) GetIDsSince(chat string, since time.Time) (messages []st
 func (mq *MessageQuery) GetLastByGUID(chat string, guid string) *Message {
 	return mq.get("SELECT portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp "+
 		"FROM message WHERE portal_guid=$1 AND guid=$2 ORDER BY part DESC LIMIT 1", chat, guid)
+}
+
+func (mq *MessageQuery) FindChatByGUID(guid string) (chatGUID string) {
+	err := mq.db.QueryRow("SELECT portal_guid FROM message WHERE guid=$1", guid).Scan(&chatGUID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		mq.log.Errorfln("Failed to find chat by GUID: %v", err)
+	}
+	return
 }
 
 func (mq *MessageQuery) GetByGUID(chat string, guid string, part int) *Message {

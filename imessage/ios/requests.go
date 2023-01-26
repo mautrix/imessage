@@ -36,6 +36,7 @@ const (
 	ReqGetContactList      ipc.Command = "get_contact_list"
 	ReqGetMessagesAfter    ipc.Command = "get_messages_after"
 	ReqGetRecentMessages   ipc.Command = "get_recent_messages"
+	ReqGetMessage          ipc.Command = "get_message"
 	ReqPreStartupSync      ipc.Command = "pre_startup_sync"
 	ReqPostStartupSync     ipc.Command = "post_startup_sync"
 	ReqResolveIdentifier   ipc.Command = "resolve_identifier"
@@ -103,6 +104,10 @@ type GetRecentMessagesRequest struct {
 	ChatGUID   string `json:"chat_guid"`
 	Limit      int    `json:"limit"`
 	BackfillID string `json:"backfill_id"`
+}
+
+type GetMessageRequest struct {
+	GUID string `json:"guid"`
 }
 
 type GetMessagesAfterRequest struct {

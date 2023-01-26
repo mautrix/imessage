@@ -400,6 +400,12 @@ func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int, backfill
 	return resp, err
 }
 
+func (ios *iOSConnector) GetMessage(guid string) (resp *imessage.Message, err error) {
+	return resp, ios.IPC.Request(context.Background(), ReqGetMessage, &GetMessageRequest{
+		GUID: guid,
+	}, &resp)
+}
+
 func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
 	return resp, ios.IPC.Request(context.Background(), ReqGetChats, &GetChatsRequest{
 		MinTimestamp: timeToFloat(minDate),

@@ -35,6 +35,7 @@ type macOSDatabase struct {
 	chatDBPath           string
 	chatDB               *sql.DB
 	messagesQuery        *sql.Stmt
+	singleMessageQuery   *sql.Stmt
 	limitedMessagesQuery *sql.Stmt
 	newMessagesQuery     *sql.Stmt
 	newReceiptsQuery     *sql.Stmt

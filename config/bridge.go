@@ -70,11 +70,12 @@ type BridgeConfig struct {
 		MimeType   string   `yaml:"mime_type"`
 		Extension  string   `yaml:"extension"`
 	} `yaml:"convert_video"`
-	CommandPrefix         string `yaml:"command_prefix"`
-	ForceUniformDMSenders bool   `yaml:"force_uniform_dm_senders"`
-	DisableSMSPortals     bool   `yaml:"disable_sms_portals"`
-	FederateRooms         bool   `yaml:"federate_rooms"`
-	CaptionInMessage      bool   `yaml:"caption_in_message"`
+	CommandPrefix          string `yaml:"command_prefix"`
+	ForceUniformDMSenders  bool   `yaml:"force_uniform_dm_senders"`
+	DisableSMSPortals      bool   `yaml:"disable_sms_portals"`
+	RerouteSMSGroupReplies bool   `yaml:"reroute_mms_group_replies"`
+	FederateRooms          bool   `yaml:"federate_rooms"`
+	CaptionInMessage       bool   `yaml:"caption_in_message"`
 
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 
