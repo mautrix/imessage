@@ -605,7 +605,7 @@ func (br *IMBridge) StartupSync() {
 	for _, portal := range br.GetAllPortals() {
 		removed := portal.CleanupIfEmpty(true)
 		if !removed && len(portal.MXID) > 0 {
-			if br.Config.Bridge.DisableSMSPortals && portal.Identifier.Service == "SMS" {
+			if br.Config.Bridge.DisableSMSPortals && portal.Identifier.Service == "SMS" && !portal.Identifier.IsGroup {
 				imIdentifier := portal.Identifier
 				imIdentifier.Service = "iMessage"
 				if !portal.reIDInto(imIdentifier.String(), true, true) {
