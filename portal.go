@@ -467,21 +467,25 @@ func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 func (portal *Portal) handleMessageLoop() {
 	portal.log.Debugln("Starting message processing loop")
 	for {
-		start := time.Now()
+		var start time.Time
 		var thing string
 		select {
 		case msg := <-portal.Messages:
-			portal.HandleiMessage(msg)
+			start = time.Now()
 			thing = "iMessage"
+			portal.HandleiMessage(msg)
 		case readReceipt := <-portal.ReadReceipts:
-			portal.HandleiMessageReadReceipt(readReceipt)
+			start = time.Now()
 			thing = "read receipt"
+			portal.HandleiMessageReadReceipt(readReceipt)
 		case <-portal.backfillStart:
 			thing = "backfill lock"
+			start = time.Now()
 			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
 			portal.log.Debugln("Continuing new message processing")
 		case evt := <-portal.MatrixMessages:
+			start = time.Now()
 			switch evt.Type {
 			case event.EventMessage, event.EventSticker:
 				thing = "Matrix message"
@@ -497,6 +501,7 @@ func (portal *Portal) handleMessageLoop() {
 				portal.log.Warnln("Unsupported event type %+v in portal message channel", evt.Type)
 			}
 		case msgStatus := <-portal.MessageStatuses:
+			start = time.Now()
 			thing = "message status"
 			portal.HandleiMessageSendMessageStatus(msgStatus)
 		}

@@ -47,30 +47,37 @@ func (imh *iMessageHandler) Start() {
 	messageStatuses := imh.bridge.IM.MessageStatusChan()
 	backfillTasks := imh.bridge.IM.BackfillTaskChan()
 	for {
-		start := time.Now()
+		var start time.Time
 		var thing string
 		select {
 		case msg := <-messages:
-			imh.HandleMessage(msg)
 			thing = "message"
+			start = time.Now()
+			imh.HandleMessage(msg)
 		case rr := <-readReceipts:
-			imh.HandleReadReceipt(rr)
 			thing = "read receipt"
+			start = time.Now()
+			imh.HandleReadReceipt(rr)
 		case notif := <-typingNotifications:
-			imh.HandleTypingNotification(notif)
 			thing = "typing notification"
+			start = time.Now()
+			imh.HandleTypingNotification(notif)
 		case chat := <-chats:
-			imh.HandleChat(chat)
 			thing = "chat"
+			start = time.Now()
+			imh.HandleChat(chat)
 		case contact := <-contacts:
-			imh.HandleContact(contact)
 			thing = "contact"
+			start = time.Now()
+			imh.HandleContact(contact)
 		case status := <-messageStatuses:
-			imh.HandleMessageStatus(status)
 			thing = "message status"
+			start = time.Now()
+			imh.HandleMessageStatus(status)
 		case backfillTask := <-backfillTasks:
-			imh.HandleBackfillTask(backfillTask)
 			thing = "backfill task"
+			start = time.Now()
+			imh.HandleBackfillTask(backfillTask)
 		case <-imh.stop:
 			return
 		}
