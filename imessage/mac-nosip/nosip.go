@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -101,30 +100,12 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	}, nil
 }
 
-func run(command string, args ...string) (stdoutData, stderrData string, err error) {
-	cmd := exec.Command(command, args...)
-	var stdout, stderr io.ReadCloser
-	stdout, err = cmd.StdoutPipe()
+func (mac *MacNoSIPConnector) run(command string, args ...string) (string, error) {
+	output, err := exec.Command(command, args...).CombinedOutput()
 	if err != nil {
-		err = fmt.Errorf("failed to get stdout pipe: %w", err)
-		return
+		err = fmt.Errorf("failed to execute %s: %w", command, err)
 	}
-	stderr, err = cmd.StderrPipe()
-	if err != nil {
-		err = fmt.Errorf("failed to get stderr pipe: %w", err)
-		return
-	}
-	defer func() {
-		stdoutBytes, _ := io.ReadAll(stdout)
-		stdoutData = strings.TrimSpace(string(stdoutBytes))
-		stderrBytes, _ := io.ReadAll(stderr)
-		stderrData = strings.TrimSpace(string(stderrBytes))
-	}()
-	err = cmd.Run()
-	if err != nil {
-		err = fmt.Errorf("failed to read locale: %w", err)
-	}
-	return
+	return strings.TrimSpace(string(output)), err
 }
 
 func (mac *MacNoSIPConnector) fixLocale() {
@@ -132,13 +113,13 @@ func (mac *MacNoSIPConnector) fixLocale() {
 		return
 	}
 	mac.log.Debugln("Checking user locale")
-	locale, _, err := run("defaults", "read", "-g", "AppleLocale")
+	locale, err := mac.run("/usr/bin/defaults", "read", "-g", "AppleLocale")
 	if err != nil {
 		mac.log.Warnfln("Failed to read current locale: %v", err)
 		return
 	}
 	if locale != mac.locale {
-		_, _, err = run("defaults", "write", "-g", "AppleLocale", mac.locale)
+		_, err = mac.run("/usr/bin/defaults", "write", "-g", "AppleLocale", mac.locale)
 		if err != nil {
 			mac.log.Warnfln("Failed to change locale: %v", err)
 		} else {
