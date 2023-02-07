@@ -79,6 +79,8 @@ imessage:
     log_ipc_payloads: false
     # For the no-SIP connector, hackily set the user account locale before starting Barcelona.
     hacky_set_locale: null
+    # A list of environment variables to add for the Barcelona process (as NAME=value strings)
+    environment: []
     # Path to unix socket for Barcelona communication.
     unix_socket: mautrix-imessage.sock
     # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.

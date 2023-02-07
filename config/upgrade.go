@@ -42,6 +42,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "imessage", "contacts_mode")
 	helper.Copy(up.Bool, "imessage", "log_ipc_payloads")
 	helper.Copy(up.Str|up.Null, "imessage", "hacky_set_locale")
+	helper.Copy(up.List, "imessage", "environment")
 	helper.Copy(up.Str, "imessage", "unix_socket")
 	helper.Copy(up.Int, "imessage", "ping_interval_seconds")
 

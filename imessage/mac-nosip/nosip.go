@@ -52,6 +52,7 @@ type MacNoSIPConnector struct {
 	unixServer          net.Listener
 	stopping            bool
 	locale              string
+	env                 []string
 }
 
 type NoopContacts struct{}
@@ -97,6 +98,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		stopPinger:          make(chan bool, 8),
 		unixSocket:          unixSocket,
 		locale:              bridge.GetConnectorConfig().HackySetLocale,
+		env:                 bridge.GetConnectorConfig().Environment,
 	}, nil
 }
 
@@ -137,6 +139,7 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	mac.log.Debugln("Preparing to execute", mac.path)
 	args := append(mac.args, "--unix-socket", mac.unixSocket)
 	mac.proc = exec.Command(mac.path, args...)
+	mac.proc.Env = append(os.Environ(), mac.env...)
 	mac.proc.Stdout = mac.procLog.Sub("Stdout").Writer(log.LevelInfo)
 	mac.proc.Stderr = mac.procLog.Sub("Stderr").Writer(log.LevelError)
 
