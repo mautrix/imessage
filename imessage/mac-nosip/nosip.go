@@ -51,6 +51,8 @@ type MacNoSIPConnector struct {
 	stopPinger          chan bool
 	unixSocket          string
 	unixServer          net.Listener
+	stopping            bool
+	locale              string
 }
 
 type NoopContacts struct{}
@@ -68,7 +70,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	processLogger := bridge.GetLog().Sub("iMessage").Sub("Barcelona")
 	iosConn := ios.NewPlainiOSConnector(logger, bridge)
 	contactsMode := bridge.GetConnectorConfig().ContactsMode
-	switch bridge.GetConnectorConfig().ContactsMode {
+	switch contactsMode {
 	case "mac":
 		contactProxy, err := setupContactProxy(logger)
 		if err != nil {
@@ -91,10 +93,62 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		pingInterval:        time.Duration(bridge.GetConnectorConfig().PingInterval) * time.Second,
 		stopPinger:          make(chan bool, 8),
 		unixSocket:          bridge.GetConnectorConfig().UnixSocket,
+		locale:              bridge.GetConnectorConfig().HackySetLocale,
 	}, nil
 }
 
+func run(command string, args ...string) (stdoutData, stderrData string, err error) {
+	cmd := exec.Command(command, args...)
+	var stdout, stderr io.ReadCloser
+	stdout, err = cmd.StdoutPipe()
+	if err != nil {
+		err = fmt.Errorf("failed to get stdout pipe: %w", err)
+		return
+	}
+	stderr, err = cmd.StderrPipe()
+	if err != nil {
+		err = fmt.Errorf("failed to get stderr pipe: %w", err)
+		return
+	}
+	defer func() {
+		stdoutBytes, _ := io.ReadAll(stdout)
+		stdoutData = strings.TrimSpace(string(stdoutBytes))
+		stderrBytes, _ := io.ReadAll(stderr)
+		stderrData = strings.TrimSpace(string(stderrBytes))
+	}()
+	err = cmd.Run()
+	if err != nil {
+		err = fmt.Errorf("failed to read locale: %w", err)
+	}
+	return
+}
+
+func (mac *MacNoSIPConnector) fixLocale() {
+	if mac.locale == "" {
+		return
+	}
+	mac.log.Debugln("Checking user locale")
+	locale, _, err := run("defaults", "read", "-g", "AppleLocale")
+	if err != nil {
+		mac.log.Warnfln("Failed to read current locale: %v", err)
+		return
+	}
+	if locale != mac.locale {
+		_, _, err = run("defaults", "write", "-g", "AppleLocale", mac.locale)
+		if err != nil {
+			mac.log.Warnfln("Failed to change locale: %v", err)
+		} else {
+			mac.log.Infofln("Changed user locale from %s to %s", locale, mac.locale)
+		}
+	} else {
+		mac.log.Debugln("User locale is already set to", locale)
+	}
+}
+
 func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
+	if mac.locale != "" {
+		mac.fixLocale()
+	}
 	mac.log.Debugln("Preparing to execute", mac.path)
 	args := mac.args
 	if mac.unixSocket != "" {
@@ -113,7 +167,6 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	var output io.Writer
 	var err error
 	if mac.unixSocket != "" {
-		mac.proc.Stdout = os.Stdout
 		if _, err = os.Stat(mac.unixSocket); err == nil {
 			mac.log.Debugln("Unlinking existing unix socket")
 			err = syscall.Unlink(mac.unixSocket)
@@ -144,6 +197,9 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	}
 	go func() {
 		err := mac.proc.Wait()
+		if mac.stopping {
+			return
+		}
 		if err != nil {
 			mac.log.Errorfln("Barcelona died with exit code %d and error %v, exiting bridge...", mac.proc.ProcessState.ExitCode(), err)
 		} else {
@@ -247,6 +303,7 @@ func (mac *MacNoSIPConnector) Stop() {
 		mac.log.Debugln("Barcelona subprocess not running when Stop was called")
 		return
 	}
+	mac.stopping = true
 	mac.stopPinger <- true
 	err := mac.proc.Process.Signal(syscall.SIGTERM)
 	if err != nil && !errors.Is(err, os.ErrProcessDone) {

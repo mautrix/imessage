@@ -127,6 +127,7 @@ type PlatformConfig struct {
 	IMRestPath     string   `yaml:"imessage_rest_path"`
 	IMRestArgs     []string `yaml:"imessage_rest_args"`
 	ContactsMode   string   `yaml:"contacts_mode"`
+	HackySetLocale string   `yaml:"hacky_set_locale"`
 	LogIPCPayloads bool     `yaml:"log_ipc_payloads"`
 	UnixSocket     string   `yaml:"unix_socket"`
 

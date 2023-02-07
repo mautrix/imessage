@@ -77,6 +77,8 @@ imessage:
     contacts_mode: ipc
     # Whether to log the contents of IPC payloads
     log_ipc_payloads: false
+    # For the no-SIP connector, hackily set the user account locale before starting Barcelona.
+    hacky_set_locale: null
     # Path to unix socket for Barcelona communication.
     # Uses stdio if null.
     unix_socket: null
