@@ -83,6 +83,10 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	default:
 		return nil, fmt.Errorf("unknown contacts mode %q", contactsMode)
 	}
+	unixSocket := bridge.GetConnectorConfig().UnixSocket
+	if unixSocket == "" {
+		unixSocket = "mautrix-imessage.sock"
+	}
 	return &MacNoSIPConnector{
 		APIWithIPC:          iosConn,
 		path:                bridge.GetConnectorConfig().IMRestPath,
@@ -92,7 +96,7 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 		printPayloadContent: bridge.GetConnectorConfig().LogIPCPayloads,
 		pingInterval:        time.Duration(bridge.GetConnectorConfig().PingInterval) * time.Second,
 		stopPinger:          make(chan bool, 8),
-		unixSocket:          bridge.GetConnectorConfig().UnixSocket,
+		unixSocket:          unixSocket,
 		locale:              bridge.GetConnectorConfig().HackySetLocale,
 	}, nil
 }
@@ -150,12 +154,10 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 		mac.fixLocale()
 	}
 	mac.log.Debugln("Preparing to execute", mac.path)
-	args := mac.args
-	if mac.unixSocket != "" {
-		args = append(args, "--unix-socket", mac.unixSocket)
-	}
+	args := append(mac.args, "--unix-socket", mac.unixSocket)
 	mac.proc = exec.Command(mac.path, args...)
-	mac.proc.Stderr = os.Stderr
+	mac.proc.Stdout = mac.procLog.Sub("Stdout").Writer(log.LevelInfo)
+	mac.proc.Stderr = mac.procLog.Sub("Stderr").Writer(log.LevelError)
 
 	if runtime.GOOS == "ios" {
 		mac.log.Debugln("Running Barcelona connector on iOS, temp files will be world-readable")
@@ -163,32 +165,17 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 		imessage.TempDirPermissions = 0755
 	}
 
-	var input io.Reader
-	var output io.Writer
 	var err error
-	if mac.unixSocket != "" {
-		if _, err = os.Stat(mac.unixSocket); err == nil {
-			mac.log.Debugln("Unlinking existing unix socket")
-			err = syscall.Unlink(mac.unixSocket)
-			if err != nil {
-				mac.log.Warnln("Error unlinking existing unix socket:", err)
-			}
-		}
-		mac.unixServer, err = net.Listen("unix", mac.unixSocket)
+	if _, err = os.Stat(mac.unixSocket); err == nil {
+		mac.log.Debugln("Unlinking existing unix socket")
+		err = syscall.Unlink(mac.unixSocket)
 		if err != nil {
-			return fmt.Errorf("failed to open unix socket: %w", err)
+			mac.log.Warnln("Error unlinking existing unix socket:", err)
 		}
-		mac.proc.Stdout = mac.procLog.Sub("Stdout").Writer(log.LevelInfo)
-		mac.proc.Stderr = mac.procLog.Sub("Stderr").Writer(log.LevelError)
-	} else {
-		input, err = mac.proc.StdoutPipe()
-		if err != nil {
-			return fmt.Errorf("failed to get subprocess stdout pipe: %w", err)
-		}
-		output, err = mac.proc.StdinPipe()
-		if err != nil {
-			return fmt.Errorf("failed to get subprocess stdin pipe: %w", err)
-		}
+	}
+	mac.unixServer, err = net.Listen("unix", mac.unixSocket)
+	if err != nil {
+		return fmt.Errorf("failed to open unix socket: %w", err)
 	}
 
 	err = mac.proc.Start()
@@ -205,26 +192,20 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 		} else {
 			mac.log.Errorfln("Barcelona died with exit code %d, exiting bridge...", mac.proc.ProcessState.ExitCode())
 		}
-		if mac.unixServer != nil {
-			_ = mac.unixServer.Close()
-			_ = syscall.Unlink(mac.unixSocket)
-		}
+		_ = mac.unixServer.Close()
+		_ = syscall.Unlink(mac.unixSocket)
 		os.Exit(mac.proc.ProcessState.ExitCode())
 	}()
 	mac.log.Debugln("Process started, PID", mac.proc.Process.Pid)
 
-	if mac.unixServer != nil {
-		conn, err := mac.unixServer.Accept()
-		if err != nil {
-			mac.log.Errorfln("Error accepting unix socket connection: %v", err)
-			os.Exit(44)
-		}
-		output = conn
-		input = conn
-		mac.log.Debugln("Received unix socket connection")
+	conn, err := mac.unixServer.Accept()
+	if err != nil {
+		mac.log.Errorfln("Error accepting unix socket connection: %v", err)
+		os.Exit(44)
 	}
+	mac.log.Debugln("Received unix socket connection")
 
-	ipcProc := ipc.NewCustomProcessor(output, input, mac.log, mac.printPayloadContent)
+	ipcProc := ipc.NewCustomProcessor(conn, conn, mac.log, mac.printPayloadContent)
 	mac.SetIPC(ipcProc)
 	ipcProc.SetHandler(IncomingLog, mac.handleIncomingLog)
 	go ipcProc.Loop()
@@ -319,10 +300,8 @@ func (mac *MacNoSIPConnector) Stop() {
 	if err != nil {
 		mac.log.Warnln("Error waiting for Barcelona process:", err)
 	}
-	if mac.unixServer != nil {
-		_ = mac.unixServer.Close()
-		_ = syscall.Unlink(mac.unixSocket)
-	}
+	_ = mac.unixServer.Close()
+	_ = syscall.Unlink(mac.unixSocket)
 }
 
 func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
