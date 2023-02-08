@@ -612,6 +612,13 @@ func (br *IMBridge) StartupSync() {
 					// Portal was dropped/merged, don't sync it
 					continue
 				} // else: portal was re-id'd, sync it as usual
+			} else if !br.Config.Bridge.DisableSMSPortals && portal.Identifier.Service == "iMessage" && !portal.Identifier.IsGroup && portal.LastSeenHandle != "" {
+				lastSeenHandle := imessage.ParseIdentifier(portal.LastSeenHandle)
+				if lastSeenHandle.Service == "SMS" && lastSeenHandle.LocalID == portal.Identifier.LocalID {
+					if !portal.reIDInto(portal.LastSeenHandle, true, true) {
+						continue
+					}
+				}
 			}
 			portal.log.Infoln("Syncing portal (startup sync, existing portal)")
 			portal.Sync(true)
