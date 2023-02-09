@@ -193,12 +193,23 @@ func (mx *WebsocketCommandHandler) handleWSUploadContacts(cmd appservice.Websock
 	return true, nil
 }
 
+func isNumber(number string) bool {
+	for _, char := range number {
+		if (char < '0' || char > '9') && char != '+' {
+			return false
+		}
+	}
+	return true
+}
+
 func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMResponse, error) {
 	var resp StartDMResponse
 	var err error
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
+	} else if parsed := imessage.ParseIdentifier(resp.GUID); parsed.Service == "SMS" && !isNumber(parsed.LocalID) {
+		return nil, fmt.Errorf("can't start SMS with non-numeric identifier")
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
 		resp.RoomID = portal.MXID
 		return &resp, nil
