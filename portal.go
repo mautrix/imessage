@@ -523,10 +523,20 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 		portal.log.Debugfln("Dropping send message status for %s: not found in db messages or tapbacks", msgStatus.GUID)
 		return
 	}
-	portal.log.Debugfln("Processing message status with type %v for event %s/%s %s/%s", msgStatus.Status, string(eventID), portal.MXID, msgStatus.GUID, portal.GUID)
-	if msgStatus.Status == "sent" {
+	portal.log.Debugfln("Processing message status with type %s/%s for event %s/%s in %s/%s", msgStatus.Status, msgStatus.StatusCode, eventID, msgStatus.GUID, portal.MXID, msgStatus.ChatGUID)
+	switch msgStatus.Status {
+	case "delivered":
+		go portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
+			EventID:    eventID,
+			RoomID:     portal.MXID,
+			Step:       status.MsgStepRemote,
+			Timestamp:  jsontime.UnixMilliNow(),
+			Status:     "DELIVERED",
+			ReportedBy: status.MsgReportedByBridge,
+		})
+	case "sent":
 		portal.sendSuccessCheckpoint(eventID, msgStatus.Service, msgStatus.ChatGUID)
-	} else if msgStatus.Status == "failed" {
+	case "failed":
 		evt, err := portal.MainIntent().GetEvent(portal.MXID, eventID)
 		if err != nil {
 			portal.log.Warnfln("Failed to lookup event %s/%s %s/%s: %v", string(eventID), portal.MXID, msgStatus.GUID, msgStatus.ChatGUID, err)
@@ -545,9 +555,8 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 			errString = msgStatus.StatusCode
 		}
 		portal.sendErrorMessage(evt, errors.New(errString), humanReadableError, true, status.MsgStatusPermFailure, msgStatus.ChatGUID)
-	} else {
-		portal.log.Infofln("Ignoring unused message status type %v for event %s/%s %s/%s", msgStatus.Status, string(eventID), portal.MXID, msgStatus.GUID, portal.GUID)
-		return
+	default:
+		portal.log.Warnfln("Unrecognized message status type %s", msgStatus.Status)
 	}
 }
 
