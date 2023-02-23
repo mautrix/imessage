@@ -1026,7 +1026,20 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 		Status:     status.MsgStatusSuccess,
 		ReportedBy: status.MsgReportedByBridge,
 	}
-	go portal.bridge.SendRawMessageCheckpoint(&checkpoint)
+	go func() {
+		portal.bridge.SendRawMessageCheckpoint(&checkpoint)
+		if portal.Identifier.IsGroup {
+			portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
+				EventID:    eventID,
+				RoomID:     portal.MXID,
+				Step:       status.MsgStepRemote,
+				Timestamp:  jsontime.UnixMilliNow(),
+				Status:     "DELIVERED",
+				ReportedBy: status.MsgReportedByBridge,
+				Info:       "fake group delivered status",
+			})
+		}
+	}()
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		mainContent := &event.BeeperMessageStatusEventContent{
