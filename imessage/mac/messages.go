@@ -303,7 +303,7 @@ func columnExists(db *sql.DB, table, column string) bool {
 	return name == column
 }
 
-func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
+func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int, _ string, _ ...imessage.ExtraParams) ([]*imessage.Message, error) {
 	res, err := mac.limitedMessagesQuery.Query(chatID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages with limit: %w", err)
@@ -316,7 +316,7 @@ func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int, backfil
 	return messages, err
 }
 
-func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time, _ string) ([]*imessage.Message, error) {
+func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time, _ string, _ ...imessage.ExtraParams) ([]*imessage.Message, error) {
 	res, err := mac.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages after date: %w", err)
@@ -324,7 +324,7 @@ func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time,
 	return mac.scanMessages(res)
 }
 
-func (mac *macOSDatabase) GetMessage(guid string) (*imessage.Message, error) {
+func (mac *macOSDatabase) GetMessage(guid string, _ ...imessage.ExtraParams) (*imessage.Message, error) {
 	res, err := mac.singleMessageQuery.Query(guid)
 	if err != nil {
 		return nil, fmt.Errorf("error querying single message: %w", err)
@@ -392,7 +392,7 @@ func (mac *macOSDatabase) getReadReceiptsSince(minDate time.Time) ([]*imessage.R
 	return receipts, minDate, nil
 }
 
-func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]imessage.ChatIdentifier, error) {
+func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time, _ ...imessage.ExtraParams) ([]imessage.ChatIdentifier, error) {
 	res, err := mac.recentChatsQuery.Query(minDate.UnixNano() - imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying chats with messages after date: %w", err)
@@ -409,7 +409,7 @@ func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]imessa
 	return chats, nil
 }
 
-func (mac *macOSDatabase) GetChatInfo(chatID, _ string) (*imessage.ChatInfo, error) {
+func (mac *macOSDatabase) GetChatInfo(chatID, _ string, _ ...imessage.ExtraParams) (*imessage.ChatInfo, error) {
 	row := mac.chatQuery.QueryRow(chatID)
 	var info imessage.ChatInfo
 	info.Identifier = imessage.ParseIdentifier(chatID)
@@ -423,7 +423,7 @@ func (mac *macOSDatabase) GetChatInfo(chatID, _ string) (*imessage.ChatInfo, err
 	return &info, err
 }
 
-func (mac *macOSDatabase) ResolveIdentifier(identifier string) (guid string, err error) {
+func (mac *macOSDatabase) ResolveIdentifier(identifier string, _ ...imessage.ExtraParams) (guid string, err error) {
 	err = mac.chatGUIDQuery.QueryRow("%;-;" + identifier).Scan(&guid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("user not found")
@@ -431,7 +431,7 @@ func (mac *macOSDatabase) ResolveIdentifier(identifier string) (guid string, err
 	return
 }
 
-func (mac *macOSDatabase) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
+func (mac *macOSDatabase) GetGroupAvatar(chatID string, _ ...imessage.ExtraParams) (*imessage.Attachment, error) {
 	if mac.groupActionQuery == nil {
 		return nil, nil
 	}

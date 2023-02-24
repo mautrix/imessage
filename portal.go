@@ -1168,7 +1168,13 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			msg.Body = "/me " + msg.Body
 		}
 		portal.addDedup(evt.ID, msg.Body)
-		resp, err = portal.bridge.IM.SendMessage(portal.getTargetGUID("text message", evt.ID, ""), msg.Body, messageReplyID, messageReplyPart, imessageRichLink, metadata)
+		resp, err = portal.bridge.IM.SendMessage(
+			portal.getTargetGUID("text message", evt.ID, ""), msg.Body, messageReplyID, messageReplyPart, imessageRichLink, metadata,
+			imessage.ExtraParams{TraceData: map[string]string{
+				"event_id": evt.ID.String(),
+				"room_id":  evt.ID.String(),
+			}},
+		)
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart, metadata)
 	}
@@ -1265,7 +1271,13 @@ func (portal *Portal) handleMatrixMedia(msg *event.MessageEventContent, evt *eve
 		}
 		if !hasUsableThumbnail {
 			portal.addDedup(evt.ID, caption)
-			return portal.bridge.IM.SendMessage(portal.getTargetGUID("media message (+viewer)", evt.ID, ""), caption, messageReplyID, messageReplyPart, nil, metadata)
+			return portal.bridge.IM.SendMessage(
+				portal.getTargetGUID("media message (+viewer)", evt.ID, ""), caption, messageReplyID, messageReplyPart, nil, metadata,
+				imessage.ExtraParams{TraceData: map[string]string{
+					"event_id": evt.ID.String(),
+					"room_id":  evt.ID.String(),
+				}},
+			)
 		}
 	}
 
@@ -1309,7 +1321,13 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 		}
 	}
 
-	resp, err = portal.bridge.IM.SendFile(portal.getTargetGUID("media message", evt.ID, ""), caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo, metadata)
+	resp, err = portal.bridge.IM.SendFile(
+		portal.getTargetGUID("media message", evt.ID, ""), caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo, metadata,
+		imessage.ExtraParams{TraceData: map[string]string{
+			"event_id": evt.ID.String(),
+			"room_id":  evt.ID.String(),
+		}},
+	)
 	portal.bridge.IM.SendFileCleanup(dir)
 	return
 }

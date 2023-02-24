@@ -31,6 +31,13 @@ import (
 	"go.mau.fi/mautrix-imessage/ipc"
 )
 
+func firstExtraParam(params []imessage.ExtraParams) (param imessage.ExtraParams) {
+	if len(params) > 0 {
+		param = params[0]
+	}
+	return
+}
+
 const (
 	IncomingMessage            ipc.Command = "message"
 	IncomingReadReceipt        ipc.Command = "read_receipt"
@@ -374,12 +381,14 @@ func (ios *iOSConnector) handleIncomingBackfillTask(data json.RawMessage) interf
 	return nil
 }
 
-func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*imessage.Message, error) {
+func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string, extra ...imessage.ExtraParams) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetMessagesAfter, &GetMessagesAfterRequest{
 		ChatGUID:   chatID,
 		Timestamp:  timeToFloat(minDate),
 		BackfillID: backfillID,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	}, &resp)
 	for _, msg := range resp {
 		ios.postprocessMessage(msg, "messages since date")
@@ -387,12 +396,14 @@ func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time, 
 	return resp, err
 }
 
-func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
+func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int, backfillID string, extra ...imessage.ExtraParams) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetRecentMessagesRequest{
 		ChatGUID:   chatID,
 		Limit:      limit,
 		BackfillID: backfillID,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	}, &resp)
 	for _, msg := range resp {
 		ios.postprocessMessage(msg, "messages with limit")
@@ -400,15 +411,19 @@ func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int, backfill
 	return resp, err
 }
 
-func (ios *iOSConnector) GetMessage(guid string) (resp *imessage.Message, err error) {
+func (ios *iOSConnector) GetMessage(guid string, extra ...imessage.ExtraParams) (resp *imessage.Message, err error) {
 	return resp, ios.IPC.Request(context.Background(), ReqGetMessage, &GetMessageRequest{
 		GUID: guid,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	}, &resp)
 }
 
-func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
+func (ios *iOSConnector) GetChatsWithMessagesAfter(minDate time.Time, extra ...imessage.ExtraParams) (resp []imessage.ChatIdentifier, err error) {
 	return resp, ios.IPC.Request(context.Background(), ReqGetChats, &GetChatsRequest{
 		MinTimestamp: timeToFloat(minDate),
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	}, &resp)
 }
 
@@ -461,19 +476,28 @@ func (ios *iOSConnector) GetContactList() ([]*imessage.Contact, error) {
 	return resp.Contacts, err
 }
 
-func (ios *iOSConnector) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
+func (ios *iOSConnector) GetChatInfo(chatID, threadID string, extra ...imessage.ExtraParams) (*imessage.ChatInfo, error) {
 	var resp imessage.ChatInfo
-	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID, ThreadID: threadID}, &resp)
+	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{
+		ChatGUID: chatID,
+		ThreadID: threadID,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
+	}, &resp)
 	return &resp, err
 }
 
-func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
+func (ios *iOSConnector) GetGroupAvatar(chatID string, extra ...imessage.ExtraParams) (*imessage.Attachment, error) {
 	var resp imessage.Attachment
-	err := ios.IPC.Request(context.Background(), ReqGetChatAvatar, &GetChatRequest{ChatGUID: chatID}, &resp)
+	err := ios.IPC.Request(context.Background(), ReqGetChatAvatar, &GetChatRequest{
+		ChatGUID: chatID,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
+	}, &resp)
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata, extras ...imessage.ExtraParams) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
 	err := ios.IPC.Request(context.Background(), ReqSendMessage, &SendMessageRequest{
 		ChatGUID:    chatID,
@@ -482,6 +506,8 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 		ReplyToPart: replyToPart,
 		RichLink:    richLink,
 		Metadata:    metadata,
+
+		TraceMeta: firstExtraParam(extras).TraceData,
 	}, &resp)
 	if err == nil {
 		var warn bool
@@ -496,7 +522,7 @@ func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyT
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata, extra ...imessage.ExtraParams) (*imessage.SendResponse, error) {
 	var resp imessage.SendResponse
 	err := ios.IPC.Request(context.Background(), ReqSendMedia, &SendMediaRequest{
 		ChatGUID: chatID,
@@ -510,6 +536,8 @@ func (ios *iOSConnector) SendFile(chatID, text, filename string, pathOnDisk stri
 		ReplyToPart:    replyToPart,
 		IsAudioMessage: voiceMemo,
 		Metadata:       metadata,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	}, &resp)
 	if err == nil {
 		var warn bool
@@ -525,7 +553,7 @@ func (ios *iOSConnector) SendFileCleanup(sendFileDir string) {
 	_ = os.RemoveAll(sendFileDir)
 }
 
-func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
+func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool, extra ...imessage.ExtraParams) (*imessage.SendResponse, error) {
 	if remove {
 		tapback += imessage.TapbackRemoveOffset
 	}
@@ -535,6 +563,8 @@ func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, 
 		TargetGUID: targetGUID,
 		TargetPart: targetPart,
 		Type:       tapback,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	}, &resp)
 	if err != nil {
 		return nil, err
@@ -542,21 +572,25 @@ func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, 
 	return &resp, err
 }
 
-func (ios *iOSConnector) SendReadReceipt(chatID, readUpTo string) error {
+func (ios *iOSConnector) SendReadReceipt(chatID, readUpTo string, extra ...imessage.ExtraParams) error {
 	return ios.IPC.Send(ReqSendReadReceipt, &SendReadReceiptRequest{
 		ChatGUID: chatID,
 		ReadUpTo: readUpTo,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	})
 }
 
-func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool) error {
+func (ios *iOSConnector) SendTypingNotification(chatID string, typing bool, extra ...imessage.ExtraParams) error {
 	return ios.IPC.Send(ReqSetTyping, &SetTypingRequest{
 		ChatGUID: chatID,
 		Typing:   typing,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	})
 }
 
-func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool) {
+func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool, extra ...imessage.ExtraParams) {
 	if !ios.isAndroid {
 		// Only android needs message bridging confirmations
 		return
@@ -566,10 +600,12 @@ func (ios *iOSConnector) SendMessageBridgeResult(chatID, messageID string, event
 		GUID:     messageID,
 		EventID:  eventID,
 		Success:  success,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	})
 }
 
-func (ios *iOSConnector) SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID) {
+func (ios *iOSConnector) SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID, extra ...imessage.ExtraParams) {
 	if !ios.isAndroid {
 		// Only android needs message bridging confirmations
 		return
@@ -582,22 +618,30 @@ func (ios *iOSConnector) SendBackfillResult(chatID, backfillID string, success b
 		BackfillID: backfillID,
 		Success:    success,
 		MessageIDs: idMap,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	})
 }
 
-func (ios *iOSConnector) SendChatBridgeResult(guid string, mxid id.RoomID) {
+func (ios *iOSConnector) SendChatBridgeResult(guid string, mxid id.RoomID, extra ...imessage.ExtraParams) {
 	_ = ios.IPC.Send(ReqChatBridgeResult, &ChatBridgeResult{
 		ChatGUID: guid,
 		MXID:     mxid,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
 	})
 }
 
-func (ios *iOSConnector) NotifyUpcomingMessage(eventID id.EventID) {
+func (ios *iOSConnector) NotifyUpcomingMessage(eventID id.EventID, extra ...imessage.ExtraParams) {
 	if !ios.isAndroid {
 		// Only android needs to be notified about upcoming messages to stay awake
 		return
 	}
-	_ = ios.IPC.Send(ReqUpcomingMessage, &UpcomingMessage{EventID: eventID})
+	_ = ios.IPC.Send(ReqUpcomingMessage, &UpcomingMessage{
+		EventID: eventID,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
+	})
 }
 
 func (ios *iOSConnector) PreStartupSyncHook() (resp imessage.StartupSyncHookResponse, err error) {
@@ -609,7 +653,7 @@ func (ios *iOSConnector) PostStartupSyncHook() {
 	_ = ios.IPC.Send(ReqPostStartupSync, nil)
 }
 
-func (ios *iOSConnector) ResolveIdentifier(identifier string) (string, error) {
+func (ios *iOSConnector) ResolveIdentifier(identifier string, extra ...imessage.ExtraParams) (string, error) {
 	if ios.isAndroid {
 		return imessage.Identifier{
 			LocalID: identifier,
@@ -617,17 +661,25 @@ func (ios *iOSConnector) ResolveIdentifier(identifier string) (string, error) {
 			IsGroup: false,
 		}.String(), nil
 	}
-	req := ResolveIdentifierRequest{Identifier: identifier}
+	req := ResolveIdentifierRequest{
+		Identifier: identifier,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
+	}
 	var resp ResolveIdentifierResponse
 	err := ios.IPC.Request(context.Background(), ReqResolveIdentifier, &req, &resp)
 	return resp.GUID, err
 }
 
-func (ios *iOSConnector) PrepareDM(guid string) error {
+func (ios *iOSConnector) PrepareDM(guid string, extra ...imessage.ExtraParams) error {
 	if ios.isAndroid {
 		return nil
 	}
-	return ios.IPC.Request(context.Background(), ReqPrepareDM, &PrepareDMRequest{GUID: guid}, nil)
+	return ios.IPC.Request(context.Background(), ReqPrepareDM, &PrepareDMRequest{
+		GUID: guid,
+
+		TraceMeta: firstExtraParam(extra).TraceData,
+	}, nil)
 }
 
 func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {

@@ -178,11 +178,11 @@ func (mac *macOSDatabase) sendMessageWithRetry(script, fallbackScript1, fallback
 	return err
 }
 
-func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int, _ *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendMessage(chatID, text string, replyTo string, replyToPart int, _ *imessage.RichLink, metadata imessage.MessageMetadata, _ ...imessage.ExtraParams) (*imessage.SendResponse, error) {
 	return nil, mac.sendMessageWithRetry(sendMessage, sendMessageWithService, sendMessageBuddy, imessage.ParseIdentifier(chatID), text)
 }
 
-func (mac *macOSDatabase) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata, _ ...imessage.ExtraParams) (*imessage.SendResponse, error) {
 	if voiceMemo {
 		mac.log.Warn("received a request to send a file as a voice memo, but mac does not support this. sending as regular attachment.")
 	}
@@ -198,18 +198,18 @@ func (mac *macOSDatabase) SendFileCleanup(sendFileDir string) {
 	}()
 }
 
-func (mac *macOSDatabase) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
+func (mac *macOSDatabase) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool, _ ...imessage.ExtraParams) (*imessage.SendResponse, error) {
 	return nil, nil
 }
 
-func (mac *macOSDatabase) SendReadReceipt(chatID, readUpTo string) error {
+func (mac *macOSDatabase) SendReadReceipt(chatID, readUpTo string, _ ...imessage.ExtraParams) error {
 	return nil
 }
 
-func (mac *macOSDatabase) SendTypingNotification(chatID string, typing bool) error {
+func (mac *macOSDatabase) SendTypingNotification(chatID string, typing bool, _ ...imessage.ExtraParams) error {
 	return nil
 }
 
-func (mac *macOSDatabase) NotifyUpcomingMessage(eventID id.EventID) {
+func (mac *macOSDatabase) NotifyUpcomingMessage(eventID id.EventID, _ ...imessage.ExtraParams) {
 
 }

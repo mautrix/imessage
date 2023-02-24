@@ -54,6 +54,7 @@ type SendMessageRequest struct {
 	ReplyToPart int                      `json:"reply_to_part"`
 	RichLink    *imessage.RichLink       `json:"rich_link,omitempty"`
 	Metadata    imessage.MessageMetadata `json:"metadata,omitempty"`
+	TraceMeta   map[string]string        `json:"trace_metadata,omitempty"`
 }
 
 type SendMediaRequest struct {
@@ -64,6 +65,7 @@ type SendMediaRequest struct {
 	ReplyToPart    int                      `json:"reply_to_part"`
 	IsAudioMessage bool                     `json:"is_audio_message"`
 	Metadata       imessage.MessageMetadata `json:"metadata,omitempty"`
+	TraceMeta      map[string]string        `json:"trace_metadata,omitempty"`
 }
 
 type SendTapbackRequest struct {
@@ -71,49 +73,68 @@ type SendTapbackRequest struct {
 	TargetGUID string               `json:"target_guid"`
 	TargetPart int                  `json:"target_part"`
 	Type       imessage.TapbackType `json:"type"`
+	TraceMeta  map[string]string    `json:"trace_metadata,omitempty"`
 }
 
 type SendReadReceiptRequest struct {
 	ChatGUID string `json:"chat_guid"`
 	ReadUpTo string `json:"read_up_to"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type SetTypingRequest struct {
 	ChatGUID string `json:"chat_guid"`
 	Typing   bool   `json:"typing"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type GetChatRequest struct {
 	ChatGUID string `json:"chat_guid"`
 	ThreadID string `json:"thread_id"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type GetChatsRequest struct {
 	MinTimestamp float64 `json:"min_timestamp"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type GetContactRequest struct {
 	UserGUID string `json:"user_guid"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type GetContactListResponse struct {
 	Contacts []*imessage.Contact `json:"contacts"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type GetRecentMessagesRequest struct {
 	ChatGUID   string `json:"chat_guid"`
 	Limit      int    `json:"limit"`
 	BackfillID string `json:"backfill_id"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type GetMessageRequest struct {
 	GUID string `json:"guid"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type GetMessagesAfterRequest struct {
 	ChatGUID   string  `json:"chat_guid"`
 	Timestamp  float64 `json:"timestamp"`
 	BackfillID string  `json:"backfill_id"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type PingServerResponse struct {
@@ -124,6 +145,8 @@ type PingServerResponse struct {
 
 type ResolveIdentifierRequest struct {
 	Identifier string `json:"identifier"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type ResolveIdentifierResponse struct {
@@ -132,6 +155,8 @@ type ResolveIdentifierResponse struct {
 
 type PrepareDMRequest struct {
 	GUID string `json:"guid"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type MessageBridgeResult struct {
@@ -139,11 +164,15 @@ type MessageBridgeResult struct {
 	GUID     string     `json:"message_guid"`
 	EventID  id.EventID `json:"event_id,omitempty"`
 	Success  bool       `json:"success"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type ChatBridgeResult struct {
 	ChatGUID string    `json:"chat_guid"`
 	MXID     id.RoomID `json:"mxid"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type BackfillResult struct {
@@ -152,8 +181,12 @@ type BackfillResult struct {
 	Success    bool   `json:"success"`
 
 	MessageIDs map[string][]id.EventID `json:"message_ids"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }
 
 type UpcomingMessage struct {
 	EventID id.EventID `json:"event_id"`
+
+	TraceMeta map[string]string `json:"trace_metadata,omitempty"`
 }

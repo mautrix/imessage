@@ -39,13 +39,17 @@ type ContactAPI interface {
 	GetContactList() ([]*Contact, error)
 }
 
+type ExtraParams struct {
+	TraceData map[string]string
+}
+
 type API interface {
 	Start(readyCallback func()) error
 	Stop()
-	GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*Message, error)
-	GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*Message, error)
-	GetChatsWithMessagesAfter(minDate time.Time) ([]ChatIdentifier, error)
-	GetMessage(guid string) (*Message, error)
+	GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string, extra ...ExtraParams) ([]*Message, error)
+	GetMessagesWithLimit(chatID string, limit int, backfillID string, extra ...ExtraParams) ([]*Message, error)
+	GetChatsWithMessagesAfter(minDate time.Time, extra ...ExtraParams) ([]ChatIdentifier, error)
+	GetMessage(guid string, extra ...ExtraParams) (*Message, error)
 	MessageChan() <-chan *Message
 	ReadReceiptChan() <-chan *ReadReceipt
 	TypingNotificationChan() <-chan *TypingNotification
@@ -54,22 +58,22 @@ type API interface {
 	MessageStatusChan() <-chan *SendMessageStatus
 	BackfillTaskChan() <-chan *BackfillTask
 	ContactAPI
-	GetChatInfo(chatID, threadID string) (*ChatInfo, error)
-	GetGroupAvatar(chatID string) (*Attachment, error)
+	GetChatInfo(chatID, threadID string, extra ...ExtraParams) (*ChatInfo, error)
+	GetGroupAvatar(chatID string, extra ...ExtraParams) (*Attachment, error)
 
-	ResolveIdentifier(identifier string) (string, error)
-	PrepareDM(guid string) error
+	ResolveIdentifier(identifier string, extra ...ExtraParams) (string, error)
+	PrepareDM(guid string, extra ...ExtraParams) error
 
-	SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *RichLink, metadata MessageMetadata) (*SendResponse, error)
-	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata MessageMetadata) (*SendResponse, error)
+	SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *RichLink, metadata MessageMetadata, extra ...ExtraParams) (*SendResponse, error)
+	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata MessageMetadata, extra ...ExtraParams) (*SendResponse, error)
 	SendFileCleanup(sendFileDir string)
-	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
-	SendReadReceipt(chatID, readUpTo string) error
-	SendTypingNotification(chatID string, typing bool) error
-	SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool)
-	SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID)
-	SendChatBridgeResult(guid string, mxid id.RoomID)
-	NotifyUpcomingMessage(eventID id.EventID)
+	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool, extra ...ExtraParams) (*SendResponse, error)
+	SendReadReceipt(chatID, readUpTo string, extra ...ExtraParams) error
+	SendTypingNotification(chatID string, typing bool, extra ...ExtraParams) error
+	SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool, extra ...ExtraParams)
+	SendBackfillResult(chatID, backfillID string, success bool, idMap map[string][]id.EventID, extra ...ExtraParams)
+	SendChatBridgeResult(guid string, mxid id.RoomID, extra ...ExtraParams)
+	NotifyUpcomingMessage(eventID id.EventID, extra ...ExtraParams)
 
 	PreStartupSyncHook() (StartupSyncHookResponse, error)
 	PostStartupSyncHook()
