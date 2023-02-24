@@ -19,6 +19,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -163,7 +164,7 @@ func (mx *WebsocketCommandHandler) handleWSStartDM(cmd appservice.WebsocketComma
 		return false, fmt.Errorf("failed to parse request: %w", err)
 	}
 	req.ActuallyStart = cmd.Command == "start_dm"
-	resp, err := mx.StartChat(req)
+	resp, err := mx.StartChat(req, map[string]string{"ws_req_id": strconv.Itoa(cmd.ReqID)})
 	if err != nil {
 		mx.log.Errorfln("Error in %s handler: %v", cmd.Command, err)
 		return false, err
@@ -202,18 +203,18 @@ func isNumber(number string) bool {
 	return true
 }
 
-func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMResponse, error) {
+func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest, traceData map[string]string) (*StartDMResponse, error) {
 	var resp StartDMResponse
 	var err error
 
-	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
+	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier, imessage.ExtraParams{TraceData: traceData}); err != nil {
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
 	} else if parsed := imessage.ParseIdentifier(resp.GUID); parsed.Service == "SMS" && !isNumber(parsed.LocalID) {
 		return nil, fmt.Errorf("can't start SMS with non-numeric identifier")
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
 		resp.RoomID = portal.MXID
 		return &resp, nil
-	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
+	} else if err = mx.bridge.IM.PrepareDM(resp.GUID, imessage.ExtraParams{TraceData: traceData}); err != nil {
 		return nil, fmt.Errorf("failed to prepare DM: %w", err)
 	} else if err = portal.CreateMatrixRoom(nil, &req.ProfileOverride); err != nil {
 		return nil, fmt.Errorf("failed to create Matrix room: %w", err)

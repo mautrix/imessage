@@ -18,6 +18,8 @@ package mac
 
 import (
 	"fmt"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
 
 const groupMemberQuery = `
@@ -36,7 +38,7 @@ func (mac *macOSDatabase) prepareGroups() error {
 	return nil
 }
 
-func (mac *macOSDatabase) GetGroupMembers(chatID string) ([]string, error) {
+func (mac *macOSDatabase) GetGroupMembers(chatID string, _ ...imessage.ExtraParams) ([]string, error) {
 	res, err := mac.groupMemberQuery.Query(chatID)
 	if err != nil {
 		return nil, fmt.Errorf("error querying group members: %w", err)
