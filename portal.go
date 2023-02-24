@@ -1028,7 +1028,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 	}
 	go func() {
 		portal.bridge.SendRawMessageCheckpoint(&checkpoint)
-		if portal.Identifier.IsGroup {
+		if (portal.Identifier.IsGroup || portal.Identifier.Service == "SMS") && portal.bridge.Config.IMessage.Platform == "mac-nosip" {
 			portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
 				EventID:    eventID,
 				RoomID:     portal.MXID,
