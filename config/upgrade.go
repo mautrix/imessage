@@ -44,6 +44,9 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "imessage", "chat_merging")
 	helper.Copy(up.Bool, "imessage", "tombstone_old_rooms")
 
+	helper.Copy(up.Str|up.Null, "segment", "key")
+	helper.Copy(up.Str|up.Null, "segment", "user_id")
+
 	helper.Copy(up.Str, "bridge", "user")
 	helper.Copy(up.Str, "bridge", "username_template")
 	helper.Copy(up.Str, "bridge", "displayname_template")

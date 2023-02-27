@@ -66,6 +66,11 @@ imessage:
     # Whether to tombstone SMS rooms after meging them into iMessage
     tombstone_old_rooms: false
 
+# Segment settings for collecting some debug data.
+segment:
+    key: null
+    user_id: null
+
 # Bridge config
 bridge:
     # The user of the bridge.
