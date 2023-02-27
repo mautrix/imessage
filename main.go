@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"strconv"
 	"sync"
@@ -390,7 +391,7 @@ func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	if br.Config.HackyResolveIdentifierOnConnect != "" && state.StateEvent == BridgeStatusConnected && !br.wasConnected {
 		br.wasConnected = true
 		go func() {
-			time.Sleep(60 * time.Second)
+			time.Sleep(time.Duration(rand.Intn(120)+60) * time.Second)
 			br.DB.KV.Set(database.KVBridgeWasConnected, "true")
 			resp, err := br.WebsocketHandler.StartChat(StartDMRequest{
 				Identifier:    br.Config.HackyResolveIdentifierOnConnect,
