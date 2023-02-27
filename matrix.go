@@ -19,11 +19,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"time"
 
 	"maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/id"
@@ -208,7 +208,10 @@ func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMRespon
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
 		if !req.ActuallyStart {
-			Segment.Track("iMC resolve identifier", map[string]any{"status": "fail"})
+			Segment.Track("iMC resolve identifier", map[string]any{
+				"status":            "fail",
+				"is_startup_target": strconv.FormatBool(req.Identifier == mx.bridge.Config.HackyResolveIdentifierOnConnect),
+			})
 		}
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
 	} else if parsed := imessage.ParseIdentifier(resp.GUID); parsed.Service == "SMS" && !isNumber(parsed.LocalID) {
@@ -219,7 +222,10 @@ func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMRespon
 			if parsed.Service == "SMS" {
 				status = "sms"
 			}
-			Segment.Track("iMC resolve identifier", map[string]any{"status": status})
+			Segment.Track("iMC resolve identifier", map[string]any{
+				"status":            status,
+				"is_startup_target": strconv.FormatBool(req.Identifier == mx.bridge.Config.HackyResolveIdentifierOnConnect),
+			})
 		}
 		resp.RoomID = portal.MXID
 		return &resp, nil
