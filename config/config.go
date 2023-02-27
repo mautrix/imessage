@@ -17,13 +17,20 @@
 package config
 
 import (
-	"go.mau.fi/mautrix-imessage/imessage"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 )
+
+type SegmentConfig struct {
+	Key    string `yaml:"key"`
+	UserID string `yaml:"user_id"`
+}
 
 type Config struct {
 	*bridgeconfig.BaseConfig `yaml:",inline"`
 
 	IMessage imessage.PlatformConfig `yaml:"imessage"`
+	Segment  SegmentConfig           `yaml:"segment"`
 	Bridge   BridgeConfig            `yaml:"bridge"`
 }
