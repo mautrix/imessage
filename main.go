@@ -466,7 +466,10 @@ func (br *IMBridge) startWebsocket(wg *sync.WaitGroup) {
 		if br.latestState != nil {
 			go br.SendBridgeStatus(*br.latestState)
 		} else if !br.IM.Capabilities().BridgeState {
-			go br.SendBridgeStatus(imessage.BridgeStatus{StateEvent: BridgeStatusConnected})
+			go br.SendBridgeStatus(imessage.BridgeStatus{
+				StateEvent: BridgeStatusConnected,
+				RemoteID:   "unknown",
+			})
 		}
 		go br.sendPushKey()
 		br.RequestStartSync()
