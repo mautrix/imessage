@@ -207,10 +207,20 @@ func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMRespon
 	var err error
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
+		if !req.ActuallyStart {
+			Segment.Track("iMC resolve identifier", map[string]any{"status": "fail"})
+		}
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
 	} else if parsed := imessage.ParseIdentifier(resp.GUID); parsed.Service == "SMS" && !isNumber(parsed.LocalID) {
 		return nil, fmt.Errorf("can't start SMS with non-numeric identifier")
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
+		if !req.ActuallyStart {
+			status := "success"
+			if parsed.Service == "SMS" {
+				status = "sms"
+			}
+			Segment.Track("iMC resolve identifier", map[string]any{"status": status})
+		}
 		resp.RoomID = portal.MXID
 		return &resp, nil
 	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
