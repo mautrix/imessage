@@ -48,6 +48,7 @@ func DoUpgrade(helper *up.Helper) {
 
 	helper.Copy(up.Str|up.Null, "segment", "key")
 	helper.Copy(up.Str|up.Null, "segment", "user_id")
+	helper.Copy(up.Int|up.Str|up.Null, "hacky_resolve_identifier_on_connect")
 
 	helper.Copy(up.Str, "bridge", "user")
 	helper.Copy(up.Str, "bridge", "username_template")

@@ -30,8 +30,9 @@ type KeyValueQuery struct {
 }
 
 const (
-	KVSendStatusStart   = "com.beeper.send_status_start"
-	KVBridgeInfoVersion = "bridge_info_version"
+	KVSendStatusStart    = "com.beeper.send_status_start"
+	KVBridgeWasConnected = "bridge_was_connected"
+	KVBridgeInfoVersion  = "bridge_info_version"
 
 	ExpectedBridgeInfoVersion = "1"
 )

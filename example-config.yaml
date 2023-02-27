@@ -91,6 +91,8 @@ segment:
     key: null
     user_id: null
 
+hacky_resolve_identifier_on_connect: null
+
 # Bridge config
 bridge:
     # The user of the bridge.

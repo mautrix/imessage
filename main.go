@@ -91,6 +91,7 @@ type IMBridge struct {
 
 	SendStatusStartTS    int64
 	sendStatusUpdateInfo bool
+	wasConnected         bool
 }
 
 func (br *IMBridge) GetExampleConfig() string {
@@ -386,6 +387,22 @@ func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	if err != nil {
 		br.Log.Warnln("Error sending pong status:", err)
 	}
+	if br.Config.HackyResolveIdentifierOnConnect != "" && state.StateEvent == BridgeStatusConnected && !br.wasConnected {
+		br.wasConnected = true
+		go func() {
+			time.Sleep(60 * time.Second)
+			br.DB.KV.Set(database.KVBridgeWasConnected, "true")
+			resp, err := br.WebsocketHandler.StartChat(StartDMRequest{
+				Identifier:    br.Config.HackyResolveIdentifierOnConnect,
+				ActuallyStart: false,
+			})
+			if err != nil {
+				br.Log.Errorfln("Hacky resolve identifier on connect failed: %v", err)
+			} else {
+				br.Log.Infofln("Hacky resolve identifier on connect got response %+v", resp)
+			}
+		}()
+	}
 }
 
 func (br *IMBridge) sendPushKey() {
@@ -520,6 +537,7 @@ func (br *IMBridge) Start() {
 			br.sendStatusUpdateInfo = true
 		}
 	}
+	br.wasConnected = br.DB.KV.Get(database.KVBridgeWasConnected) == "true"
 
 	needsPortalFinding := br.Config.Bridge.FindPortalsIfEmpty && br.DB.Portal.Count() == 0
 

@@ -33,4 +33,6 @@ type Config struct {
 	IMessage imessage.PlatformConfig `yaml:"imessage"`
 	Segment  SegmentConfig           `yaml:"segment"`
 	Bridge   BridgeConfig            `yaml:"bridge"`
+
+	HackyResolveIdentifierOnConnect string `yaml:"hacky_resolve_identifier_on_connect"`
 }
