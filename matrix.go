@@ -202,31 +202,31 @@ func isNumber(number string) bool {
 	return true
 }
 
+func (mx *WebsocketCommandHandler) trackResolveIdentifier(actuallyTrack bool, identifier, status string) {
+	if actuallyTrack {
+		Segment.Track("iMC resolve identifier", map[string]any{
+			"status":            status,
+			"is_startup_target": strconv.FormatBool(identifier == mx.bridge.Config.HackyResolveIdentifierOnConnect),
+		})
+	}
+}
+
 func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMResponse, error) {
 	var resp StartDMResponse
 	var err error
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
-		if !req.ActuallyStart {
-			Segment.Track("iMC resolve identifier", map[string]any{
-				"status":            "fail",
-				"is_startup_target": strconv.FormatBool(req.Identifier == mx.bridge.Config.HackyResolveIdentifierOnConnect),
-			})
-		}
+		mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, "fail")
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
 	} else if parsed := imessage.ParseIdentifier(resp.GUID); parsed.Service == "SMS" && !isNumber(parsed.LocalID) {
+		mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, "fail")
 		return nil, fmt.Errorf("can't start SMS with non-numeric identifier")
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
-		if !req.ActuallyStart {
-			status := "success"
-			if parsed.Service == "SMS" {
-				status = "sms"
-			}
-			Segment.Track("iMC resolve identifier", map[string]any{
-				"status":            status,
-				"is_startup_target": strconv.FormatBool(req.Identifier == mx.bridge.Config.HackyResolveIdentifierOnConnect),
-			})
+		status := "success"
+		if parsed.Service == "SMS" {
+			status = "sms"
 		}
+		mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, status)
 		resp.RoomID = portal.MXID
 		return &resp, nil
 	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
