@@ -197,8 +197,18 @@ func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMRespon
 	}
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
+		if !req.ActuallyStart {
+			Segment.Track("iMC resolve identifier", map[string]any{"status": "fail"})
+		}
 		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
+		if !req.ActuallyStart {
+			status := "success"
+			if parsed.Service == "SMS" {
+				status = "sms"
+			}
+			Segment.Track("iMC resolve identifier", map[string]any{"status": status})
+		}
 		resp.RoomID = portal.MXID
 		return &resp, nil
 	} else if portal, err = prepareDM(); err != nil {
