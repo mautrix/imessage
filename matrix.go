@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -204,9 +205,16 @@ func isNumber(number string) bool {
 
 func (mx *WebsocketCommandHandler) trackResolveIdentifier(actuallyTrack bool, identifier, status string) {
 	if actuallyTrack {
+		identifierType := "unknown"
+		if isNumber(identifierType) {
+			identifierType = "phone"
+		} else if strings.ContainsRune(identifier, '@') {
+			identifierType = "email"
+		}
 		Segment.Track("iMC resolve identifier", map[string]any{
 			"status":            status,
 			"is_startup_target": strconv.FormatBool(identifier == mx.bridge.Config.HackyResolveIdentifierOnConnect),
+			"identifier_type":   identifierType,
 		})
 	}
 }
