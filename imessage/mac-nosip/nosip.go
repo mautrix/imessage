@@ -199,7 +199,10 @@ func (mac *MacNoSIPConnector) Start(readyCallback func()) error {
 	return mac.APIWithIPC.Start(readyCallback)
 }
 
+const maxTimeouts = 2
+
 func (mac *MacNoSIPConnector) pingLoop(ipcProc *ipc.Processor) {
+	timeouts := 0
 	for {
 		resp, _, err := ipcProc.RequestAsync(ReqPing, nil)
 		if err != nil {
@@ -211,13 +214,20 @@ func (mac *MacNoSIPConnector) pingLoop(ipcProc *ipc.Processor) {
 		case <-mac.stopPinger:
 			return
 		case <-timeout:
-			mac.log.Fatalfln("Didn't receive pong from Barcelona within %s", mac.pingInterval)
-			os.Exit(255)
+			timeouts++
+			if timeouts >= maxTimeouts {
+				mac.log.Fatalfln("Didn't receive pong from Barcelona within %s", mac.pingInterval)
+				os.Exit(255)
+			} else {
+				mac.log.Warnfln("Didn't receive pong from Barcelona within %s", mac.pingInterval)
+				continue
+			}
 		case rawData := <-resp:
 			if rawData.Command == "error" {
 				mac.log.Fatalfln("Barcelona returned error response to pong: %s", rawData.Data)
 				os.Exit(253)
 			}
+			timeouts = 0
 		}
 		select {
 		case <-timeout:
