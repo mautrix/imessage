@@ -84,7 +84,7 @@ func (user *User) loginWithSharedSecret() error {
 	if err != nil {
 		return err
 	}
-	client.Logger = user.bridge.AS.Log.Sub(string(user.MXID))
+	client.Log = user.bridge.AS.Log.With().Str("as_user_id", user.MXID.String()).Logger()
 	client.Client = user.bridge.AS.HTTPClient
 	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
 	req := mautrix.ReqLogin{
@@ -118,7 +118,8 @@ func (user *User) newDoublePuppetIntent() (*appservice.IntentAPI, error) {
 	if err != nil {
 		return nil, err
 	}
-	client.Logger = user.bridge.AS.Log.Sub(string(user.MXID))
+	client.Log = user.bridge.AS.Log.With().Str("as_user_id", user.MXID.String()).Logger()
+	client.StateStore = user.bridge.AS.StateStore
 	client.Client = user.bridge.AS.HTTPClient
 	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
 	client.Syncer = user
@@ -136,6 +137,7 @@ func (user *User) clearCustomMXID() {
 	user.NextBatch = ""
 	user.DoublePuppetIntent = nil
 }
+
 func (user *User) startCustomMXID() error {
 	if len(user.AccessToken) == 0 {
 		user.clearCustomMXID()

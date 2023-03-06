@@ -83,7 +83,7 @@ type HandlerFunc func(message json.RawMessage) interface{}
 
 type Processor struct {
 	log    log.Logger
-	lock   *sync.Mutex
+	lock   sync.Mutex
 	stdout *json.Encoder
 	stdin  *json.Decoder
 
@@ -95,9 +95,8 @@ type Processor struct {
 	printPayloadContent bool
 }
 
-func newProcessor(lock *sync.Mutex, output io.Writer, input io.Reader, logger log.Logger, printPayloadContent bool) *Processor {
+func newProcessor(output io.Writer, input io.Reader, logger log.Logger, printPayloadContent bool) *Processor {
 	return &Processor{
-		lock:                lock,
 		log:                 logger,
 		stdout:              json.NewEncoder(output),
 		stdin:               json.NewDecoder(input),
@@ -108,11 +107,11 @@ func newProcessor(lock *sync.Mutex, output io.Writer, input io.Reader, logger lo
 }
 
 func NewCustomProcessor(output io.Writer, input io.Reader, logger log.Logger, printPayloadContent bool) *Processor {
-	return newProcessor(&sync.Mutex{}, output, input, logger.Sub("IPC"), printPayloadContent)
+	return newProcessor(output, input, logger.Sub("IPC"), printPayloadContent)
 }
 
 func NewStdioProcessor(logger log.Logger, printPayloadContent bool) *Processor {
-	return newProcessor(&logger.(*log.BasicLogger).StdoutLock, os.Stdout, os.Stdin, logger.Sub("IPC"), printPayloadContent)
+	return newProcessor(os.Stdout, os.Stdin, logger.Sub("IPC"), printPayloadContent)
 }
 
 func (ipc *Processor) Loop() {

@@ -275,23 +275,18 @@ bridge:
             m.audio: "{{ .Sender.Displayname }} sent an audio file: {{ .FileName }}"
             m.video: "{{ .Sender.Displayname }} sent a video: {{ .FileName }}"
 
-# Logging config.
+# Logging config. See https://github.com/tulir/zeroconfig for details.
 logging:
-    # The directory for log files. Will be created if not found.
-    directory: ./logs
-    # Available variables: .Date for the file date and .Index for different log files on the same day.
-    file_name_format: "{{.Date}}-{{.Index}}.log"
-    # Date format for file names in the Go time format: https://golang.org/pkg/time/#pkg-constants
-    file_date_format: 2006-01-02
-    # Log file permissions.
-    file_mode: 0600
-    # Timestamp format for log entries in the Go time format.
-    timestamp_format: Jan _2, 2006 15:04:05
-    # Minimum severity for log messages.
-    # Options: debug, info, warn, error, fatal
-    print_level: debug
-    print_json: false
-    file_json: false
+    min_level: debug
+    writers:
+    - type: stdout
+      format: pretty-colored
+    - type: file
+      format: json
+      filename: ./logs/mautrix-imessage.log
+      max_size: 100
+      max_backups: 10
+      compress: true
 
 # This may be used by external config managers. mautrix-imessage does not read it, but will carry it across configuration migrations.
 revision: 0

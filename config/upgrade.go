@@ -29,13 +29,6 @@ func DoUpgrade(helper *up.Helper) {
 
 	helper.Copy(up.Int, "revision")
 
-	helper.Copy(up.Str, "logging", "directory")
-	helper.Copy(up.Str|up.Null, "logging", "file_name_format")
-	helper.Copy(up.Str|up.Timestamp, "logging", "file_date_format")
-	helper.Copy(up.Int, "logging", "file_mode")
-	helper.Copy(up.Str|up.Timestamp, "logging", "timestamp_format")
-	helper.Copy(up.Str, "logging", "print_level")
-
 	helper.Copy(up.Str, "imessage", "platform")
 	helper.Copy(up.Str, "imessage", "imessage_rest_path")
 	helper.Copy(up.List, "imessage", "imessage_rest_args")
