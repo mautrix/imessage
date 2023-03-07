@@ -27,7 +27,7 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.5.4 // indirect
-	go.mau.fi/zeroconfig v0.1.0 // indirect
+	go.mau.fi/zeroconfig v0.1.1-0.20230307133753-064511d2a2cd // indirect
 	golang.org/x/net v0.6.0 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
