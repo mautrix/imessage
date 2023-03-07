@@ -1362,6 +1362,9 @@ func (portal *Portal) HandleMatrixReadReceipt(user bridge.User, eventID id.Event
 }
 
 func (portal *Portal) HandleMatrixTyping(userIDs []id.UserID) {
+	if portal.Identifier.Service == "SMS" {
+		return
+	}
 	portal.typingLock.Lock()
 	defer portal.typingLock.Unlock()
 
@@ -1382,6 +1385,8 @@ func (portal *Portal) HandleMatrixTyping(userIDs []id.UserID) {
 		err := portal.bridge.IM.SendTypingNotification(portal.getTargetGUID("typing notification", "", ""), isTyping)
 		if err != nil {
 			portal.log.Warnfln("Failed to bridge typing status change: %v", err)
+		} else {
+			portal.log.Debugfln("Typing update sent")
 		}
 	}
 }
