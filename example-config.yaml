@@ -91,7 +91,12 @@ segment:
     key: null
     user_id: null
 
-hacky_resolve_identifier_on_connect: null
+hacky_startup_test:
+    identifier: null
+    message: null
+    response_message: null
+    key: null
+    echo_mode: false
 
 # Bridge config
 bridge:

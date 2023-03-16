@@ -213,7 +213,7 @@ func (mx *WebsocketCommandHandler) trackResolveIdentifier(actuallyTrack bool, id
 		}
 		Segment.Track("iMC resolve identifier", map[string]any{
 			"status":            status,
-			"is_startup_target": strconv.FormatBool(identifier == mx.bridge.Config.HackyResolveIdentifierOnConnect),
+			"is_startup_target": strconv.FormatBool(identifier == mx.bridge.Config.HackyStartupTest.Identifier),
 			"identifier_type":   identifierType,
 		})
 	}

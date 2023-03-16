@@ -34,5 +34,11 @@ type Config struct {
 	Segment  SegmentConfig           `yaml:"segment"`
 	Bridge   BridgeConfig            `yaml:"bridge"`
 
-	HackyResolveIdentifierOnConnect string `yaml:"hacky_resolve_identifier_on_connect"`
+	HackyStartupTest struct {
+		Identifier      string `yaml:"identifier"`
+		Message         string `yaml:"message"`
+		ResponseMessage string `yaml:"response_message"`
+		Key             string `yaml:"key"`
+		EchoMode        bool   `yaml:"echo_mode"`
+	} `yaml:"hacky_startup_test"`
 }

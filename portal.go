@@ -514,6 +514,10 @@ func (portal *Portal) handleMessageLoop() {
 }
 
 func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMessageStatus) {
+	if msgStatus.GUID == portal.bridge.pendingHackyTestGUID && portal.Identifier.LocalID == portal.bridge.Config.HackyStartupTest.Identifier {
+		portal.bridge.trackStartupTestPingStatus(msgStatus)
+	}
+
 	var eventID id.EventID
 	if msg := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, msgStatus.GUID); msg != nil {
 		eventID = msg.MXID
@@ -1850,6 +1854,20 @@ func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.
 }
 
 func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+	if msg.Metadata != nil && portal.bridge.Config.HackyStartupTest.Key != "" {
+		if portal.bridge.Config.HackyStartupTest.EchoMode {
+			_, ok := msg.Metadata[startupTestKey].(map[string]any)
+			if ok {
+				go portal.bridge.receiveStartupTestPing(msg)
+			}
+		} else if portal.Identifier.LocalID == portal.bridge.Config.HackyStartupTest.Identifier {
+			resp, ok := msg.Metadata[startupTestResponseKey].(map[string]any)
+			if ok {
+				go portal.bridge.receiveStartupTestPong(resp, msg)
+			}
+		}
+	}
+
 	parts := portal.convertiMessage(msg, intent)
 	if len(parts) == 0 {
 		portal.log.Warnfln("iMessage %s doesn't contain any attachments nor text", msg.GUID)
