@@ -29,7 +29,7 @@ import (
 	"time"
 
 	flag "maunium.net/go/mauflag"
-	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix/event"
@@ -179,12 +179,6 @@ func (br *IMBridge) ensureConnection() {
 	}
 }
 
-func (br *IMBridge) PreInit() {
-	br.Log = log.Createm(map[string]interface{}{
-		"username": br.Config.Bridge.User.String(),
-	})
-}
-
 func (br *IMBridge) Init() {
 	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
 	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
@@ -226,7 +220,7 @@ func (br *IMBridge) GetIPC() *ipc.Processor {
 	return br.IPC
 }
 
-func (br *IMBridge) GetLog() log.Logger {
+func (br *IMBridge) GetLog() maulogger.Logger {
 	return br.Log
 }
 
