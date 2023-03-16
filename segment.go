@@ -36,10 +36,13 @@ type SegmentClient struct {
 
 var Segment SegmentClient
 
-func (sc *SegmentClient) trackSync(event string, properties map[string]any) error {
+func (sc *SegmentClient) trackSync(event string, properties map[string]any, userIDOverride string) error {
 	var buf bytes.Buffer
+	if userIDOverride == "" {
+		userIDOverride = sc.userID
+	}
 	err := json.NewEncoder(&buf).Encode(map[string]interface{}{
-		"userId":     sc.userID,
+		"userId":     userIDOverride,
 		"event":      event,
 		"properties": properties,
 	})
@@ -68,6 +71,10 @@ func (sc *SegmentClient) IsEnabled() bool {
 }
 
 func (sc *SegmentClient) Track(event string, properties ...map[string]any) {
+	sc.TrackUser(event, "", properties...)
+}
+
+func (sc *SegmentClient) TrackUser(event, userID string, properties ...map[string]any) {
 	if !sc.IsEnabled() {
 		return
 	} else if len(properties) > 1 {
@@ -80,7 +87,7 @@ func (sc *SegmentClient) Track(event string, properties ...map[string]any) {
 			props = properties[0]
 		}
 		props["bridge"] = "imessagecloud"
-		err := sc.trackSync(event, props)
+		err := sc.trackSync(event, props, userID)
 		if err != nil {
 			sc.log.Errorfln("Error tracking %s: %v", event, err)
 		} else {
