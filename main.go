@@ -387,7 +387,7 @@ func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	}
 	if br.Config.HackyStartupTest.Identifier != "" && state.StateEvent == BridgeStatusConnected && !br.wasConnected && !br.Config.HackyStartupTest.EchoMode {
 		br.wasConnected = true
-		go br.hackyStartupTests()
+		go br.hackyStartupTests(true)
 	}
 }
 

@@ -60,7 +60,14 @@ func NewWebsocketCommandHandler(br *IMBridge) *WebsocketCommandHandler {
 	br.AS.SetWebsocketCommandHandler("list_contacts", handler.handleWSGetContacts)
 	br.AS.SetWebsocketCommandHandler("upload_contacts", handler.handleWSUploadContacts)
 	br.AS.SetWebsocketCommandHandler("edit_ghost", handler.handleWSEditGhost)
+	br.AS.SetWebsocketCommandHandler("do_hacky_test", handler.handleWSHackyTest)
 	return handler
+}
+
+func (mx *WebsocketCommandHandler) handleWSHackyTest(cmd appservice.WebsocketCommand) (bool, any) {
+	mx.log.Debugfln("Starting hacky test due to manual request")
+	mx.bridge.hackyStartupTests(false)
+	return true, nil
 }
 
 func (mx *WebsocketCommandHandler) handleWSPing(cmd appservice.WebsocketCommand) (bool, interface{}) {

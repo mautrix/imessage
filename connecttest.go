@@ -112,8 +112,10 @@ func trackStartupTestError(erroredAt, randomID string) {
 	})
 }
 
-func (br *IMBridge) hackyStartupTests() {
-	time.Sleep(time.Duration(rand.Intn(120)+60) * time.Second)
+func (br *IMBridge) hackyStartupTests(sleep bool) {
+	if sleep {
+		time.Sleep(time.Duration(rand.Intn(120)+60) * time.Second)
+	}
 	br.DB.KV.Set(database.KVBridgeWasConnected, "true")
 	randomID := br.Bot.TxnID()
 	log := br.ZLog.With().
