@@ -622,7 +622,7 @@ func (ios *iOSConnector) ResolveIdentifier(identifier string) (string, error) {
 	var resp ResolveIdentifierResponse
 	err := ios.IPC.Request(context.Background(), ReqResolveIdentifier, &req, &resp)
 	// Hack: barcelona probably shouldn't return mailto:
-	resp.GUID = strings.TrimPrefix(resp.GUID, "mailto:")
+	resp.GUID = strings.Replace(resp.GUID, "iMessage;-;mailto:", "iMessage;-;", 1)
 	return resp.GUID, err
 }
 
