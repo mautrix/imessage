@@ -253,6 +253,7 @@ func (br *IMBridge) receiveStartupTestPing(msg *imessage.Message) {
 		"random_id": unencryptedID,
 		"msg_guid":  msg.GUID,
 	})
+	time.Sleep(2 * time.Second)
 	resp, err := br.IM.SendMessage(msg.ChatGUID, br.Config.HackyStartupTest.ResponseMessage, msg.GUID, 0, nil, map[string]any{
 		startupTestResponseKey: map[string]any{
 			"random_id": randomID,
