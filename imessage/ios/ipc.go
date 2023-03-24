@@ -621,8 +621,9 @@ func (ios *iOSConnector) ResolveIdentifier(identifier string) (string, error) {
 	req := ResolveIdentifierRequest{Identifier: identifier}
 	var resp ResolveIdentifierResponse
 	err := ios.IPC.Request(context.Background(), ReqResolveIdentifier, &req, &resp)
-	// Hack: barcelona probably shouldn't return mailto:
+	// Hack: barcelona probably shouldn't return mailto: or tel:
 	resp.GUID = strings.Replace(resp.GUID, "iMessage;-;mailto:", "iMessage;-;", 1)
+	resp.GUID = strings.Replace(resp.GUID, "iMessage;-;tel:", "iMessage;-;", 1)
 	return resp.GUID, err
 }
 
