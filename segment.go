@@ -106,7 +106,7 @@ func (br *IMBridge) initSegment() {
 	if Segment.IsEnabled() {
 		Segment.log.Infoln("Segment metrics are enabled")
 		if Segment.userID != "" {
-			Segment.log.Infoln("Overriding Segment user_id with %v", Segment.userID)
+			Segment.log.Infofln("Overriding Segment user_id with %v", Segment.userID)
 		}
 	}
 }
