@@ -465,13 +465,19 @@ func (ios *iOSConnector) GetContactList() ([]*imessage.Contact, error) {
 func (ios *iOSConnector) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
 	var resp imessage.ChatInfo
 	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID, ThreadID: threadID}, &resp)
-	return &resp, err
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
 	var resp imessage.Attachment
 	err := ios.IPC.Request(context.Background(), ReqGetChatAvatar, &GetChatRequest{ChatGUID: chatID}, &resp)
-	return &resp, err
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (ios *iOSConnector) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
