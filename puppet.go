@@ -28,6 +28,7 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/mautrix/event"
 
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
@@ -258,7 +259,10 @@ func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
 func (puppet *Puppet) updatePortalAvatar() {
 	puppet.updatePortalMeta(func(portal *Portal) {
 		if len(portal.MXID) > 0 {
-			_, err := portal.MainIntent().SetRoomAvatar(portal.MXID, puppet.AvatarURL)
+			_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateRoomAvatar, "", map[string]any{
+				"url":       puppet.AvatarURL.String(),
+				fakeMetaKey: true,
+			})
 			if err != nil {
 				portal.log.Warnln("Failed to set avatar:", err)
 			}
@@ -273,7 +277,10 @@ func (puppet *Puppet) updatePortalAvatar() {
 func (puppet *Puppet) updatePortalName() {
 	puppet.updatePortalMeta(func(portal *Portal) {
 		if len(portal.MXID) > 0 {
-			_, err := portal.MainIntent().SetRoomName(portal.MXID, puppet.Displayname)
+			_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateRoomName, "", map[string]any{
+				"name":      puppet.Displayname,
+				fakeMetaKey: true,
+			})
 			if err != nil {
 				portal.log.Warnln("Failed to set name:", err)
 			}

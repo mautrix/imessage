@@ -667,6 +667,8 @@ func (portal *Portal) GetEncryptionEventContent() (evt *event.EncryptionEventCon
 	return
 }
 
+const fakeMetaKey = "com.beeper.is_fake_meta"
+
 func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
 
@@ -686,12 +688,16 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 		StateKey: &bridgeInfoStateKey,
 	}}
 	if !portal.AvatarURL.IsEmpty() {
-		initialState = append(initialState, &event.Event{
+		evt := &event.Event{
 			Type: event.StateRoomAvatar,
 			Content: event.Content{
 				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
 			},
-		})
+		}
+		if portal.IsPrivateChat() {
+			evt.Content.Raw = map[string]any{fakeMetaKey: true}
+		}
+		initialState = append(initialState, evt)
 	}
 
 	var invite []id.UserID
@@ -718,7 +724,7 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 	if !portal.bridge.Config.Bridge.FederateRooms {
 		creationContent["m.federate"] = false
 	}
-	return &mautrix.ReqCreateRoom{
+	req := &mautrix.ReqCreateRoom{
 		Visibility:      "private",
 		Name:            portal.Name,
 		Invite:          invite,
@@ -729,6 +735,17 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 
 		BeeperAutoJoinInvites: autoJoinInvites,
 	}
+	if portal.IsPrivateChat() && req.Name != "" {
+		req.Name = ""
+		req.InitialState = append(req.InitialState, &event.Event{
+			Type: event.StateRoomName,
+			Content: event.Content{
+				Parsed: &event.RoomNameEventContent{Name: portal.Name},
+				Raw:    map[string]any{fakeMetaKey: true},
+			},
+		})
+	}
+	return req
 }
 
 func (portal *Portal) preCreateDMSync(profileOverride *ProfileOverride) {
