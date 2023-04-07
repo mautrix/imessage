@@ -110,15 +110,6 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "bridge", "command_prefix")
 	helper.Copy(up.Bool, "bridge", "force_uniform_dm_senders")
 	helper.Copy(up.Bool, "bridge", "disable_sms_portals")
-	helper.Copy(up.Map, "bridge", "double_puppet_server_map")
-	helper.Copy(up.Bool, "bridge", "double_puppet_allow_discovery")
-	if legacySecret, ok := helper.Get(up.Str, "bridge", "login_shared_secret"); ok && len(legacySecret) > 0 {
-		baseNode := helper.GetBaseNode("bridge", "login_shared_secret_map")
-		baseNode.Map[helper.GetBase("homeserver", "domain")] = up.StringNode(legacySecret)
-		baseNode.UpdateContent()
-	} else {
-		helper.Copy(up.Map, "bridge", "login_shared_secret_map")
-	}
 	helper.Copy(up.Bool, "bridge", "federate_rooms")
 	helper.Copy(up.Bool, "bridge", "caption_in_message")
 
