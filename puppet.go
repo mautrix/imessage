@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
@@ -31,6 +32,7 @@ import (
 
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
+	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/database"
@@ -297,6 +299,10 @@ func (puppet *Puppet) Sync() {
 		puppet.log.Debugln("No contact info found")
 	}
 
+	if puppet.UpdateContactInfo() {
+		puppet.Update()
+	}
+
 	puppet.SyncWithContact(contact)
 }
 
@@ -339,6 +345,40 @@ func (puppet *Puppet) SyncWithProfileOverride(override ProfileOverride) {
 	if len(override.PhotoURL) > 0 {
 		puppet.syncAvatarWithRawURL(override.PhotoURL)
 	}
+}
+
+func (puppet *Puppet) UpdateContactInfo() bool {
+	if puppet.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
+		return false
+	}
+	if !puppet.ContactInfoSet {
+		contactInfo := map[string]any{
+			"com.beeper.bridge.remote_id":     puppet.ID,
+			"com.beeper.bridge.is_bridge_bot": false,
+			"com.beeper.bridge.is_bot":        false,
+		}
+		if strings.ContainsRune(puppet.ID, '@') {
+			contactInfo["com.beeper.bridge.identifiers"] = []string{fmt.Sprintf("mailto:%s", puppet.ID)}
+		} else {
+			contactInfo["com.beeper.bridge.identifiers"] = []string{fmt.Sprintf("tel:%s", puppet.ID)}
+		}
+		if puppet.bridge.Config.IMessage.Platform == "android" {
+			contactInfo["com.beeper.bridge.service"] = "androidsms"
+			contactInfo["com.beeper.bridge.network"] = "androidsms"
+		} else {
+			contactInfo["com.beeper.bridge.service"] = "imessagecloud"
+			contactInfo["com.beeper.bridge.network"] = "imessage"
+		}
+		err := puppet.DefaultIntent().BeeperUpdateProfile(contactInfo)
+		if err != nil {
+			puppet.log.Warnln("Failed to store custom contact info in profile:", err)
+			return false
+		} else {
+			puppet.ContactInfoSet = true
+			return true
+		}
+	}
+	return false
 }
 
 func (puppet *Puppet) SyncWithContact(contact *imessage.Contact) {
