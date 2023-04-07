@@ -667,7 +667,7 @@ func (portal *Portal) GetEncryptionEventContent() (evt *event.EncryptionEventCon
 	return
 }
 
-const fakeMetaKey = "com.beeper.is_fake_meta"
+const fakeMetaKey = "com.beeper.bridge_generated"
 
 func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
