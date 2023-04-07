@@ -74,19 +74,13 @@ func (user *User) initDoublePuppet() {
 }
 
 func (user *User) loginWithSharedSecret() error {
-	user.log.Debugfln("Logging in with shared secret")
-	loginSecret := user.bridge.Config.Bridge.LoginSharedSecret
-	url := user.bridge.Config.Bridge.DoublePuppetServerURL
-	if url == "" {
-		url = user.bridge.AS.HomeserverURL
-	}
-	client, err := mautrix.NewClient(url, "", "")
+	_, homeserver, _ := user.MXID.Parse()
+	user.log.Debugln("Logging into double puppet target with shared secret")
+	loginSecret := user.bridge.Config.Bridge.LoginSharedSecretMap[homeserver]
+	client, err := user.bridge.newDoublePuppetClient(user.MXID, "")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create mautrix client to log in: %v", err)
 	}
-	client.Log = user.bridge.AS.Log.With().Str("as_user_id", user.MXID.String()).Logger()
-	client.Client = user.bridge.AS.HTTPClient
-	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
 	req := mautrix.ReqLogin{
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(user.MXID)},
 		DeviceID:                 id.DeviceID(user.bridge.Config.IMessage.BridgeName()),
@@ -103,26 +97,43 @@ func (user *User) loginWithSharedSecret() error {
 	}
 	resp, err := client.Login(&req)
 	if err != nil {
-		return fmt.Errorf("failed to log in with shared secret: %w", err)
+		return err
 	}
 	user.AccessToken = resp.AccessToken
 	return nil
 }
 
-func (user *User) newDoublePuppetIntent() (*appservice.IntentAPI, error) {
-	url := user.bridge.Config.Bridge.DoublePuppetServerURL
-	if url == "" {
-		url = user.bridge.AS.HomeserverURL
-	}
-	client, err := mautrix.NewClient(url, user.MXID, user.AccessToken)
+func (br *IMBridge) newDoublePuppetClient(mxid id.UserID, accessToken string) (*mautrix.Client, error) {
+	_, homeserver, err := mxid.Parse()
 	if err != nil {
 		return nil, err
 	}
-	client.Log = user.bridge.AS.Log.With().Str("as_user_id", user.MXID.String()).Logger()
-	client.StateStore = user.bridge.AS.StateStore
-	client.Client = user.bridge.AS.HTTPClient
-	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
-	client.Syncer = user
+
+	homeserverURL, found := br.Config.Bridge.DoublePuppetServerMap[homeserver]
+	if !found {
+		if homeserver == br.AS.HomeserverDomain {
+			homeserverURL = ""
+		} else if br.Config.Bridge.DoublePuppetAllowDiscovery {
+			resp, err := mautrix.DiscoverClientAPI(homeserver)
+			if err != nil {
+				return nil, fmt.Errorf("failed to find homeserver URL for %s: %v", homeserver, err)
+			}
+
+			homeserverURL = resp.Homeserver.BaseURL
+			br.Log.Debugfln("Discovered URL %s for %s to enable double puppeting for %s", homeserverURL, homeserver, mxid)
+		} else {
+			return nil, fmt.Errorf("double puppeting from %s is not allowed", homeserver)
+		}
+	}
+
+	return br.AS.NewExternalMautrixClient(mxid, accessToken, homeserverURL)
+}
+
+func (user *User) newCustomIntent() (*appservice.IntentAPI, error) {
+	client, err := user.bridge.newDoublePuppetClient(user.MXID, user.AccessToken)
+	if err != nil {
+		return nil, err
+	}
 
 	ia := user.bridge.AS.NewIntentAPI("custom")
 	ia.Client = client
@@ -143,7 +154,7 @@ func (user *User) startCustomMXID() error {
 		user.clearCustomMXID()
 		return nil
 	}
-	intent, err := user.newDoublePuppetIntent()
+	intent, err := user.newCustomIntent()
 	if err != nil {
 		user.clearCustomMXID()
 		return fmt.Errorf("failed to create double puppet intent: %w", err)

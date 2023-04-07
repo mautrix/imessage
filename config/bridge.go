@@ -70,12 +70,15 @@ type BridgeConfig struct {
 		MimeType   string   `yaml:"mime_type"`
 		Extension  string   `yaml:"extension"`
 	} `yaml:"convert_video"`
-	CommandPrefix          string `yaml:"command_prefix"`
-	ForceUniformDMSenders  bool   `yaml:"force_uniform_dm_senders"`
-	DisableSMSPortals      bool   `yaml:"disable_sms_portals"`
-	RerouteSMSGroupReplies bool   `yaml:"reroute_mms_group_replies"`
-	FederateRooms          bool   `yaml:"federate_rooms"`
-	CaptionInMessage       bool   `yaml:"caption_in_message"`
+	CommandPrefix              string            `yaml:"command_prefix"`
+	ForceUniformDMSenders      bool              `yaml:"force_uniform_dm_senders"`
+	DisableSMSPortals          bool              `yaml:"disable_sms_portals"`
+	RerouteSMSGroupReplies     bool              `yaml:"reroute_mms_group_replies"`
+	DoublePuppetServerMap      map[string]string `yaml:"double_puppet_server_map"`
+	DoublePuppetAllowDiscovery bool              `yaml:"double_puppet_allow_discovery"`
+	LoginSharedSecretMap       map[string]string `yaml:"login_shared_secret_map"`
+	FederateRooms              bool              `yaml:"federate_rooms"`
+	CaptionInMessage           bool              `yaml:"caption_in_message"`
 
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 
