@@ -299,10 +299,6 @@ func (puppet *Puppet) Sync() {
 		puppet.log.Debugln("No contact info found")
 	}
 
-	if puppet.UpdateContactInfo() {
-		puppet.Update()
-	}
-
 	puppet.SyncWithContact(contact)
 }
 
@@ -385,6 +381,7 @@ func (puppet *Puppet) SyncWithContact(contact *imessage.Contact) {
 	update := false
 	update = puppet.UpdateName(contact) || update
 	update = puppet.UpdateAvatar(contact) || update
+	update = puppet.UpdateContactInfo() || update
 	if update {
 		puppet.Update()
 	}
