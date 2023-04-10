@@ -76,17 +76,10 @@ func (user *User) initDoublePuppet() {
 func (user *User) loginWithSharedSecret() error {
 	user.log.Debugfln("Logging in with shared secret")
 	loginSecret := user.bridge.Config.Bridge.LoginSharedSecret
-	url := user.bridge.Config.Bridge.DoublePuppetServerURL
-	if url == "" {
-		url = user.bridge.AS.HomeserverURL
-	}
-	client, err := mautrix.NewClient(url, "", "")
+	client, err := user.bridge.AS.NewExternalMautrixClient(user.MXID, "", user.bridge.Config.Bridge.DoublePuppetServerURL)
 	if err != nil {
 		return err
 	}
-	client.Log = user.bridge.AS.Log.With().Str("as_user_id", user.MXID.String()).Logger()
-	client.Client = user.bridge.AS.HTTPClient
-	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
 	req := mautrix.ReqLogin{
 		Identifier:               mautrix.UserIdentifier{Type: mautrix.IdentifierTypeUser, User: string(user.MXID)},
 		DeviceID:                 id.DeviceID(user.bridge.Config.IMessage.BridgeName()),
@@ -106,22 +99,15 @@ func (user *User) loginWithSharedSecret() error {
 		return fmt.Errorf("failed to log in with shared secret: %w", err)
 	}
 	user.AccessToken = resp.AccessToken
+	user.Update()
 	return nil
 }
 
 func (user *User) newDoublePuppetIntent() (*appservice.IntentAPI, error) {
-	url := user.bridge.Config.Bridge.DoublePuppetServerURL
-	if url == "" {
-		url = user.bridge.AS.HomeserverURL
-	}
-	client, err := mautrix.NewClient(url, user.MXID, user.AccessToken)
+	client, err := user.bridge.AS.NewExternalMautrixClient(user.MXID, user.AccessToken, user.bridge.Config.Bridge.DoublePuppetServerURL)
 	if err != nil {
 		return nil, err
 	}
-	client.Log = user.bridge.AS.Log.With().Str("as_user_id", user.MXID.String()).Logger()
-	client.StateStore = user.bridge.AS.StateStore
-	client.Client = user.bridge.AS.HTTPClient
-	client.DefaultHTTPRetries = user.bridge.AS.DefaultHTTPRetries
 	client.Syncer = user
 
 	ia := user.bridge.AS.NewIntentAPI("custom")

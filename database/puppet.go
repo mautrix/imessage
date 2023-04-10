@@ -38,7 +38,7 @@ func (pq *PuppetQuery) New() *Puppet {
 	}
 }
 
-const puppetColumns = "id, displayname, name_overridden, avatar_hash, avatar_url"
+const puppetColumns = "id, displayname, name_overridden, avatar_hash, avatar_url, contact_info_set"
 
 func (pq *PuppetQuery) GetAll() (puppets []*Puppet) {
 	rows, err := pq.db.Query(fmt.Sprintf("SELECT %s FROM puppet", puppetColumns))
@@ -69,6 +69,7 @@ type Puppet struct {
 	NameOverridden bool
 	AvatarHash     *[32]byte
 	AvatarURL      id.ContentURI
+	ContactInfoSet bool
 }
 
 func (puppet *Puppet) avatarHashSlice() []byte {
@@ -81,7 +82,7 @@ func (puppet *Puppet) avatarHashSlice() []byte {
 func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 	var avatarURL sql.NullString
 	var avatarHashSlice []byte
-	err := row.Scan(&puppet.ID, &puppet.Displayname, &puppet.NameOverridden, &avatarHashSlice, &avatarURL)
+	err := row.Scan(&puppet.ID, &puppet.Displayname, &puppet.NameOverridden, &avatarHashSlice, &avatarURL, &puppet.ContactInfoSet)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			puppet.log.Errorln("Database scan failed:", err)
@@ -98,16 +99,16 @@ func (puppet *Puppet) Scan(row dbutil.Scannable) *Puppet {
 }
 
 func (puppet *Puppet) Insert() {
-	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, name_overridden, avatar_hash, avatar_url) VALUES ($1, $2, $3, $4, $5)",
-		puppet.ID, puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String())
+	_, err := puppet.db.Exec("INSERT INTO puppet (id, displayname, name_overridden, avatar_hash, avatar_url, contact_info_set) VALUES ($1, $2, $3, $4, $5, $6)",
+		puppet.ID, puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.ContactInfoSet)
 	if err != nil {
 		puppet.log.Warnfln("Failed to insert %s: %v", puppet.ID, err)
 	}
 }
 
 func (puppet *Puppet) Update() {
-	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_overridden=$2, avatar_hash=$3, avatar_url=$4 WHERE id=$5",
-		puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.ID)
+	_, err := puppet.db.Exec("UPDATE puppet SET displayname=$1, name_overridden=$2, avatar_hash=$3, avatar_url=$4, contact_info_set=$5 WHERE id=$6",
+		puppet.Displayname, puppet.NameOverridden, puppet.avatarHashSlice(), puppet.AvatarURL.String(), puppet.ContactInfoSet, puppet.ID)
 	if err != nil {
 		puppet.log.Warnfln("Failed to update %s: %v", puppet.ID, err)
 	}
