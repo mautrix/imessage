@@ -21,9 +21,10 @@ package mac_nosip
 import (
 	"fmt"
 
+	log "maunium.net/go/maulogger/v2"
+
 	"go.mau.fi/mautrix-imessage/imessage"
 	"go.mau.fi/mautrix-imessage/imessage/mac"
-	log "maunium.net/go/maulogger/v2"
 )
 
 func setupContactProxy(log log.Logger) (imessage.ContactAPI, error) {
@@ -38,3 +39,5 @@ func setupContactProxy(log log.Logger) (imessage.ContactAPI, error) {
 	}
 	return store, nil
 }
+
+var setupChatInfoProxy = mac.NewChatInfoDatabase
