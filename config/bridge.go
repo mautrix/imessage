@@ -76,6 +76,7 @@ type BridgeConfig struct {
 	RerouteSMSGroupReplies bool   `yaml:"reroute_mms_group_replies"`
 	FederateRooms          bool   `yaml:"federate_rooms"`
 	CaptionInMessage       bool   `yaml:"caption_in_message"`
+	PrivateChatPortalMeta  string `yaml:"private_chat_portal_meta"`
 
 	Encryption bridgeconfig.EncryptionConfig `yaml:"encryption"`
 

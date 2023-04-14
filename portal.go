@@ -664,7 +664,11 @@ func (portal *Portal) GetEncryptionEventContent() (evt *event.EncryptionEventCon
 	return
 }
 
-const fakeMetaKey = "com.beeper.bridge_generated"
+func (portal *Portal) shouldSetDMRoomMetadata() bool {
+	return !portal.IsPrivateChat() ||
+		portal.bridge.Config.Bridge.PrivateChatPortalMeta == "always" ||
+		(portal.IsEncrypted() && portal.bridge.Config.Bridge.PrivateChatPortalMeta != "never")
+}
 
 func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 	bridgeInfoStateKey, bridgeInfo := portal.getBridgeInfo()
@@ -684,21 +688,6 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
-	if !portal.AvatarURL.IsEmpty() {
-		evt := &event.Event{
-			Type: event.StateRoomAvatar,
-			Content: event.Content{
-				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
-			},
-		}
-		if portal.IsPrivateChat() {
-			evt.Content.Raw = map[string]any{fakeMetaKey: true}
-		}
-		initialState = append(initialState, evt)
-	}
-
-	var invite []id.UserID
-
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
 			Type: event.StateEncryption,
@@ -708,6 +697,17 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 		})
 		portal.Encrypted = true
 	}
+	if !portal.AvatarURL.IsEmpty() && portal.shouldSetDMRoomMetadata() {
+		initialState = append(initialState, &event.Event{
+			Type: event.StateRoomAvatar,
+			Content: event.Content{
+				Parsed: event.RoomAvatarEventContent{URL: portal.AvatarURL},
+			},
+		})
+	}
+
+	var invite []id.UserID
+
 	if portal.IsPrivateChat() {
 		invite = append(invite, portal.bridge.Bot.UserID)
 	}
@@ -732,15 +732,8 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 
 		BeeperAutoJoinInvites: autoJoinInvites,
 	}
-	if portal.IsPrivateChat() && req.Name != "" {
-		req.Name = ""
-		req.InitialState = append(req.InitialState, &event.Event{
-			Type: event.StateRoomName,
-			Content: event.Content{
-				Parsed: &event.RoomNameEventContent{Name: portal.Name},
-				Raw:    map[string]any{fakeMetaKey: true},
-			},
-		})
+	if !portal.shouldSetDMRoomMetadata() {
+		portal.Name = ""
 	}
 	return req
 }
