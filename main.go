@@ -209,6 +209,14 @@ func (br *IMBridge) Init() {
 		br.EventProcessor.PrependHandler(event.EventEncrypted, func(evt *event.Event) {
 			go br.IM.NotifyUpcomingMessage(evt.ID)
 		})
+		br.Bridge.BeeperNetworkName = "androidsms"
+		br.Bridge.BeeperServiceName = "androidsms"
+	} else if br.Config.IMessage.Platform == "mac-nosip" {
+		br.Bridge.BeeperNetworkName = "imessage"
+		br.Bridge.BeeperServiceName = "imessagecloud"
+	} else {
+		br.Bridge.BeeperNetworkName = "imessage"
+		br.Bridge.BeeperServiceName = "imessage"
 	}
 
 	br.IMHandler = NewiMessageHandler(br)
