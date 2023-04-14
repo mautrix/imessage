@@ -19,7 +19,6 @@ package ios
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"math"
 	"os"
 	"strings"
@@ -473,7 +472,7 @@ func (ios *iOSConnector) GetChatInfo(chatID, threadID string) (*imessage.ChatInf
 	var resp imessage.ChatInfo
 	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID, ThreadID: threadID}, &resp)
 	if err != nil {
-		if errors.Is(err, ipc.ErrNotFound) && ios.chatInfoProxy != nil {
+		if ios.chatInfoProxy != nil {
 			ios.log.Warnfln("Failed to get chat info for %s: %v, falling back to chat info proxy", chatID, err)
 			return ios.chatInfoProxy.GetChatInfo(chatID, threadID)
 		}
@@ -486,7 +485,7 @@ func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, er
 	var resp imessage.Attachment
 	err := ios.IPC.Request(context.Background(), ReqGetChatAvatar, &GetChatRequest{ChatGUID: chatID}, &resp)
 	if err != nil {
-		if errors.Is(err, ipc.ErrNotFound) && ios.chatInfoProxy != nil {
+		if ios.chatInfoProxy != nil {
 			ios.log.Warnfln("Failed to get group avatar for %s: %v, falling back to chat info proxy", chatID, err)
 			return ios.chatInfoProxy.GetGroupAvatar(chatID)
 		}
