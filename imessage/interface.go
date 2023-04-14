@@ -39,6 +39,11 @@ type ContactAPI interface {
 	GetContactList() ([]*Contact, error)
 }
 
+type ChatInfoAPI interface {
+	GetChatInfo(chatID, threadID string) (*ChatInfo, error)
+	GetGroupAvatar(chatID string) (*Attachment, error)
+}
+
 type API interface {
 	Start(readyCallback func()) error
 	Stop()
@@ -54,8 +59,7 @@ type API interface {
 	MessageStatusChan() <-chan *SendMessageStatus
 	BackfillTaskChan() <-chan *BackfillTask
 	ContactAPI
-	GetChatInfo(chatID, threadID string) (*ChatInfo, error)
-	GetGroupAvatar(chatID string) (*Attachment, error)
+	ChatInfoAPI
 
 	ResolveIdentifier(identifier string) (string, error)
 	PrepareDM(guid string) error

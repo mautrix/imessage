@@ -42,6 +42,7 @@ var (
 	ErrSizeLimitExceeded = Error{Code: "size_limit_exceeded"}
 	ErrTimeoutError      = Error{Code: "timeout"}
 	ErrUnsupportedError  = Error{Code: "unsupported"}
+	ErrNotFound          = Error{Code: "not_found"}
 )
 
 type Command string

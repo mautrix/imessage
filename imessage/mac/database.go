@@ -54,6 +54,23 @@ type macOSDatabase struct {
 	*ContactStore
 }
 
+func NewChatInfoDatabase(log log.Logger) (imessage.ChatInfoAPI, error) {
+	mac := &macOSDatabase{
+		log: log,
+	}
+
+	err := mac.prepareMessages()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open message database: %w", err)
+	}
+	err = mac.prepareGroups()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open group database: %w", err)
+	}
+
+	return mac, nil
+}
+
 func NewChatDatabase(bridge imessage.Bridge) (imessage.API, error) {
 	mac := &macOSDatabase{
 		log:    bridge.GetLog().Sub("iMessage").Sub("Mac"),

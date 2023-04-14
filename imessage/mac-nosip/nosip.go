@@ -53,6 +53,8 @@ type MacNoSIPConnector struct {
 	stopping            bool
 	locale              string
 	env                 []string
+
+	chatInfoProxy imessage.API
 }
 
 type NoopContacts struct{}
@@ -82,6 +84,12 @@ func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	case "ipc":
 	default:
 		return nil, fmt.Errorf("unknown contacts mode %q", contactsMode)
+	}
+	chatInfoProxy, err := setupChatInfoProxy(logger.Sub("ChatInfoProxy"))
+	if err != nil {
+		logger.Warnfln("Failed to set up chat info proxy: %v", err)
+	} else {
+		iosConn.SetChatInfoProxy(chatInfoProxy)
 	}
 	unixSocket := bridge.GetConnectorConfig().UnixSocket
 	if unixSocket == "" {

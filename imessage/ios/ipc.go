@@ -72,6 +72,7 @@ type APIWithIPC interface {
 	imessage.API
 	SetIPC(*ipc.Processor)
 	SetContactProxy(api imessage.ContactAPI)
+	SetChatInfoProxy(api imessage.ChatInfoAPI)
 }
 
 type iOSConnector struct {
@@ -87,6 +88,7 @@ type iOSConnector struct {
 	backfillTaskChan  chan *imessage.BackfillTask
 	isAndroid         bool
 	contactProxy      imessage.ContactAPI
+	chatInfoProxy     imessage.ChatInfoAPI
 }
 
 func NewPlainiOSConnector(logger log.Logger, bridge imessage.Bridge) APIWithIPC {
@@ -121,6 +123,10 @@ func (ios *iOSConnector) SetIPC(proc *ipc.Processor) {
 
 func (ios *iOSConnector) SetContactProxy(api imessage.ContactAPI) {
 	ios.contactProxy = api
+}
+
+func (ios *iOSConnector) SetChatInfoProxy(api imessage.ChatInfoAPI) {
+	ios.chatInfoProxy = api
 }
 
 func (ios *iOSConnector) Start(readyCallback func()) error {
@@ -466,6 +472,10 @@ func (ios *iOSConnector) GetChatInfo(chatID, threadID string) (*imessage.ChatInf
 	var resp imessage.ChatInfo
 	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID, ThreadID: threadID}, &resp)
 	if err != nil {
+		if ios.chatInfoProxy != nil {
+			ios.log.Warnfln("Failed to get chat info for %s: %v, falling back to chat info proxy", chatID, err)
+			return ios.chatInfoProxy.GetChatInfo(chatID, threadID)
+		}
 		return nil, err
 	}
 	return &resp, nil
@@ -475,6 +485,10 @@ func (ios *iOSConnector) GetGroupAvatar(chatID string) (*imessage.Attachment, er
 	var resp imessage.Attachment
 	err := ios.IPC.Request(context.Background(), ReqGetChatAvatar, &GetChatRequest{ChatGUID: chatID}, &resp)
 	if err != nil {
+		if ios.chatInfoProxy != nil {
+			ios.log.Warnfln("Failed to get group avatar for %s: %v, falling back to chat info proxy", chatID, err)
+			return ios.chatInfoProxy.GetGroupAvatar(chatID)
+		}
 		return nil, err
 	}
 	return &resp, nil
