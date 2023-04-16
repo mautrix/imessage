@@ -530,13 +530,16 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 	portal.log.Debugfln("Processing message status with type %s/%s for event %s/%s in %s/%s", msgStatus.Status, msgStatus.StatusCode, eventID, msgStatus.GUID, portal.MXID, msgStatus.ChatGUID)
 	switch msgStatus.Status {
 	case "delivered":
-		portal.sendSuccessCheckpoint(eventID, msgStatus.Service, msgStatus.ChatGUID)
+		go portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
+			EventID:    eventID,
+			RoomID:     portal.MXID,
+			Step:       status.MsgStepRemote,
+			Timestamp:  jsontime.UnixMilliNow(),
+			Status:     "DELIVERED",
+			ReportedBy: status.MsgReportedByBridge,
+		})
 	case "sent":
-		if !portal.bridge.IM.Capabilities().DeliveredStatus || portal.Identifier.IsGroup || portal.Identifier.Service == "SMS" {
-			portal.sendSuccessCheckpoint(eventID, msgStatus.Service, msgStatus.ChatGUID)
-		} else {
-			portal.log.Debugfln("Not sending checkpoint for sent status in iMessage DM")
-		}
+		portal.sendSuccessCheckpoint(eventID, msgStatus.Service, msgStatus.ChatGUID)
 	case "failed":
 		evt, err := portal.MainIntent().GetEvent(portal.MXID, eventID)
 		if err != nil {
@@ -1037,7 +1040,20 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 		Status:     status.MsgStatusSuccess,
 		ReportedBy: status.MsgReportedByBridge,
 	}
-	go portal.bridge.SendRawMessageCheckpoint(&checkpoint)
+	go func() {
+		portal.bridge.SendRawMessageCheckpoint(&checkpoint)
+		if (portal.Identifier.IsGroup || portal.Identifier.Service == "SMS") && portal.bridge.Config.IMessage.Platform == "mac-nosip" {
+			portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
+				EventID:    eventID,
+				RoomID:     portal.MXID,
+				Step:       status.MsgStepRemote,
+				Timestamp:  jsontime.UnixMilliNow(),
+				Status:     "DELIVERED",
+				ReportedBy: status.MsgReportedByBridge,
+				Info:       "fake group delivered status",
+			})
+		}
+	}()
 
 	if portal.bridge.Config.Bridge.MessageStatusEvents {
 		mainContent := &event.BeeperMessageStatusEventContent{

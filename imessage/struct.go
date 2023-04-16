@@ -262,7 +262,6 @@ type ConnectorCapabilities struct {
 	ContactChatMerging       bool
 	RichLinks                bool
 	ChatBridgeResult         bool
-	DeliveredStatus          bool
 }
 
 type PushKeyRequest struct {
