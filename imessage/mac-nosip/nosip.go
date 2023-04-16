@@ -317,7 +317,6 @@ func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 		MessageStatusCheckpoints: true,
 		ContactChatMerging:       true,
 		RichLinks:                true,
-		DeliveredStatus:          true,
 	}
 }
 
