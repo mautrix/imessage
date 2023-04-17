@@ -1629,6 +1629,14 @@ func (portal *Portal) convertIMAttachment(msg *imessage.Message, attach *imessag
 		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
 		return nil, nil, fmt.Errorf("failed to read attachment: %w", err)
 	}
+	if portal.bridge.Config.IMessage.DeleteMediaAfterUpload {
+		defer func() {
+			err = attach.Delete()
+			if err != nil {
+				portal.log.Warnfln("Failed to delete attachment in %s: %v", msg.GUID, err)
+			}
+		}()
+	}
 
 	mimeType := attach.GetMimeType()
 	fileName := attach.GetFileName()

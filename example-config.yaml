@@ -85,6 +85,8 @@ imessage:
     unix_socket: mautrix-imessage.sock
     # Interval to ping Barcelona at. The process will exit if Barcelona doesn't respond in time.
     ping_interval_seconds: 15
+    # Should media on disk be deleted after bridging to Matrix?
+    delete_media_after_upload: false
 
 # Segment settings for collecting some debug data.
 segment:

@@ -38,6 +38,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.List, "imessage", "environment")
 	helper.Copy(up.Str, "imessage", "unix_socket")
 	helper.Copy(up.Int, "imessage", "ping_interval_seconds")
+	helper.Copy(up.Bool, "imessage", "delete_media_after_upload")
 
 	helper.Copy(up.Str|up.Null, "segment", "key")
 	helper.Copy(up.Str|up.Null, "segment", "user_id")
