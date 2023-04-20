@@ -28,7 +28,9 @@ import (
 	"time"
 
 	"github.com/gabriel-vasile/mimetype"
+	"github.com/rs/zerolog"
 	log "maunium.net/go/maulogger/v2"
+	"maunium.net/go/maulogger/v2/maulogadapt"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/util/dbutil"
 	"maunium.net/go/mautrix/util/jsontime"
@@ -196,7 +198,7 @@ func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 	portal := &Portal{
 		Portal: dbPortal,
 		bridge: br,
-		log:    br.Log.Sub(fmt.Sprintf("Portal/%s", dbPortal.GUID)),
+		zlog:   br.ZLog.With().Str("portal_guid", dbPortal.GUID).Logger(),
 
 		Identifier:      imessage.ParseIdentifier(dbPortal.GUID),
 		Messages:        make(chan *imessage.Message, 100),
@@ -205,6 +207,7 @@ func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
 	}
+	portal.log = maulogadapt.ZeroAsMau(&portal.zlog)
 	if !br.IM.Capabilities().MessageSendResponses {
 		portal.messageDedup = make(map[string]SentMessage)
 	}
@@ -221,7 +224,9 @@ type Portal struct {
 	*database.Portal
 
 	bridge *IMBridge
-	log    log.Logger
+	// Deprecated
+	log  log.Logger
+	zlog zerolog.Logger
 
 	SecondaryGUIDs []string
 
@@ -287,6 +292,10 @@ func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) (memberIDs [
 			delete(members, portal.bridge.user.MXID)
 		}
 	}
+	portal.zlog.Debug().
+		Int("chat_info_member_count", len(chatInfo.Members)).
+		Int("room_member_count", len(members)).
+		Msg("Syncing participants")
 	for _, member := range chatInfo.Members {
 		puppet := portal.bridge.GetPuppetByLocalID(member)
 		puppet.Sync()
@@ -337,6 +346,7 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 }
 
 func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
+	portal.zlog.Debug().Interface("chat_info", chatInfo).Msg("Syncing with chat info")
 	update := false
 	if len(chatInfo.DisplayName) > 0 {
 		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
