@@ -282,7 +282,7 @@ func (portal *Portal) addSecondaryGUIDs(guids []string) {
 
 func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) (memberIDs []id.UserID) {
 	var members map[id.UserID]mautrix.JoinedMember
-	if !portal.bridge.Config.Bridge.Relay.Enabled && portal.MXID != "" {
+	if portal.MXID != "" {
 		membersResp, err := portal.MainIntent().JoinedMembers(portal.MXID)
 		if err != nil {
 			portal.log.Warnfln("Failed to get members in room to remove extra members: %v", err)
@@ -310,7 +310,7 @@ func (portal *Portal) SyncParticipants(chatInfo *imessage.ChatInfo) (memberIDs [
 			delete(members, puppet.MXID)
 		}
 	}
-	if members != nil {
+	if members != nil && !portal.bridge.Config.Bridge.Relay.Enabled {
 		for userID := range members {
 			portal.log.Debugfln("Removing %s as they don't seem to be in the group anymore", userID)
 			_, err := portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{
