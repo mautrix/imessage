@@ -86,5 +86,5 @@ maunium.net/go/mauflag v1.0.0 h1:YiaRc0tEI3toYtJMRIfjP+jklH45uDHtT80nUamyD4M=
 maunium.net/go/mauflag v1.0.0/go.mod h1:nLivPOpTpHnpzEh8jEdSL9UqO9+/KBJFmNRlwKfkPeA=
 maunium.net/go/maulogger/v2 v2.4.1 h1:N7zSdd0mZkB2m2JtFUsiGTQQAdP0YeFWT7YMc80yAL8=
 maunium.net/go/maulogger/v2 v2.4.1/go.mod h1:omPuYwYBILeVQobz8uO3XC8DIRuEb5rXYlQSuqrbCho=
-maunium.net/go/mautrix v0.15.2-0.20230420191033-1234043acc54 h1:4ohebYVE6LHH3HVHVay70Y//pCEY1229Btp/dL/Pnhs=
-maunium.net/go/mautrix v0.15.2-0.20230420191033-1234043acc54/go.mod h1:icQIrvz2NldkRLTuzSGzmaeuMUmw+fzO7UVycPeauN8=
+maunium.net/go/mautrix v0.15.2-0.20230421112821-637aee0ccefb h1:VHyloZe9Km2fYwtKtvZKEVt210pDJ/5OnlmaV4sMfnI=
+maunium.net/go/mautrix v0.15.2-0.20230421112821-637aee0ccefb/go.mod h1:icQIrvz2NldkRLTuzSGzmaeuMUmw+fzO7UVycPeauN8=
