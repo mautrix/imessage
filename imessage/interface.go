@@ -83,7 +83,7 @@ type API interface {
 
 type FilePreparingAPI interface {
 	API
-	SendFilePrepare(filename string, data []byte) (guid string, err error)
+	SendFilePrepare(filename string, data []byte) (dir, guid string, err error)
 }
 
 var TempFilePermissions os.FileMode = 0640

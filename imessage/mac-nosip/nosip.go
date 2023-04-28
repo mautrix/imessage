@@ -321,10 +321,10 @@ func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 	}
 }
 
-func (mac *MacNoSIPConnector) SendFilePrepare(filename string, data []byte) (string, error) {
+func (mac *MacNoSIPConnector) SendFilePrepare(filename string, data []byte) (string, string, error) {
 	dir, path, err := imessage.SendFilePrepare(filename, data)
 	if err != nil {
-		return "", fmt.Errorf("failed to write file to disk: %w", err)
+		return dir, "", fmt.Errorf("failed to write file to disk: %w", err)
 	}
 	var resp ios.UploadMediaResponse
 	ctx := context.Background()
@@ -332,10 +332,9 @@ func (mac *MacNoSIPConnector) SendFilePrepare(filename string, data []byte) (str
 		PathOnDisk: path,
 	}, &resp)
 	if err != nil {
-		return "", fmt.Errorf("failed to upload file: %w", err)
+		return dir, "", fmt.Errorf("failed to upload file: %w", err)
 	}
-	mac.SendFileCleanup(dir)
-	return resp.GUID, nil
+	return dir, resp.GUID, nil
 }
 
 func init() {
