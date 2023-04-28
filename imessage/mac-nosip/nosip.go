@@ -17,6 +17,7 @@
 package mac_nosip
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -318,6 +319,23 @@ func (mac *MacNoSIPConnector) Capabilities() imessage.ConnectorCapabilities {
 		ContactChatMerging:       true,
 		RichLinks:                true,
 	}
+}
+
+func (mac *MacNoSIPConnector) SendFilePrepare(filename string, data []byte) (string, error) {
+	dir, path, err := imessage.SendFilePrepare(filename, data)
+	if err != nil {
+		return "", fmt.Errorf("failed to write file to disk: %w", err)
+	}
+	var resp ios.UploadMediaResponse
+	ctx := context.Background()
+	err = mac.GetIPC().Request(ctx, ios.ReqUploadMedia, &ios.UploadMediaRequest{
+		PathOnDisk: path,
+	}, &resp)
+	if err != nil {
+		return "", fmt.Errorf("failed to upload file: %w", err)
+	}
+	mac.SendFileCleanup(dir)
+	return resp.GUID, nil
 }
 
 func init() {

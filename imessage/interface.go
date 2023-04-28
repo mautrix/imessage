@@ -65,7 +65,7 @@ type API interface {
 	PrepareDM(guid string) error
 
 	SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *RichLink, metadata MessageMetadata) (*SendResponse, error)
-	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata MessageMetadata) (*SendResponse, error)
+	SendFile(chatID, text, filename string, pathOnDisk, guid string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata MessageMetadata) (*SendResponse, error)
 	SendFileCleanup(sendFileDir string)
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
@@ -79,6 +79,11 @@ type API interface {
 	PostStartupSyncHook()
 
 	Capabilities() ConnectorCapabilities
+}
+
+type FilePreparingAPI interface {
+	API
+	SendFilePrepare(filename string, data []byte) (guid string, err error)
 }
 
 var TempFilePermissions os.FileMode = 0640
