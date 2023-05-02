@@ -99,6 +99,8 @@ hacky_startup_test:
     response_message: null
     key: null
     echo_mode: false
+    send_on_startup: false
+    periodic_resolve: -1
 
 # Bridge config
 bridge:

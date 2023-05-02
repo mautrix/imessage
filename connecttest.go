@@ -112,7 +112,27 @@ func trackStartupTestError(erroredAt, randomID string) {
 	})
 }
 
-func (br *IMBridge) hackyStartupTests(sleep bool) {
+func (br *IMBridge) hackyTestLoop() {
+	log := br.ZLog.With().
+		Str("identifier", br.Config.HackyStartupTest.Identifier).
+		Str("action", "hacky periodic test").
+		Logger()
+	for {
+		time.Sleep(time.Duration(br.Config.HackyStartupTest.PeriodicResolve) * time.Second)
+		log.Debug().Msg("Sending hacky periodic test")
+		resp, err := br.WebsocketHandler.StartChat(StartDMRequest{
+			Identifier: br.Config.HackyStartupTest.Identifier,
+		})
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to resolve identifier")
+		} else {
+			log.Info().Interface("response", resp).Msg("Successfully resolved identifier")
+		}
+
+	}
+}
+
+func (br *IMBridge) hackyStartupTests(sleep, forceSend bool) {
 	if sleep {
 		time.Sleep(time.Duration(rand.Intn(120)+60) * time.Second)
 	}
@@ -133,7 +153,7 @@ func (br *IMBridge) hackyStartupTests(sleep bool) {
 		return
 	}
 	log.Info().Interface("response", resp).Msg("Successfully resolved identifier")
-	if br.Config.HackyStartupTest.Message == "" {
+	if br.Config.HackyStartupTest.Message == "" || (!br.Config.HackyStartupTest.SendOnStartup && !forceSend) {
 		return
 	}
 	portal := br.GetPortalByGUID(resp.GUID)

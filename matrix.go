@@ -66,7 +66,7 @@ func NewWebsocketCommandHandler(br *IMBridge) *WebsocketCommandHandler {
 
 func (mx *WebsocketCommandHandler) handleWSHackyTest(cmd appservice.WebsocketCommand) (bool, any) {
 	mx.log.Debugfln("Starting hacky test due to manual request")
-	mx.bridge.hackyStartupTests(false)
+	mx.bridge.hackyStartupTests(false, true)
 	return true, nil
 }
 

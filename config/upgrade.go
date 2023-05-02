@@ -47,6 +47,8 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str|up.Null, "hacky_startup_test", "response_message")
 	helper.Copy(up.Str|up.Null, "hacky_startup_test", "key")
 	helper.Copy(up.Bool, "hacky_startup_test", "echo_mode")
+	helper.Copy(up.Bool, "hacky_startup_test", "send_on_startup")
+	helper.Copy(up.Int, "hacky_startup_test", "periodic_resolve")
 
 	helper.Copy(up.Str, "bridge", "user")
 	helper.Copy(up.Str, "bridge", "username_template")

@@ -40,5 +40,7 @@ type Config struct {
 		ResponseMessage string `yaml:"response_message"`
 		Key             string `yaml:"key"`
 		EchoMode        bool   `yaml:"echo_mode"`
+		SendOnStartup   bool   `yaml:"send_on_startup"`
+		PeriodicResolve int    `yaml:"periodic_resolve"`
 	} `yaml:"hacky_startup_test"`
 }
