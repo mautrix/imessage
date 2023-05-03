@@ -154,6 +154,7 @@ func (mx *WebsocketCommandHandler) handleWSEditGhost(cmd appservice.WebsocketCom
 
 type StartDMRequest struct {
 	Identifier string `json:"identifier"`
+	Force      bool   `json:"force"`
 	ProfileOverride
 
 	ActuallyStart bool `json:"-"`
@@ -229,11 +230,19 @@ func (mx *WebsocketCommandHandler) trackResolveIdentifier(actuallyTrack bool, id
 func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMResponse, error) {
 	var resp StartDMResponse
 	var err error
+	var forced bool
 
 	if resp.GUID, err = mx.bridge.IM.ResolveIdentifier(req.Identifier); err != nil {
-		mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, "fail")
-		return nil, fmt.Errorf("failed to resolve identifier: %w", err)
-	} else if parsed := imessage.ParseIdentifier(resp.GUID); parsed.Service == "SMS" && !isNumber(parsed.LocalID) {
+		if req.Force && req.ActuallyStart {
+			mx.log.Debugfln("Failed to resolve identifier %s (%v), but forcing creation anyway", req.Identifier, err)
+			resp.GUID = req.Identifier
+			forced = true
+		} else {
+			mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, "fail")
+			return nil, fmt.Errorf("failed to resolve identifier: %w", err)
+		}
+	}
+	if parsed := imessage.ParseIdentifier(resp.GUID); parsed.Service == "SMS" && !isNumber(parsed.LocalID) {
 		mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, "fail")
 		return nil, fmt.Errorf("can't start SMS with non-numeric identifier")
 	} else if portal := mx.bridge.GetPortalByGUID(resp.GUID); len(portal.MXID) > 0 || !req.ActuallyStart {
@@ -241,7 +250,9 @@ func (mx *WebsocketCommandHandler) StartChat(req StartDMRequest) (*StartDMRespon
 		if parsed.Service == "SMS" {
 			status = "sms"
 		}
-		mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, status)
+		if !forced {
+			mx.trackResolveIdentifier(!req.ActuallyStart, req.Identifier, status)
+		}
 		resp.RoomID = portal.MXID
 		return &resp, nil
 	} else if err = mx.bridge.IM.PrepareDM(resp.GUID); err != nil {
