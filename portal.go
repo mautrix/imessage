@@ -1619,6 +1619,7 @@ func (portal *Portal) setMembership(inviter *appservice.IntentAPI, puppet *Puppe
 
 func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) *id.EventID {
 	if len(msg.Target.LocalID) == 0 {
+		portal.log.Debugfln("Ignoring member change item with empty target")
 		return nil
 	}
 	puppet := portal.bridge.GetPuppetByLocalID(msg.Target.LocalID)
