@@ -746,7 +746,7 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 		BeeperAutoJoinInvites: autoJoinInvites,
 	}
 	if !portal.shouldSetDMRoomMetadata() {
-		portal.Name = ""
+		req.Name = ""
 	}
 	return req
 }
