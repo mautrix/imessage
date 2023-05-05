@@ -1609,7 +1609,12 @@ func (portal *Portal) setMembership(inviter *appservice.IntentAPI, puppet *Puppe
 		Displayname: puppet.Displayname,
 	}, ts)
 	if err != nil {
-		puppet.log.Warnfln("Failed to join %s: %v", portal.MXID, err)
+		puppet.log.Warnfln("Failed to set membership to %s in %s: %v", membership, portal.MXID, err)
+		if membership == event.MembershipJoin {
+			_ = puppet.Intent.EnsureJoined(portal.MXID, appservice.EnsureJoinedParams{IgnoreCache: true})
+		} else if membership == event.MembershipLeave {
+			_, _ = portal.MainIntent().KickUser(portal.MXID, &mautrix.ReqKickUser{UserID: puppet.MXID})
+		}
 		return nil
 	} else {
 		portal.bridge.AS.StateStore.SetMembership(portal.MXID, puppet.MXID, "join")
