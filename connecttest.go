@@ -143,9 +143,10 @@ func (br *IMBridge) hackyStartupTests(sleep, forceSend bool) {
 		Str("random_id", randomID).
 		Str("action", hackyTestLogAction).
 		Logger()
+	actuallyStart := br.Config.HackyStartupTest.Message != "" && (br.Config.HackyStartupTest.SendOnStartup || forceSend)
 	resp, err := br.WebsocketHandler.StartChat(StartDMRequest{
 		Identifier:    br.Config.HackyStartupTest.Identifier,
-		ActuallyStart: br.Config.HackyStartupTest.Message != "",
+		ActuallyStart: actuallyStart,
 	})
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to resolve identifier")
@@ -153,7 +154,7 @@ func (br *IMBridge) hackyStartupTests(sleep, forceSend bool) {
 		return
 	}
 	log.Info().Interface("response", resp).Msg("Successfully resolved identifier")
-	if br.Config.HackyStartupTest.Message == "" || (!br.Config.HackyStartupTest.SendOnStartup && !forceSend) {
+	if !actuallyStart {
 		return
 	}
 	portal := br.GetPortalByGUID(resp.GUID)
