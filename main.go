@@ -394,6 +394,7 @@ func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
 		br.Log.Warnln("Error sending pong status:", err)
 	}
 	if br.Config.HackyStartupTest.Identifier != "" && state.StateEvent == BridgeStatusConnected && !br.wasConnected && !br.Config.HackyStartupTest.EchoMode {
+		br.Log.Debugln("First connect: starting hacky tests")
 		br.wasConnected = true
 		go br.hackyStartupTests(true, false)
 		if br.Config.HackyStartupTest.PeriodicResolve > 0 {

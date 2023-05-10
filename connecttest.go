@@ -117,6 +117,9 @@ func (br *IMBridge) hackyTestLoop() {
 		Str("identifier", br.Config.HackyStartupTest.Identifier).
 		Str("action", "hacky periodic test").
 		Logger()
+	log.Info().
+		Int("interval", br.Config.HackyStartupTest.PeriodicResolve).
+		Msg("Starting hacky periodic test loop")
 	for {
 		time.Sleep(time.Duration(br.Config.HackyStartupTest.PeriodicResolve) * time.Second)
 		log.Debug().Msg("Sending hacky periodic test")
@@ -143,6 +146,7 @@ func (br *IMBridge) hackyStartupTests(sleep, forceSend bool) {
 		Str("random_id", randomID).
 		Str("action", hackyTestLogAction).
 		Logger()
+	log.Info().Msg("Running hacky startup test")
 	actuallyStart := br.Config.HackyStartupTest.Message != "" && (br.Config.HackyStartupTest.SendOnStartup || forceSend)
 	resp, err := br.WebsocketHandler.StartChat(StartDMRequest{
 		Identifier:    br.Config.HackyStartupTest.Identifier,
