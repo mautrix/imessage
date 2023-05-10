@@ -92,6 +92,7 @@ type IMBridge struct {
 	SendStatusStartTS    int64
 	sendStatusUpdateInfo bool
 	wasConnected         bool
+	hackyTestLoopStarted bool
 
 	pendingHackyTestGUID     string
 	pendingHackyTestRandomID string
@@ -391,13 +392,15 @@ func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
 		Data:    &state,
 	})
 	if err != nil {
-		br.Log.Warnln("Error sending pong status:", err)
+		br.Log.Warnln("Error sending bridge status:", err)
 	}
-	if br.Config.HackyStartupTest.Identifier != "" && state.StateEvent == BridgeStatusConnected && !br.wasConnected && !br.Config.HackyStartupTest.EchoMode {
-		br.Log.Debugln("First connect: starting hacky tests")
+	if br.Config.HackyStartupTest.Identifier != "" && state.StateEvent == BridgeStatusConnected && !br.Config.HackyStartupTest.EchoMode {
 		br.wasConnected = true
-		go br.hackyStartupTests(true, false)
-		if br.Config.HackyStartupTest.PeriodicResolve > 0 {
+		if !br.wasConnected {
+			go br.hackyStartupTests(true, false)
+		}
+		if !br.hackyTestLoopStarted && br.Config.HackyStartupTest.PeriodicResolve > 0 {
+			br.hackyTestLoopStarted = true
 			go br.hackyTestLoop()
 		}
 	}
