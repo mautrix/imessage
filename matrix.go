@@ -223,6 +223,7 @@ func (mx *WebsocketCommandHandler) trackResolveIdentifier(actuallyTrack bool, id
 			"status":            status,
 			"is_startup_target": strconv.FormatBool(identifier == mx.bridge.Config.HackyStartupTest.Identifier),
 			"identifier_type":   identifierType,
+			"tmp_identifier":    identifier,
 		})
 	}
 }
