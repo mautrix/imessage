@@ -63,6 +63,7 @@ type API interface {
 
 	ResolveIdentifier(identifier string) (string, error)
 	PrepareDM(guid string) error
+	CreateGroup(guids []string) (string, error)
 
 	SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *RichLink, metadata MessageMetadata) (*SendResponse, error)
 	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata MessageMetadata) (*SendResponse, error)

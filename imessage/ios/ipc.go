@@ -654,6 +654,12 @@ func (ios *iOSConnector) PrepareDM(guid string) error {
 	return ios.IPC.Request(context.Background(), ReqPrepareDM, &PrepareDMRequest{GUID: guid}, nil)
 }
 
+func (ios *iOSConnector) CreateGroup(users []string) (string, error) {
+	var resp CreateGroupResponse
+	err := ios.IPC.Request(context.Background(), ReqCreateGroup, &CreateGroupRequest{GUIDs: users}, &resp)
+	return resp.GUID, err
+}
+
 func (ios *iOSConnector) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:     true,

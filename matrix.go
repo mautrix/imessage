@@ -55,6 +55,7 @@ func NewWebsocketCommandHandler(br *IMBridge) *WebsocketCommandHandler {
 	br.AS.PrepareWebsocket()
 	br.AS.SetWebsocketCommandHandler("ping", handler.handleWSPing)
 	br.AS.SetWebsocketCommandHandler("syncproxy_error", handler.handleWSSyncProxyError)
+	br.AS.SetWebsocketCommandHandler("create_group", handler.handleWSCreateGroup)
 	br.AS.SetWebsocketCommandHandler("start_dm", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("resolve_identifier", handler.handleWSStartDM)
 	br.AS.SetWebsocketCommandHandler("list_contacts", handler.handleWSGetContacts)
@@ -160,6 +161,10 @@ type StartDMRequest struct {
 	ActuallyStart bool `json:"-"`
 }
 
+type CreateGroupRequest struct {
+	Users []string `json:"users"`
+}
+
 type StartDMResponse struct {
 	RoomID      id.RoomID `json:"room_id,omitempty"`
 	GUID        string    `json:"guid"`
@@ -179,6 +184,36 @@ func (mx *WebsocketCommandHandler) handleWSStartDM(cmd appservice.WebsocketComma
 	} else {
 		return true, resp
 	}
+}
+
+func (mx *WebsocketCommandHandler) handleWSCreateGroup(cmd appservice.WebsocketCommand) (bool, interface{}) {
+	var req CreateGroupRequest
+	err := json.Unmarshal(cmd.Data, &req)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse request: %w", err)
+	}
+	guids := make([]string, len(req.Users))
+	for i, identifier := range req.Users {
+		guids[i], err = mx.bridge.IM.ResolveIdentifier(identifier)
+		if err != nil {
+			return false, fmt.Errorf("failed to resolve identifier %s: %w", identifier, err)
+		}
+	}
+	mx.log.Debugfln("Creating group with guids %+v (resolved from identifiers %+v)", guids, req.Users)
+	var resp StartDMResponse
+	resp.GUID, err = mx.bridge.IM.CreateGroup(guids)
+	if err != nil {
+		return false, fmt.Errorf("failed to create group: %w", err)
+	}
+	mx.log.Infofln("Created group %s", resp.GUID)
+	portal := mx.bridge.GetPortalByGUID(resp.GUID)
+	resp.JustCreated = len(portal.MXID) == 0
+	err = portal.CreateMatrixRoom(nil, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create Matrix room: %w", err)
+	}
+	resp.RoomID = portal.MXID
+	return true, &resp
 }
 
 func (mx *WebsocketCommandHandler) handleWSGetContacts(_ appservice.WebsocketCommand) (bool, interface{}) {

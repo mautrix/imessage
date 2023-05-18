@@ -41,6 +41,7 @@ const (
 	ReqPostStartupSync     ipc.Command = "post_startup_sync"
 	ReqResolveIdentifier   ipc.Command = "resolve_identifier"
 	ReqPrepareDM           ipc.Command = "prepare_dm"
+	ReqCreateGroup         ipc.Command = "prepare_group_chat"
 	ReqMessageBridgeResult ipc.Command = "message_bridge_result"
 	ReqChatBridgeResult    ipc.Command = "chat_bridge_result"
 	ReqBackfillResult      ipc.Command = "backfill_result"
@@ -131,6 +132,14 @@ type ResolveIdentifierResponse struct {
 }
 
 type PrepareDMRequest struct {
+	GUID string `json:"guid"`
+}
+
+type CreateGroupRequest struct {
+	GUIDs []string `json:"guids"`
+}
+
+type CreateGroupResponse struct {
 	GUID string `json:"guid"`
 }
 
