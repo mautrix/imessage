@@ -64,6 +64,10 @@ func (portal *Portal) forwardBackfill() {
 	var backfillID string
 	lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
 	if lastMessage == nil && portal.BackfillStartTS == 0 {
+		if portal.bridge.Config.Bridge.Backfill.InitialLimit <= 0 {
+			portal.log.Debugfln("Not backfilling: initial limit is 0")
+			return
+		}
 		portal.log.Debugfln("Fetching up to %d messages for initial backfill", portal.bridge.Config.Bridge.Backfill.InitialLimit)
 		backfillID = fmt.Sprintf("bridge-initial-%s::%d", portal.Identifier.LocalID, time.Now().UnixMilli())
 		messages, err = portal.bridge.IM.GetMessagesWithLimit(portal.GUID, portal.bridge.Config.Bridge.Backfill.InitialLimit, backfillID)

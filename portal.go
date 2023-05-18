@@ -809,7 +809,8 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 	if err != nil {
 		return err
 	}
-	if portal.bridge.Config.Bridge.Backfill.Enable {
+	doBackfill := portal.bridge.Config.Bridge.Backfill.Enable && portal.bridge.Config.Bridge.Backfill.InitialLimit > 0
+	if doBackfill {
 		portal.log.Debugln("Locking backfill (create)")
 		portal.lockBackfill()
 	}
@@ -859,7 +860,7 @@ func (portal *Portal) CreateMatrixRoom(chatInfo *imessage.ChatInfo, profileOverr
 			portal.Update(nil)
 		}
 	}
-	if portal.bridge.Config.Bridge.Backfill.Enable {
+	if doBackfill {
 		go func() {
 			portal.log.Debugln("Starting initial backfill")
 			portal.forwardBackfill()
