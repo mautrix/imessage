@@ -255,6 +255,11 @@ type SendResponse struct {
 	UnixTime float64   `json:"timestamp"`
 }
 
+type CreateGroupResponse struct {
+	GUID     string `json:"guid"`
+	ThreadID string `json:"thread_id"`
+}
+
 type ConnectorCapabilities struct {
 	MessageSendResponses     bool
 	SendTapbacks             bool

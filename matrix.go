@@ -200,14 +200,18 @@ func (mx *WebsocketCommandHandler) handleWSCreateGroup(cmd appservice.WebsocketC
 		}
 	}
 	mx.log.Debugfln("Creating group with guids %+v (resolved from identifiers %+v)", guids, req.Users)
-	var resp StartDMResponse
-	resp.GUID, err = mx.bridge.IM.CreateGroup(guids)
+	createResp, err := mx.bridge.IM.CreateGroup(guids)
 	if err != nil {
 		return false, fmt.Errorf("failed to create group: %w", err)
 	}
-	mx.log.Infofln("Created group %s", resp.GUID)
-	portal := mx.bridge.GetPortalByGUID(resp.GUID)
-	resp.JustCreated = len(portal.MXID) == 0
+	mx.log.Infofln("Created group %s (%s)", createResp.GUID, createResp.ThreadID)
+	portal := mx.bridge.GetPortalByGUID(createResp.GUID)
+	portal.ThreadID = createResp.ThreadID
+	resp := StartDMResponse{
+		RoomID:      portal.MXID,
+		GUID:        createResp.GUID,
+		JustCreated: len(portal.MXID) == 0,
+	}
 	err = portal.CreateMatrixRoom(nil, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create Matrix room: %w", err)

@@ -1,4 +1,4 @@
--- v0 -> v19: Latest schema
+-- v0 -> v20: Latest schema
 
 CREATE TABLE portal (
 	guid              TEXT    PRIMARY KEY,
@@ -14,6 +14,7 @@ CREATE TABLE portal (
 	first_event_id    TEXT NOT NULL DEFAULT '',
 	next_batch_id     TEXT NOT NULL DEFAULT ''
 );
+CREATE INDEX portal_thread_id_idx ON portal (thread_id);
 
 CREATE TABLE puppet (
 	id               TEXT PRIMARY KEY,

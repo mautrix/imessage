@@ -66,6 +66,10 @@ func (pq *PortalQuery) GetByGUID(guid string) *Portal {
 	}
 }
 
+func (pq *PortalQuery) FindByThreadID(threadID string) []*Portal {
+	return pq.getAll(selectPortal+" WHERE thread_id=$1", threadID)
+}
+
 func (pq *PortalQuery) GetByMXID(mxid id.RoomID) *Portal {
 	return pq.get(selectPortal+" WHERE mxid=$1", mxid)
 }

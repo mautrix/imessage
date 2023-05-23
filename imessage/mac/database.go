@@ -115,8 +115,8 @@ func (mac *macOSDatabase) PrepareDM(guid string) error {
 	return nil
 }
 
-func (mac *macOSDatabase) CreateGroup(guids []string) (string, error) {
-	return "", errors.New("can't create groups on mac connector")
+func (mac *macOSDatabase) CreateGroup(guids []string) (*imessage.CreateGroupResponse, error) {
+	return nil, errors.New("can't create groups on mac connector")
 }
 
 func (mac *macOSDatabase) SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool) {

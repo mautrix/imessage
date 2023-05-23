@@ -139,10 +139,6 @@ type CreateGroupRequest struct {
 	GUIDs []string `json:"guids"`
 }
 
-type CreateGroupResponse struct {
-	GUID string `json:"guid"`
-}
-
 type MessageBridgeResult struct {
 	ChatGUID string     `json:"chat_guid"`
 	GUID     string     `json:"message_guid"`
