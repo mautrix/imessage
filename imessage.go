@@ -151,6 +151,7 @@ func (imh *iMessageHandler) rerouteGroupMMS(portal *Portal, msg *imessage.Messag
 }
 
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
+	imh.log.Debugfln("Received incoming message %s in %s (%s)", msg.GUID, msg.ChatGUID, msg.ThreadID)
 	// TODO trace log
 	//imh.log.Debugfln("Received incoming message: %+v", msg)
 	portal := imh.rerouteGroupMMS(imh.bridge.GetPortalByGUID(msg.ChatGUID), msg)
