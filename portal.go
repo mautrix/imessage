@@ -354,7 +354,8 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	portal.zlog.Debug().Interface("chat_info", chatInfo).Msg("Syncing with chat info")
 	update := false
-	if portal.ThreadID == "" && chatInfo.ThreadID != "" {
+	if chatInfo.ThreadID != "" && chatInfo.ThreadID != portal.ThreadID {
+		portal.log.Infoln("Found portal thread ID in sync: %s (prev: %s)", chatInfo.ThreadID, portal.ThreadID)
 		portal.ThreadID = chatInfo.ThreadID
 		update = true
 	}
@@ -634,9 +635,10 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 				AvatarURL:   portal.AvatarURL.CUString(),
 			},
 
-			GUID:    portal.GUID,
-			IsGroup: portal.Identifier.IsGroup,
-			Service: portal.Identifier.Service,
+			GUID:     portal.GUID,
+			ThreadID: portal.ThreadID,
+			IsGroup:  portal.Identifier.IsGroup,
+			Service:  portal.Identifier.Service,
 
 			SendStatusStart: portal.bridge.SendStatusStartTS,
 			TimeoutSeconds:  portal.bridge.Config.Bridge.MaxHandleSeconds,
@@ -648,7 +650,6 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 			bridgeInfo.Protocol.DisplayName = "Android SMS"
 			bridgeInfo.Protocol.ExternalURL = ""
 			bridgeInfo.Channel.DeviceID = portal.bridge.Config.Bridge.DeviceID
-			bridgeInfo.Channel.ThreadID = portal.ThreadID
 		} else {
 			bridgeInfo.Protocol.ID = "imessage-sms"
 			bridgeInfo.Protocol.DisplayName = "iMessage (SMS)"
