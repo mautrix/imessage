@@ -185,10 +185,14 @@ func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 		),
 		msg.ThreadID,
 	)
-	if len(portal.MXID) == 0 {
-		if portal.ThreadID == "" {
-			portal.ThreadID = msg.ThreadID
+	if portal.ThreadID == "" && msg.ThreadID != "" {
+		portal.ThreadID = msg.ThreadID
+		if len(portal.MXID) > 0 {
+			portal.Update(nil)
+			portal.UpdateBridgeInfo()
 		}
+	}
+	if len(portal.MXID) == 0 {
 		portal.log.Infoln("Creating Matrix room to handle message")
 		err := portal.CreateMatrixRoom(nil, nil)
 		if err != nil {
