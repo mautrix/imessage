@@ -119,6 +119,7 @@ func (portal *Portal) reIDInto(newGUID string, newPortal *Portal, lock, mergeExi
 		if mergeExisting && portal.MXID != "" && newPortal.MXID != "" && br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 			br.Log.Infofln("Got chat ID change %s->%s, but portal with new ID already exists. Merging portals in background", portal.GUID, newGUID)
 			go newPortal.Merge([]*Portal{portal})
+			return false
 		} else if newPortal.MXID == "" && portal.MXID != "" {
 			br.Log.Infofln("Got chat ID change %s->%s. Portal with new ID already exists, but it doesn't have a room. Nuking new portal row", portal.GUID, newGUID)
 			newPortal.Delete()
@@ -129,8 +130,8 @@ func (portal *Portal) reIDInto(newGUID string, newPortal *Portal, lock, mergeExi
 				_, _ = portal.bridge.user.DoublePuppetIntent.LeaveRoom(portal.MXID)
 			}
 			portal.Cleanup(false)
+			return false
 		}
-		return false
 	}
 
 	portal.log.Infoln("Changing chat ID to", newGUID)
