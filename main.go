@@ -662,7 +662,8 @@ func (br *IMBridge) StartupSync() {
 		return
 	}
 	for _, chat := range chats {
-		if _, isSynced := alreadySynced[chat.ChatGUID]; !isSynced {
+		if !alreadySynced[chat.ChatGUID] {
+			alreadySynced[chat.ChatGUID] = true
 			portal := br.GetPortalByGUID(chat.ChatGUID)
 			if portal.ThreadID == "" {
 				portal.ThreadID = chat.ThreadID

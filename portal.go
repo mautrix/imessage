@@ -348,6 +348,10 @@ func (portal *Portal) UpdateName(name string, intent *appservice.IntentAPI) *id.
 func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	portal.zlog.Debug().Interface("chat_info", chatInfo).Msg("Syncing with chat info")
 	update := false
+	if portal.ThreadID == "" && chatInfo.ThreadID != "" {
+		portal.ThreadID = chatInfo.ThreadID
+		update = true
+	}
 	if len(chatInfo.DisplayName) > 0 {
 		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 	}
