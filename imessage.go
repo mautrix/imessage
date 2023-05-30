@@ -251,6 +251,18 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 
 func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
 	chat.Identifier = imessage.ParseIdentifier(chat.JSONChatGUID)
+	if chat.Delete {
+		portal := imh.bridge.GetPortalByGUIDIfExists(chat.Identifier.String())
+		if portal != nil {
+			portal.zlog.Info().Msg("Received delete command, deleting and cleaning up portal...")
+			portal.Delete()
+			portal.Cleanup(false)
+			portal.zlog.Info().Msg("Portal cleanup completed")
+		} else {
+			imh.log.Warnfln("Received delete command for unknown portal %s", chat.Identifier.String())
+		}
+		return
+	}
 	portal := imh.bridge.GetPortalByGUID(chat.Identifier.String())
 	portal = imh.updateChatGUIDByThreadID(portal, chat.ThreadID)
 	if len(portal.MXID) > 0 {

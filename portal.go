@@ -2200,14 +2200,21 @@ func (portal *Portal) Cleanup(puppetsOnly bool) {
 	if len(portal.MXID) == 0 {
 		return
 	}
+	intent := portal.MainIntent()
+	if portal.bridge.SpecVersions.UnstableFeatures["com.beeper.room_yeeting"] {
+		err := intent.BeeperDeleteRoom(portal.MXID)
+		if err != nil && !errors.Is(err, mautrix.MNotFound) {
+			portal.zlog.Err(err).Msg("Failed to delete room using hungryserv yeet endpoint")
+		}
+		return
+	}
 	if portal.IsPrivateChat() {
-		_, err := portal.MainIntent().LeaveRoom(portal.MXID)
+		_, err := intent.LeaveRoom(portal.MXID)
 		if err != nil {
 			portal.log.Warnln("Failed to leave private chat portal with main intent:", err)
 		}
 		return
 	}
-	intent := portal.MainIntent()
 	members, err := intent.JoinedMembers(portal.MXID)
 	if err != nil {
 		portal.log.Errorln("Failed to get portal members for cleanup:", err)

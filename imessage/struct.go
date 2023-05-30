@@ -215,6 +215,7 @@ type ChatInfo struct {
 	Members      []string `json:"members"`
 	NoCreateRoom bool     `json:"no_create_room"`
 	ThreadID     string   `json:"thread_id,omitempty"`
+	Delete       bool     `json:"delete,omitempty"`
 }
 
 type Identifier struct {

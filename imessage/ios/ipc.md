@@ -233,6 +233,7 @@ Another error response:
 * Chat info changes and new chats (request type `chat`)
   * Same info as `get_chat` responses: `title`, `members`, plus a `chat_guid` field to identify the chat.
   * `no_create_room` can be set to `true` to disable creating a new room if one doesn't exist.
+  * `delete` can be set to `true` to delete the portal room. Other fields are ignored if this is set.
 * Chat ID change (request type `chat_id`)
   * `old_guid` (str) - The old chat GUID.
   * `new_guid` (str) - The new chat GUID.
