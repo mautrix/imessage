@@ -194,9 +194,13 @@ func (mx *WebsocketCommandHandler) handleWSCreateGroup(cmd appservice.WebsocketC
 	}
 	guids := make([]string, len(req.Users))
 	for i, identifier := range req.Users {
-		guids[i], err = mx.bridge.IM.ResolveIdentifier(identifier)
-		if err != nil {
-			return false, fmt.Errorf("failed to resolve identifier %s: %w", identifier, err)
+		if strings.HasPrefix(identifier, "iMessage;-;") || strings.HasPrefix(identifier, "SMS;-;") {
+			guids[i] = identifier
+		} else {
+			guids[i], err = mx.bridge.IM.ResolveIdentifier(identifier)
+			if err != nil {
+				return false, fmt.Errorf("failed to resolve identifier %s: %w", identifier, err)
+			}
 		}
 	}
 	mx.log.Debugfln("Creating group with guids %+v (resolved from identifiers %+v)", guids, req.Users)
