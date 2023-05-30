@@ -150,11 +150,41 @@ func (imh *iMessageHandler) rerouteGroupMMS(portal *Portal, msg *imessage.Messag
 	return portal
 }
 
+func (imh *iMessageHandler) updateChatGUIDByThreadID(portal *Portal, threadID string) *Portal {
+	if len(portal.MXID) > 0 || !portal.Identifier.IsGroup || threadID == "" || portal.bridge.Config.IMessage.Platform == "android" {
+		return portal
+	}
+	existingByThreadID := imh.bridge.FindPortalsByThreadID(threadID)
+	if len(existingByThreadID) > 1 {
+		imh.log.Warnfln("Found multiple portals with thread ID %s (message chat guid: %s)", threadID, portal.GUID)
+	} else if len(existingByThreadID) == 0 {
+		// no need to log, this is just an ordinary new group
+	} else if existingByThreadID[0].MXID != "" {
+		imh.log.Infofln("Found existing portal %s for thread ID %s, merging %s into it", existingByThreadID[0].GUID, threadID, portal.GUID)
+		existingByThreadID[0].reIDInto(portal.GUID, portal, true, false)
+		return existingByThreadID[0]
+	} else {
+		imh.log.Infofln("Found existing portal %s for thread ID %s, but it doesn't have a room", existingByThreadID[0].GUID, threadID, portal.GUID)
+	}
+	return portal
+}
+
+func (imh *iMessageHandler) getPortalFromMessage(msg *imessage.Message) *Portal {
+	portal := imh.rerouteGroupMMS(imh.bridge.GetPortalByGUID(msg.ChatGUID), msg)
+	return portal
+}
+
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
 	imh.log.Debugfln("Received incoming message %s in %s (%s)", msg.GUID, msg.ChatGUID, msg.ThreadID)
 	// TODO trace log
 	//imh.log.Debugfln("Received incoming message: %+v", msg)
-	portal := imh.rerouteGroupMMS(imh.bridge.GetPortalByGUID(msg.ChatGUID), msg)
+	portal := imh.updateChatGUIDByThreadID(
+		imh.rerouteGroupMMS(
+			imh.bridge.GetPortalByGUID(msg.ChatGUID),
+			msg,
+		),
+		msg.ThreadID,
+	)
 	if len(portal.MXID) == 0 {
 		if portal.ThreadID == "" {
 			portal.ThreadID = msg.ThreadID
@@ -217,6 +247,7 @@ func (imh *iMessageHandler) HandleTypingNotification(notif *imessage.TypingNotif
 func (imh *iMessageHandler) HandleChat(chat *imessage.ChatInfo) {
 	chat.Identifier = imessage.ParseIdentifier(chat.JSONChatGUID)
 	portal := imh.bridge.GetPortalByGUID(chat.Identifier.String())
+	portal = imh.updateChatGUIDByThreadID(portal, chat.ThreadID)
 	if len(portal.MXID) > 0 {
 		portal.log.Infoln("Syncing Matrix room to handle chat command")
 		portal.SyncWithInfo(chat)

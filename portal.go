@@ -103,16 +103,18 @@ func (br *IMBridge) ReIDPortal(oldGUID, newGUID string, mergeExisting bool) bool
 		return false
 	}
 
-	return portal.reIDInto(newGUID, false, mergeExisting)
+	return portal.reIDInto(newGUID, nil, false, mergeExisting)
 }
 
-func (portal *Portal) reIDInto(newGUID string, lock, mergeExisting bool) bool {
+func (portal *Portal) reIDInto(newGUID string, newPortal *Portal, lock, mergeExisting bool) bool {
 	br := portal.bridge
 	if lock {
 		br.portalsLock.Lock()
 		defer br.portalsLock.Unlock()
 	}
-	newPortal := br.maybeGetPortalByGUID(newGUID, false)
+	if newPortal == nil {
+		newPortal = br.maybeGetPortalByGUID(newGUID, false)
+	}
 	if newPortal != nil {
 		if mergeExisting && portal.MXID != "" && newPortal.MXID != "" && br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 			br.Log.Infofln("Got chat ID change %s->%s, but portal with new ID already exists. Merging portals in background", portal.GUID, newGUID)
@@ -146,6 +148,10 @@ func (portal *Portal) reIDInto(newGUID string, lock, mergeExisting bool) bool {
 
 func (br *IMBridge) GetAllPortals() []*Portal {
 	return br.dbPortalsToPortals(br.DB.Portal.GetAllWithMXID())
+}
+
+func (br *IMBridge) FindPortalsByThreadID(threadID string) []*Portal {
+	return br.dbPortalsToPortals(br.DB.Portal.FindByThreadID(threadID))
 }
 
 func (br *IMBridge) dbPortalsToPortals(dbPortals []*database.Portal) []*Portal {

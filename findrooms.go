@@ -73,6 +73,7 @@ func (br *IMBridge) findPortal(roomID id.RoomID, state mautrix.RoomStateMap) boo
 		portal.MXID = roomID
 		portal.Name = bridgeInfo.Channel.DisplayName
 		portal.AvatarURL = bridgeInfo.Channel.AvatarURL.ParseOrIgnore()
+		portal.ThreadID = bridgeInfo.Channel.ThreadID
 		portal.Encrypted = isEncrypted
 		// TODO find last message timestamp somewhere
 		portal.BackfillStartTS = time.Now().UnixMilli()
