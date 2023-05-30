@@ -163,6 +163,8 @@ type StartDMRequest struct {
 
 type CreateGroupRequest struct {
 	Users []string `json:"users"`
+
+	AllowSMS bool `json:"allow_sms"`
 }
 
 type StartDMResponse struct {
@@ -201,6 +203,9 @@ func (mx *WebsocketCommandHandler) handleWSCreateGroup(cmd appservice.WebsocketC
 			if err != nil {
 				return false, fmt.Errorf("failed to resolve identifier %s: %w", identifier, err)
 			}
+		}
+		if strings.HasPrefix(guids[i], "SMS;-;") && !req.AllowSMS {
+			return false, fmt.Errorf("%s is only available on SMS", identifier)
 		}
 	}
 	mx.log.Debugfln("Creating group with guids %+v (resolved from identifiers %+v)", guids, req.Users)
