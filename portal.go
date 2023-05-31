@@ -669,12 +669,16 @@ func (portal *Portal) UpdateBridgeInfo() {
 		return
 	}
 	portal.log.Debugln("Updating bridge info...")
+	intent := portal.MainIntent()
+	if portal.Encrypted && intent != portal.bridge.Bot && portal.IsPrivateChat() {
+		intent = portal.bridge.Bot
+	}
 	stateKey, content := portal.getBridgeInfo()
-	_, err := portal.MainIntent().SendStateEvent(portal.MXID, event.StateBridge, stateKey, content)
+	_, err := intent.SendStateEvent(portal.MXID, event.StateBridge, stateKey, content)
 	if err != nil {
 		portal.log.Warnln("Failed to update m.bridge:", err)
 	}
-	_, err = portal.MainIntent().SendStateEvent(portal.MXID, event.StateHalfShotBridge, stateKey, content)
+	_, err = intent.SendStateEvent(portal.MXID, event.StateHalfShotBridge, stateKey, content)
 	if err != nil {
 		portal.log.Warnln("Failed to update uk.half-shot.bridge:", err)
 	}
