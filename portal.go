@@ -121,11 +121,11 @@ func (portal *Portal) reIDInto(newGUID string, newPortal *Portal, lock, mergeExi
 			go newPortal.Merge([]*Portal{portal})
 			return false
 		} else if newPortal.MXID == "" && portal.MXID != "" {
-			br.Log.Infofln("Got chat ID change %s->%s. Portal with new ID already exists, but it doesn't have a room. Nuking new portal row", portal.GUID, newGUID)
-			newPortal.Delete()
+			br.Log.Infofln("Got chat ID change %s->%s. Portal with new ID already exists, but it doesn't have a room. Nuking new portal row before changing ID", portal.GUID, newGUID)
+			newPortal.unlockedDelete()
 		} else {
-			br.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal", portal.GUID, newGUID)
-			portal.Delete()
+			br.Log.Warnfln("Got chat ID change %s->%s, but portal with new ID already exists. Nuking old portal and not changing ID", portal.GUID, newGUID)
+			portal.unlockedDelete()
 			if len(portal.MXID) > 0 && portal.bridge.user.DoublePuppetIntent != nil {
 				_, _ = portal.bridge.user.DoublePuppetIntent.LeaveRoom(portal.MXID)
 			}
@@ -2141,8 +2141,13 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 }
 
 func (portal *Portal) Delete() {
-	portal.Portal.Delete()
 	portal.bridge.portalsLock.Lock()
+	portal.unlockedDelete()
+	portal.bridge.portalsLock.Unlock()
+}
+
+func (portal *Portal) unlockedDelete() {
+	portal.Portal.Delete()
 	delete(portal.bridge.portalsByGUID, portal.GUID)
 	for _, guid := range portal.SecondaryGUIDs {
 		if storedPortal := portal.bridge.portalsByGUID[guid]; storedPortal == portal {
@@ -2152,7 +2157,6 @@ func (portal *Portal) Delete() {
 	if len(portal.MXID) > 0 {
 		delete(portal.bridge.portalsByMXID, portal.MXID)
 	}
-	portal.bridge.portalsLock.Unlock()
 }
 
 func (portal *Portal) GetMatrixUsers() ([]id.UserID, error) {
