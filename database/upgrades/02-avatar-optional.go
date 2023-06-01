@@ -40,7 +40,7 @@ const createTapbackTable = `CREATE TABLE tapback (
 )`
 
 func init() {
-	Table.Register(-1, 2, "Make avatar fields optional", true, func(tx dbutil.Execable, db *dbutil.Database) error {
+	Table.Register(-1, 2, 0, "Make avatar fields optional", true, func(tx dbutil.Execable, db *dbutil.Database) error {
 		_, err := tx.Exec("PRAGMA defer_foreign_keys = ON")
 		if err != nil {
 			return err

@@ -1,4 +1,4 @@
--- v0 -> v20: Latest schema
+-- v0 -> v20 (compatible with v18+): Latest schema
 
 CREATE TABLE portal (
 	guid              TEXT    PRIMARY KEY,
