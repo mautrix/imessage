@@ -29,6 +29,7 @@ import (
 
 	flag "maunium.net/go/mauflag"
 	"maunium.net/go/maulogger/v2"
+
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 
 	"maunium.net/go/mautrix/event"
@@ -79,15 +80,8 @@ type IMBridge struct {
 	userCache     map[id.UserID]*User
 	puppets       map[string]*Puppet
 	puppetsLock   sync.Mutex
-	stopping      bool
-	stop          chan struct{}
-	stopPinger    chan struct{}
 	latestState   *imessage.BridgeStatus
 	pushKey       *imessage.PushKeyRequest
-
-	shortCircuitReconnectBackoff chan struct{}
-	websocketStarted             chan struct{}
-	websocketStopped             chan struct{}
 
 	SendStatusStartTS    int64
 	sendStatusUpdateInfo bool
@@ -97,6 +91,8 @@ type IMBridge struct {
 	pendingHackyTestGUID     string
 	pendingHackyTestRandomID string
 	hackyTestSuccess         bool
+
+	wsOnConnectWait sync.WaitGroup
 }
 
 func (br *IMBridge) GetExampleConfig() string {
@@ -222,6 +218,7 @@ func (br *IMBridge) Init() {
 
 	br.IMHandler = NewiMessageHandler(br)
 	br.WebsocketHandler = NewWebsocketCommandHandler(br)
+	br.wsOnConnectWait.Add(1)
 }
 
 type PingResponse struct {
@@ -238,48 +235,6 @@ func (br *IMBridge) GetLog() maulogger.Logger {
 
 func (br *IMBridge) GetConnectorConfig() *imessage.PlatformConfig {
 	return &br.Config.IMessage
-}
-
-type PingData struct {
-	Timestamp int64 `json:"timestamp"`
-}
-
-func (br *IMBridge) PingServer() (start, serverTs, end time.Time) {
-	if !br.AS.HasWebsocket() {
-		br.Log.Debugln("Received server ping request, but no websocket connected. Trying to short-circuit backoff sleep")
-		select {
-		case br.shortCircuitReconnectBackoff <- struct{}{}:
-		default:
-			br.Log.Warnfln("Failed to ping websocket: not connected and no backoff?")
-			return
-		}
-		select {
-		case <-br.websocketStarted:
-		case <-time.After(15 * time.Second):
-			if !br.AS.HasWebsocket() {
-				br.Log.Warnfln("Failed to ping websocket: didn't connect after 15 seconds of waiting")
-				return
-			}
-		}
-	}
-	start = time.Now()
-	var resp PingData
-	br.Log.Debugln("Pinging appservice websocket")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	err := br.AS.RequestWebsocket(ctx, &appservice.WebsocketRequest{
-		Command: "ping",
-		Data:    &PingData{Timestamp: start.UnixMilli()},
-	}, &resp)
-	end = time.Now()
-	if err != nil {
-		br.Log.Warnfln("Websocket ping returned error in %s: %v", end.Sub(start), err)
-		br.AS.StopWebsocket(fmt.Errorf("websocket ping returned error in %s: %w", end.Sub(start), err))
-	} else {
-		serverTs = time.Unix(0, resp.Timestamp*int64(time.Millisecond))
-		br.Log.Debugfln("Websocket ping returned success in %s (request: %s, response: %s)", end.Sub(start), serverTs.Sub(start), end.Sub(serverTs))
-	}
-	return
 }
 
 func (br *IMBridge) ipcResetEncryption(_ json.RawMessage) interface{} {
@@ -357,10 +312,6 @@ func (br *IMBridge) ipcDoAutoMerge(_ json.RawMessage) any {
 	br.UpdateMerges(contacts)
 	return struct{}{}
 }
-
-const defaultReconnectBackoff = 2 * time.Second
-const maxReconnectBackoff = 2 * time.Minute
-const reconnectBackoffReset = 5 * time.Minute
 
 type StartSyncRequest struct {
 	AccessToken string      `json:"access_token"`
@@ -460,65 +411,18 @@ func (br *IMBridge) RequestStartSync() {
 	}
 }
 
-func (br *IMBridge) startWebsocket(wg *sync.WaitGroup) {
-	var wgOnce sync.Once
-	onConnect := func() {
-		if br.latestState != nil {
-			go br.SendBridgeStatus(*br.latestState)
-		} else if !br.IM.Capabilities().BridgeState {
-			go br.SendBridgeStatus(imessage.BridgeStatus{
-				StateEvent: BridgeStatusConnected,
-				RemoteID:   "unknown",
-			})
-		}
-		go br.sendPushKey()
-		br.RequestStartSync()
-		wgOnce.Do(wg.Done)
-		select {
-		case br.websocketStarted <- struct{}{}:
-		default:
-		}
+func (br *IMBridge) OnWebsocketConnect() {
+	br.wsOnConnectWait.Wait()
+	if br.latestState != nil {
+		go br.SendBridgeStatus(*br.latestState)
+	} else if !br.IM.Capabilities().BridgeState {
+		go br.SendBridgeStatus(imessage.BridgeStatus{
+			StateEvent: BridgeStatusConnected,
+			RemoteID:   "unknown",
+		})
 	}
-	reconnectBackoff := defaultReconnectBackoff
-	lastDisconnect := time.Now().UnixNano()
-	defer func() {
-		br.Log.Debugfln("Appservice websocket loop finished")
-		close(br.websocketStopped)
-	}()
-	for {
-		err := br.AS.StartWebsocket(br.Config.Homeserver.WSProxy, onConnect)
-		if err == appservice.ErrWebsocketManualStop {
-			return
-		} else if closeCommand := (&appservice.CloseCommand{}); errors.As(err, &closeCommand) && closeCommand.Status == appservice.MeowConnectionReplaced {
-			br.Log.Infoln("Appservice websocket closed by another instance of the bridge, shutting down...")
-			br.Stop()
-			return
-		} else if err != nil {
-			br.Log.Errorln("Error in appservice websocket:", err)
-		}
-		if br.stopping {
-			return
-		}
-		now := time.Now().UnixNano()
-		if lastDisconnect+reconnectBackoffReset.Nanoseconds() < now {
-			reconnectBackoff = defaultReconnectBackoff
-		} else {
-			reconnectBackoff *= 2
-			if reconnectBackoff > maxReconnectBackoff {
-				reconnectBackoff = maxReconnectBackoff
-			}
-		}
-		lastDisconnect = now
-		br.Log.Infofln("Websocket disconnected, reconnecting in %d seconds...", int(reconnectBackoff.Seconds()))
-		select {
-		case <-br.shortCircuitReconnectBackoff:
-			br.Log.Debugln("Reconnect backoff was short-circuited")
-		case <-time.After(reconnectBackoff):
-		}
-		if br.stopping {
-			return
-		}
-	}
+	go br.sendPushKey()
+	br.RequestStartSync()
 }
 
 func (br *IMBridge) connectToiMessage(wg *sync.WaitGroup) {
@@ -566,52 +470,17 @@ func (br *IMBridge) Start() {
 		}
 	}
 
-	if br.Config.Homeserver.WSProxy != "" {
-		br.Log.Debugln("Starting application service websocket")
-		go br.startWebsocket(&startupGroup)
-	} else {
-		if br.Config.AppService.Port == 0 {
-			br.Log.Fatalln("Both the websocket proxy and appservice listener are disabled, can't receive events")
-			os.Exit(23)
-		}
-		br.Log.Debugln("Websocket proxy not configured, not starting application service websocket")
-	}
-
 	br.Log.Debugln("Starting iMessage handler")
 	go br.IMHandler.Start()
+	br.wsOnConnectWait.Done()
 	startupGroup.Wait()
+	br.WaitWebsocketConnected()
 	br.Log.Debugln("Starting IPC loop")
 	go br.IPC.Loop()
 
 	go br.StartupSync()
 	br.Log.Infoln("Initialization complete")
 	go br.PeriodicSync()
-
-	br.stopPinger = make(chan struct{})
-	if br.Config.Homeserver.WSPingInterval > 0 {
-		go br.serverPinger()
-	}
-}
-
-func (br *IMBridge) serverPinger() {
-	interval := time.Duration(br.Config.Homeserver.WSPingInterval) * time.Second
-	clock := time.NewTicker(interval)
-	defer func() {
-		br.Log.Infofln("Websocket pinger stopped")
-		clock.Stop()
-	}()
-	br.Log.Infofln("Pinging websocket every %s", interval)
-	for {
-		select {
-		case <-clock.C:
-			br.PingServer()
-		case <-br.stopPinger:
-			return
-		}
-		if br.stopping {
-			return
-		}
-	}
 }
 
 func (br *IMBridge) StartupSync() {
@@ -724,38 +593,9 @@ func (br *IMBridge) ipcStop(_ json.RawMessage) interface{} {
 }
 
 func (br *IMBridge) Stop() {
-	select {
-	case br.stop <- struct{}{}:
-	default:
-	}
-}
-
-func (br *IMBridge) internalStop() {
-	br.stopping = true
-	if br.Crypto != nil {
-		br.Crypto.Stop()
-	}
-	select {
-	case br.stopPinger <- struct{}{}:
-	default:
-	}
-	br.Log.Debugln("Stopping transaction websocket")
-	br.AS.StopWebsocket(appservice.ErrWebsocketManualStop)
-	br.Log.Debugln("Stopping event processor")
-	br.EventProcessor.Stop()
 	br.Log.Debugln("Stopping iMessage connector")
 	br.IM.Stop()
 	br.IMHandler.Stop()
-	// Short-circuit reconnect backoff so the websocket loop exits even if it's disconnected
-	select {
-	case br.shortCircuitReconnectBackoff <- struct{}{}:
-	default:
-	}
-	select {
-	case <-br.websocketStopped:
-	case <-time.After(4 * time.Second):
-		br.Log.Warnln("Timed out waiting for websocket to close")
-	}
 }
 
 func (br *IMBridge) HandleFlags() bool {
@@ -779,11 +619,6 @@ func main() {
 		portalsByGUID: make(map[string]*Portal),
 		puppets:       make(map[string]*Puppet),
 		userCache:     make(map[id.UserID]*User),
-		stop:          make(chan struct{}, 1),
-
-		shortCircuitReconnectBackoff: make(chan struct{}),
-		websocketStarted:             make(chan struct{}),
-		websocketStopped:             make(chan struct{}),
 	}
 	br.Bridge = bridge.Bridge{
 		Name: "mautrix-imessage",
