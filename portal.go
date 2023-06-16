@@ -363,7 +363,7 @@ func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	if len(chatInfo.DisplayName) > 0 {
 		update = portal.UpdateName(chatInfo.DisplayName, nil) != nil || update
 	}
-	if !portal.IsPrivateChat() {
+	if !portal.IsPrivateChat() && chatInfo.Members != nil {
 		portal.SyncParticipants(chatInfo)
 	}
 	if update {
