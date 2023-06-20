@@ -147,6 +147,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "encryption", "rotation", "enable_custom")
 	helper.Copy(up.Int, "bridge", "encryption", "rotation", "milliseconds")
 	helper.Copy(up.Int, "bridge", "encryption", "rotation", "messages")
+	helper.Copy(up.Bool, "bridge", "encryption", "rotation", "disable_device_change_key_rotation")
 	helper.Copy(up.Bool, "bridge", "relay", "enabled")
 	helper.Copy(up.List, "bridge", "relay", "whitelist")
 	helper.Copy(up.Map, "bridge", "relay", "message_formats")

@@ -1730,7 +1730,7 @@ func (portal *Portal) convertIMAttachment(msg *imessage.Message, attach *imessag
 	}
 	var mxc id.ContentURI
 	if portal.bridge.Config.Homeserver.AsyncMedia {
-		uploaded, err := intent.UnstableUploadAsync(req)
+		uploaded, err := intent.UploadAsync(req)
 		if err != nil {
 			portal.log.Errorfln("Failed to asynchronously upload attachment in %s: %v", msg.GUID, err)
 			return nil, nil, err
