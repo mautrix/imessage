@@ -557,7 +557,7 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 			RoomID:     portal.MXID,
 			Step:       status.MsgStepRemote,
 			Timestamp:  jsontime.UnixMilliNow(),
-			Status:     "DELIVERED",
+			Status:     status.MsgStatusDelivered,
 			ReportedBy: status.MsgReportedByBridge,
 		})
 	case "sent":
@@ -1075,7 +1075,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 				RoomID:     portal.MXID,
 				Step:       status.MsgStepRemote,
 				Timestamp:  jsontime.UnixMilliNow(),
-				Status:     "DELIVERED",
+				Status:     status.MsgStatusDelivered,
 				ReportedBy: status.MsgReportedByBridge,
 				Info:       "fake group delivered status",
 			})
