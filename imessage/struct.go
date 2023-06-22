@@ -269,6 +269,7 @@ type ConnectorCapabilities struct {
 	SendCaptions             bool
 	BridgeState              bool
 	MessageStatusCheckpoints bool
+	DeliveredStatus          bool
 	ContactChatMerging       bool
 	RichLinks                bool
 	ChatBridgeResult         bool

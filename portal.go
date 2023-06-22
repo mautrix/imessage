@@ -557,9 +557,12 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 			RoomID:     portal.MXID,
 			Step:       status.MsgStepRemote,
 			Timestamp:  jsontime.UnixMilliNow(),
-			Status:     "DELIVERED",
+			Status:     status.MsgStatusDelivered,
 			ReportedBy: status.MsgReportedByBridge,
 		})
+		if p := portal.GetDMPuppet(); p != nil {
+			go portal.sendSuccessMessageStatus(eventID, msgStatus.Service, msgStatus.ChatGUID, []id.UserID{p.MXID})
+		}
 	case "sent":
 		portal.sendSuccessCheckpoint(eventID, msgStatus.Service, msgStatus.ChatGUID)
 	case "failed":
@@ -1069,49 +1072,62 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 	}
 	go func() {
 		portal.bridge.SendRawMessageCheckpoint(&checkpoint)
-		if (portal.Identifier.IsGroup || portal.Identifier.Service == "SMS") && portal.bridge.Config.IMessage.Platform == "mac-nosip" {
+		if (portal.Identifier.IsGroup || portal.Identifier.Service == "SMS") && portal.bridge.IM.Capabilities().DeliveredStatus {
 			portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
 				EventID:    eventID,
 				RoomID:     portal.MXID,
 				Step:       status.MsgStepRemote,
 				Timestamp:  jsontime.UnixMilliNow(),
-				Status:     "DELIVERED",
+				Status:     status.MsgStatusDelivered,
 				ReportedBy: status.MsgReportedByBridge,
 				Info:       "fake group delivered status",
 			})
 		}
 	}()
 
-	if portal.bridge.Config.Bridge.MessageStatusEvents {
-		mainContent := &event.BeeperMessageStatusEventContent{
-			Network: portal.getBridgeInfoStateKey(),
-			RelatesTo: event.RelatesTo{
-				Type:    event.RelReference,
-				EventID: eventID,
-			},
-			Status: event.MessageStatusSuccess,
-		}
-		var extraContent map[string]any
-		if portal.bridge.IM.Capabilities().ContactChatMerging {
-			extraContent = map[string]any{
-				bridgeInfoService: service,
-				bridgeInfoHandle:  handle,
-			}
-			mainContent.MutateEventKey = bridgeInfoHandle
-		}
-		content := &event.Content{
-			Parsed: mainContent,
-			Raw:    extraContent,
-		}
+	portal.sendSuccessMessageStatus(eventID, service, handle, []id.UserID{})
+}
 
-		statusIntent := portal.bridge.Bot
-		if !portal.Encrypted {
-			statusIntent = portal.MainIntent()
+func (portal *Portal) sendSuccessMessageStatus(eventID id.EventID, service, handle string, deliveredTo []id.UserID) {
+	if !portal.bridge.Config.Bridge.MessageStatusEvents {
+		return
+	}
+
+	mainContent := &event.BeeperMessageStatusEventContent{
+		Network: portal.getBridgeInfoStateKey(),
+		RelatesTo: event.RelatesTo{
+			Type:    event.RelReference,
+			EventID: eventID,
+		},
+		Status: event.MessageStatusSuccess,
+	}
+
+	if !portal.Identifier.IsGroup && portal.Identifier.Service == "iMessage" && portal.bridge.IM.Capabilities().DeliveredStatus {
+		// This is an iMessage DM, then we want to include the list of users
+		// that the message has been delivered to.
+		mainContent.DeliveredToUsers = &deliveredTo
+	}
+
+	var extraContent map[string]any
+	if portal.bridge.IM.Capabilities().ContactChatMerging {
+		extraContent = map[string]any{
+			bridgeInfoService: service,
+			bridgeInfoHandle:  handle,
 		}
-		_, err := statusIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, content)
-		if err != nil {
-			portal.log.Warnln("Failed to send message send status event:", err)
-		}
+		mainContent.MutateEventKey = bridgeInfoHandle
+	}
+	content := &event.Content{
+		Parsed: mainContent,
+		Raw:    extraContent,
+	}
+
+	statusIntent := portal.bridge.Bot
+	if !portal.Encrypted {
+		statusIntent = portal.MainIntent()
+	}
+	_, err := statusIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, content)
+	if err != nil {
+		portal.log.Warnln("Failed to send message send status event:", err)
 	}
 }
 
