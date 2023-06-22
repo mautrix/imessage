@@ -1072,7 +1072,7 @@ func (portal *Portal) sendSuccessCheckpoint(eventID id.EventID, service, handle 
 	}
 	go func() {
 		portal.bridge.SendRawMessageCheckpoint(&checkpoint)
-		if (portal.Identifier.IsGroup || portal.Identifier.Service == "SMS") && portal.bridge.Config.IMessage.Platform == "mac-nosip" {
+		if (portal.Identifier.IsGroup || portal.Identifier.Service == "SMS") && portal.bridge.IM.Capabilities().DeliveredStatus {
 			portal.bridge.SendRawMessageCheckpoint(&status.MessageCheckpoint{
 				EventID:    eventID,
 				RoomID:     portal.MXID,
@@ -1102,7 +1102,7 @@ func (portal *Portal) sendSuccessMessageStatus(eventID id.EventID, service, hand
 		Status: event.MessageStatusSuccess,
 	}
 
-	if !portal.Identifier.IsGroup && portal.Identifier.Service == "iMessage" && portal.bridge.Config.IMessage.Platform != "mac-nosip" {
+	if !portal.Identifier.IsGroup && portal.Identifier.Service == "iMessage" && portal.bridge.IM.Capabilities().DeliveredStatus {
 		// This is an iMessage DM, then we want to include the list of users
 		// that the message has been delivered to.
 		mainContent.DeliveredToUsers = &deliveredTo
