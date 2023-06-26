@@ -1418,7 +1418,7 @@ func (portal *Portal) HandleMatrixReadReceipt(user bridge.User, eventID id.Event
 	}
 }
 
-const typingNotificationsTemporarilyDisabled = true
+const typingNotificationsTemporarilyDisabled = false
 
 func (portal *Portal) HandleMatrixTyping(userIDs []id.UserID) {
 	if portal.Identifier.Service == "SMS" {
