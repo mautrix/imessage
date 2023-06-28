@@ -39,7 +39,7 @@ SELECT
   chat.guid, COALESCE(sender_handle.id, ''), COALESCE(sender_handle.service, ''), COALESCE(target_handle.id, ''), COALESCE(target_handle.service, ''),
   message.is_from_me, message.date_read, message.is_delivered, message.is_sent, message.is_emote, message.is_audio_message,
   COALESCE(message.thread_originator_guid, ''), COALESCE(message.thread_originator_part, ''), COALESCE(message.associated_message_guid, ''), message.associated_message_type,
-  message.group_title, message.item_type, message.group_action_type
+  message.group_title, message.item_type, message.group_action_type, chat.group_id
 FROM message
 JOIN chat_message_join         ON chat_message_join.message_id = message.ROWID
 JOIN chat                      ON chat_message_join.chat_id = chat.ROWID
@@ -86,7 +86,9 @@ ORDER BY message.date DESC LIMIT 1
 `
 
 const chatQuery = `
-SELECT chat_identifier, service_name, COALESCE(display_name, '') FROM chat WHERE guid=$1
+SELECT chat_identifier, service_name, COALESCE(display_name, ''), group_id
+FROM chat
+WHERE guid=$1
 `
 
 const chatGUIDQuery = `
@@ -99,7 +101,7 @@ LIMIT 1
 `
 
 const recentChatsQuery = `
-SELECT DISTINCT(chat.guid) FROM message
+SELECT DISTINCT chat.guid, chat.group_id FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 WHERE message.date>$1
@@ -222,7 +224,7 @@ func (mac *macOSDatabase) scanMessages(res *sql.Rows) (messages []*imessage.Mess
 			&message.ChatGUID, &message.Sender.LocalID, &message.Sender.Service, &message.Target.LocalID, &message.Target.Service,
 			&message.IsFromMe, &readAt, &message.IsDelivered, &message.IsSent, &message.IsEmote, &message.IsAudioMessage,
 			&message.ReplyToGUID, &threadOriginatorPart, &tapback.TargetGUID, &tapback.Type,
-			&newGroupTitle, &message.ItemType, &message.GroupActionType)
+			&newGroupTitle, &message.ItemType, &message.GroupActionType, &message.ThreadID)
 		if err != nil {
 			err = fmt.Errorf("error scanning row: %w", err)
 			return
@@ -399,12 +401,12 @@ func (mac *macOSDatabase) GetChatsWithMessagesAfter(minDate time.Time) ([]imessa
 	}
 	var chats []imessage.ChatIdentifier
 	for res.Next() {
-		var chatID string
-		err = res.Scan(&chatID)
+		var chatID, groupID string
+		err = res.Scan(&chatID, &groupID)
 		if err != nil {
 			return chats, fmt.Errorf("error scanning row: %w", err)
 		}
-		chats = append(chats, imessage.ChatIdentifier{ChatGUID: chatID})
+		chats = append(chats, imessage.ChatIdentifier{ChatGUID: chatID, ThreadID: groupID})
 	}
 	return chats, nil
 }
@@ -413,7 +415,7 @@ func (mac *macOSDatabase) GetChatInfo(chatID, _ string) (*imessage.ChatInfo, err
 	row := mac.chatQuery.QueryRow(chatID)
 	var info imessage.ChatInfo
 	info.Identifier = imessage.ParseIdentifier(chatID)
-	err := row.Scan(&info.Identifier.LocalID, &info.Identifier.Service, &info.DisplayName)
+	err := row.Scan(&info.Identifier.LocalID, &info.Identifier.Service, &info.DisplayName, &info.ThreadID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	} else if err != nil {
