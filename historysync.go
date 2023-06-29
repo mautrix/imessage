@@ -35,7 +35,6 @@ import (
 )
 
 var PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
-var HistorySyncMarker = event.Type{Type: "org.matrix.msc2716.marker", Class: event.MessageEventType}
 
 func (portal *Portal) lockBackfill() {
 	portal.backfillLock.Lock()
@@ -189,8 +188,9 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		}
 		portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, success, idMap)
 	}()
-	if !portal.bridge.Config.Bridge.Backfill.MSC2716 && !forward {
-		portal.log.Debugfln("Dropping non-forward backfill %s as MSC2716 is not enabled", backfillID)
+	batchSending := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
+	if !batchSending && !forward {
+		portal.log.Debugfln("Dropping non-forward backfill %s as Beeper batch sending is not supported", backfillID)
 		return true
 	}
 	events, metas, metaIndexes, isRead, err := portal.convertBackfill(messages)
@@ -203,43 +203,20 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		return true
 	}
 	var eventIDs []id.EventID
-	var baseInsertionID id.EventID
-	if portal.bridge.Config.Bridge.Backfill.MSC2716 {
-		req := &mautrix.ReqBatchSend{
-			StateEventsAtStart: nil,
-			Events:             events,
-		}
-		saveBatchID := forward
-		if forward {
-			req.BeeperNewMessages = forward
-			lastMessage := portal.bridge.DB.Message.GetLastInChat(portal.GUID)
-			if lastMessage != nil {
-				req.PrevEventID = lastMessage.MXID
-			} else {
-				saveBatchID = true
-				req.PrevEventID = portal.FirstEventID
-			}
-		} else {
-			req.PrevEventID = portal.FirstEventID
-			req.BatchID = portal.NextBatchID
-		}
-		if req.PrevEventID == "" && portal.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
-			portal.log.Debugfln("Dropping backfill %s as previous event is not known", backfillID)
-			return true
+	if batchSending {
+		req := &mautrix.ReqBeeperBatchSend{
+			Events:  events,
+			Forward: forward,
 		}
 		if isRead {
-			req.BeeperMarkReadBy = portal.bridge.user.MXID
+			req.MarkReadBy = portal.bridge.user.MXID
 		}
-		resp, err := portal.MainIntent().BatchSend(portal.MXID, req)
+		resp, err := portal.MainIntent().BeeperBatchSend(portal.MXID, req)
 		if err != nil {
 			portal.log.Errorln("Failed to batch send history:", err)
 			return false
 		}
-		if saveBatchID {
-			portal.NextBatchID = resp.NextBatchID
-		}
 		eventIDs = resp.EventIDs
-		baseInsertionID = resp.BaseInsertionEventID
 	} else {
 		eventIDs = make([]id.EventID, len(events))
 		for i, evt := range events {
@@ -281,24 +258,8 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	if err != nil {
 		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
 	}
-	if portal.bridge.Config.Bridge.Backfill.MSC2716 && (!forward || portal.bridge.Config.Homeserver.Software != bridgeconfig.SoftwareHungry) {
-		go portal.sendPostBackfillDummy(baseInsertionID)
-	}
 	portal.log.Infofln("Finished backfill %s", backfillID)
 	return true
-}
-
-func (portal *Portal) sendPostBackfillDummy(insertionEventId id.EventID) {
-	resp, err := portal.MainIntent().SendMessageEvent(portal.MXID, HistorySyncMarker, map[string]interface{}{
-		"org.matrix.msc2716.marker.insertion": insertionEventId,
-		//"m.marker.insertion":                  insertionEventId,
-	})
-	if err != nil {
-		portal.log.Errorln("Error sending post-backfill dummy event:", err)
-		return
-	} else {
-		portal.log.Debugfln("Sent post-backfill dummy event %s", resp.EventID)
-	}
 }
 
 func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.EventID, metas []messageWithIndex) {

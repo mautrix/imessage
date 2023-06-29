@@ -51,7 +51,6 @@ type BridgeConfig struct {
 		InitialLimit         int     `yaml:"initial_limit"`
 		InitialSyncMaxAge    float64 `yaml:"initial_sync_max_age"`
 		UnreadHoursThreshold int     `yaml:"unread_hours_threshold"`
-		MSC2716              bool    `yaml:"msc2716"`
 	} `yaml:"backfill"`
 	PeriodicSync       bool `yaml:"periodic_sync"`
 	FindPortalsIfEmpty bool `yaml:"find_portals_if_db_empty"`

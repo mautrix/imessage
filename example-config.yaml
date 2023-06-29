@@ -158,11 +158,6 @@ bridge:
         # If a backfilled chat is older than this number of hours, mark it as read even if it's unread on iMessage.
         # Set to -1 to let any chat be unread.
         unread_hours_threshold: 720
-        # Use MSC2716 for backfilling?
-        #
-        # This requires a server with MSC2716 support, which is currently an experimental feature in Synapse.
-        # It can be enabled by setting experimental_features -> msc2716_enabled to true in homeserver.yaml.
-        msc2716: false
     # Whether or not the bridge should periodically resync chat and contact info.
     periodic_sync: true
     # Should the bridge look through joined rooms to find existing portals if the database has none?
