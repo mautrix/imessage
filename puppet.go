@@ -348,7 +348,7 @@ func (puppet *Puppet) UpdateContactInfo() bool {
 	}
 	if !puppet.ContactInfoSet {
 		contactInfo := map[string]any{
-			"com.beeper.bridge.remote_id":     puppet.ID,
+			"com.beeper.bridge.remote_id": puppet.ID,
 		}
 		if strings.ContainsRune(puppet.ID, '@') {
 			contactInfo["com.beeper.bridge.identifiers"] = []string{fmt.Sprintf("mailto:%s", puppet.ID)}
