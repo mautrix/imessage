@@ -447,7 +447,8 @@ func (br *IMBridge) Start() {
 	}
 	br.wasConnected = br.DB.KV.Get(database.KVBridgeWasConnected) == "true"
 
-	needsPortalFinding := br.Config.Bridge.FindPortalsIfEmpty && br.DB.Portal.Count() == 0
+	needsPortalFinding := br.Config.Bridge.FindPortalsIfEmpty && br.DB.Portal.Count() == 0 &&
+		br.DB.KV.Get(database.KVLookedForPortals) != "true"
 
 	br.Log.Debugln("Finding bridge user")
 	br.user = br.loadDBUser()
@@ -464,6 +465,7 @@ func (br *IMBridge) Start() {
 			br.Log.Fatalln("Error finding portals:", err)
 			os.Exit(30)
 		}
+		br.DB.KV.Set(database.KVLookedForPortals, "true")
 		// The database was probably reset, so log out of all bridge bot devices to keep the list clean
 		if br.Crypto != nil {
 			br.Crypto.Reset(true)

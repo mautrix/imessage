@@ -33,6 +33,7 @@ const (
 	KVSendStatusStart    = "com.beeper.send_status_start"
 	KVBridgeWasConnected = "bridge_was_connected"
 	KVBridgeInfoVersion  = "bridge_info_version"
+	KVLookedForPortals   = "looked_for_portals"
 
 	ExpectedBridgeInfoVersion = "1"
 )
