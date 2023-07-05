@@ -1362,7 +1362,7 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 		filePath, err = ffmpeg.ConvertPath(context.TODO(), filePath, ".caf", []string{}, []string{"-c:a", "copy", "-b:a", "32K"}, false)
 		mimeType = "audio/x-caf"
 		isVoiceMemo = true
-		filename = filepath.Base(filePath);
+		filename = filepath.Base(filePath)
 
 		if err != nil {
 			log.Errorfln("Failed to transcode voice message to CAF. Error: %w", err)
