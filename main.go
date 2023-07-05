@@ -467,7 +467,8 @@ func (br *IMBridge) Start() {
 		}
 		br.DB.KV.Set(database.KVLookedForPortals, "true")
 		// The database was probably reset, so log out of all bridge bot devices to keep the list clean
-		if br.Crypto != nil {
+		// TODO this may be unsafe with appservice encryption, it would be better to just log out other devices
+		if br.Crypto != nil && br.Config.Homeserver.Software != bridgeconfig.SoftwareHungry {
 			br.Crypto.Reset(true)
 		}
 	}
