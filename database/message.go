@@ -92,6 +92,15 @@ func (mq *MessageQuery) GetLastInChat(chat string) *Message {
 	return msg
 }
 
+func (mq *MessageQuery) GetEarliestTimestampInChat(chat string) (int64, error) {
+	row := mq.db.QueryRow("SELECT MIN(timestamp) FROM message WHERE portal_guid=$1", chat)
+	var timestamp int64
+	if err := row.Scan(&timestamp); err != nil {
+		return -1, err
+	}
+	return timestamp, nil
+}
+
 func (mq *MessageQuery) MergePortalGUID(txn dbutil.Execable, to string, from ...string) int64 {
 	if txn == nil {
 		txn = mq.db

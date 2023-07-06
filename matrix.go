@@ -62,6 +62,7 @@ func NewWebsocketCommandHandler(br *IMBridge) *WebsocketCommandHandler {
 	br.AS.SetWebsocketCommandHandler("upload_contacts", handler.handleWSUploadContacts)
 	br.AS.SetWebsocketCommandHandler("edit_ghost", handler.handleWSEditGhost)
 	br.AS.SetWebsocketCommandHandler("do_hacky_test", handler.handleWSHackyTest)
+	br.AS.SetWebsocketCommandHandler("create_rooms_for_backfill", handler.handleCreateRoomsForBackfill)
 	return handler
 }
 
@@ -341,4 +342,54 @@ func (mx *WebsocketCommandHandler) HandleSyncProxyError(syncErr *mautrix.RespErr
 	time.Sleep(mx.syncProxyBackoff)
 	atomic.StoreInt64(&mx.syncProxyWaiting, 0)
 	mx.bridge.RequestStartSync()
+}
+
+type NewRoomBackfillRequest struct {
+	Chats []*imessage.ChatInfo `json:"chats"`
+}
+
+type NewRoomForBackfill struct {
+	RoomID                   id.RoomID
+	EarliestBridgedTimestamp int64
+}
+
+type NewRoomBackfillResponse map[string]NewRoomForBackfill
+
+func (mx *WebsocketCommandHandler) handleCreateRoomsForBackfill(cmd appservice.WebsocketCommand) (bool, any) {
+	var req NewRoomBackfillRequest
+	if err := json.Unmarshal(cmd.Data, &req); err != nil {
+		return false, fmt.Errorf("failed to parse request: %w", err)
+	}
+
+	createdRooms := NewRoomBackfillResponse{}
+	now := time.Now().UnixMilli()
+	for _, info := range req.Chats {
+		info.Identifier = imessage.ParseIdentifier(info.JSONChatGUID)
+		portal := mx.bridge.GetPortalByGUID(info.Identifier.String())
+
+		if len(portal.MXID) > 0 {
+			portal.zlog.Info().Msg("Syncing Matrix room with latest chat info")
+			portal.SyncWithInfo(info)
+		} else {
+			portal.zlog.Info().Msg("Creating Matrix room with latest chat info")
+			err := portal.CreateMatrixRoom(info, nil)
+			if err != nil {
+				return false, fmt.Errorf("failed to create portal: %w", err)
+			}
+		}
+
+		timestamp, err := mx.bridge.DB.Message.GetEarliestTimestampInChat(info.Identifier.String())
+		if err != nil {
+			return false, fmt.Errorf("failed to get earliest timestamp in chat: %w", err)
+		} else if timestamp < 0 {
+			timestamp = now
+		}
+
+		createdRooms[portal.GUID] = NewRoomForBackfill{
+			RoomID:                   portal.MXID,
+			EarliestBridgedTimestamp: timestamp,
+		}
+	}
+
+	return true, createdRooms
 }
