@@ -27,6 +27,12 @@ import (
 	"maunium.net/go/mautrix/id"
 )
 
+type DeferredConfig struct {
+	StartDaysAgo   int `yaml:"start_days_ago"`
+	MaxBatchEvents int `yaml:"max_batch_events"`
+	BatchDelay     int `yaml:"batch_delay"`
+}
+
 type BridgeConfig struct {
 	User id.UserID `yaml:"user"`
 
@@ -48,9 +54,15 @@ type BridgeConfig struct {
 	DoublePuppetServerURL string `yaml:"double_puppet_server_url"`
 	Backfill              struct {
 		Enable               bool    `yaml:"enable"`
+		OnlyBackfill         bool    `yaml:"only_backfill"`
 		InitialLimit         int     `yaml:"initial_limit"`
 		InitialSyncMaxAge    float64 `yaml:"initial_sync_max_age"`
 		UnreadHoursThreshold int     `yaml:"unread_hours_threshold"`
+		Immediate            struct {
+			MaxEvents int `yaml:"max_events"`
+		} `yaml:"immediate"`
+
+		Deferred []DeferredConfig `yaml:"deferred"`
 	} `yaml:"backfill"`
 	PeriodicSync       bool `yaml:"periodic_sync"`
 	FindPortalsIfEmpty bool `yaml:"find_portals_if_db_empty"`

@@ -158,6 +158,53 @@ bridge:
         # If a backfilled chat is older than this number of hours, mark it as read even if it's unread on iMessage.
         # Set to -1 to let any chat be unread.
         unread_hours_threshold: 720
+
+        #########################################################################
+        # The settings below are only applicable if you are:                    #
+        #                                                                       #
+        # 1. Using batch sending, which is no longer supported in Synapse.      #
+        # 2. Running the bridge in backfill-only mode connecting to another     #
+        #    instance for portal creation via websocket commands.               #
+        #                                                                       #
+        # In other words, unless you are Beeper, the rest of the backfill       #
+        # section very likely does not apply to you.                            #
+        #########################################################################
+        # Is this bridge only meant for backfilling chats?
+        only_backfill: false
+
+        # Settings for immediate backfills. These backfills should generally be small and their main purpose is
+        # to populate each of the initial chats (as configured by max_initial_conversations) with a few messages
+        # so that you can continue conversations without losing context.
+        immediate:
+            # The maximum number of events to backfill initially.
+            max_events: 25
+        # Settings for deferred backfills. The purpose of these backfills are to fill in the rest of
+        # the chat history that was not covered by the immediate backfills.
+        # These backfills generally should happen at a slower pace so as not to overload the homeserver.
+        # Each deferred backfill config should define a "stage" of backfill (i.e. the last week of messages).
+        # The fields are as follows:
+        # - start_days_ago: the number of days ago to start backfilling from.
+        #     To indicate the start of time, use -1. For example, for a week ago, use 7.
+        # - max_batch_events: the number of events to send per batch.
+        # - batch_delay: the number of seconds to wait before backfilling each batch.
+        deferred:
+            # Last Week
+            - start_days_ago: 7
+              max_batch_events: 50
+              batch_delay: 5
+            # Last Month
+            - start_days_ago: 30
+              max_batch_events: 100
+              batch_delay: 10
+            # Last 3 months
+            - start_days_ago: 90
+              max_batch_events: 250
+              batch_delay: 10
+            # The start of time
+            - start_days_ago: -1
+              max_batch_events: 500
+              batch_delay: 10
+
     # Whether or not the bridge should periodically resync chat and contact info.
     periodic_sync: true
     # Should the bridge look through joined rooms to find existing portals if the database has none?

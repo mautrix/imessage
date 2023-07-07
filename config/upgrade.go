@@ -80,6 +80,9 @@ func DoUpgrade(helper *up.Helper) {
 	}
 	helper.Copy(up.Bool, "bridge", "backfill", "enable")
 	helper.Copy(up.Int, "bridge", "backfill", "unread_hours_threshold")
+	helper.Copy(up.Bool, "bridge", "backfill", "only_backfill")
+	helper.Copy(up.Int, "bridge", "backfill", "immediate", "max_events")
+	helper.Copy(up.List, "bridge", "backfill", "deferred")
 	helper.Copy(up.Bool, "bridge", "periodic_sync")
 	helper.Copy(up.Bool, "bridge", "find_portals_if_db_empty")
 	if legacyMediaViewerURL, ok := helper.Get(up.Str, "bridge", "media_viewer_url"); ok && legacyMediaViewerURL != "" {
