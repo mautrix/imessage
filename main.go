@@ -454,7 +454,7 @@ func (br *IMBridge) Start() {
 	br.user = br.loadDBUser()
 	br.user.initDoublePuppet()
 	var startupGroup sync.WaitGroup
-	startupGroup.Add(2)
+	startupGroup.Add(1)
 	br.Log.Debugln("Connecting to iMessage")
 	go br.connectToiMessage(&startupGroup)
 
