@@ -516,7 +516,7 @@ func (br *IMBridge) StartupSync() {
 					}
 				}
 			}
-			portal.log.Infoln("Syncing portal (startup sync, existing portal)")
+			// portal.log.Infoln("Syncing portal (startup sync, existing portal)")
 			portal.Sync(true)
 			alreadySynced[portal.GUID] = true
 			if forceUpdateBridgeInfo {

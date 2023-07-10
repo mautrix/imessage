@@ -295,7 +295,7 @@ func (puppet *Puppet) Sync() {
 	if err != nil && !errors.Is(err, ipc.ErrUnknownCommand) {
 		puppet.log.Errorln("Failed to get contact info:", err)
 	} else if contact == nil {
-		puppet.log.Debugln("No contact info found")
+		// puppet.log.Debugln("No contact info found")
 	}
 
 	puppet.SyncWithContact(contact)

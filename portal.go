@@ -413,11 +413,11 @@ func (portal *Portal) Sync(backfill bool) {
 	}
 
 	if backfill && portal.bridge.Config.Bridge.Backfill.Enable {
-		portal.log.Debugln("Locking backfill (sync)")
+		// portal.log.Debugln("Locking backfill (sync)")
 		portal.lockBackfill()
-		portal.log.Debugln("Starting sync backfill")
+		// portal.log.Debugln("Starting sync backfill")
 		portal.forwardBackfill()
-		portal.log.Debugln("Unlocking backfill (sync)")
+		// portal.log.Debugln("Unlocking backfill (sync)")
 		portal.unlockBackfill()
 	}
 }
@@ -488,7 +488,7 @@ func (portal *Portal) HandleiMessageReadReceipt(rr *imessage.ReadReceipt) {
 }
 
 func (portal *Portal) handleMessageLoop() {
-	portal.log.Debugln("Starting message processing loop")
+	// portal.log.Debugln("Starting message processing loop")
 	for {
 		var start time.Time
 		var thing string
@@ -504,9 +504,9 @@ func (portal *Portal) handleMessageLoop() {
 		case <-portal.backfillStart:
 			thing = "backfill lock"
 			start = time.Now()
-			portal.log.Debugln("Backfill lock enabled, stopping new message processing")
+			// portal.log.Debugln("Backfill lock enabled, stopping new message processing")
 			portal.backfillWait.Wait()
-			portal.log.Debugln("Continuing new message processing")
+			// portal.log.Debugln("Continuing new message processing")
 		case evt := <-portal.MatrixMessages:
 			start = time.Now()
 			switch evt.Type {
