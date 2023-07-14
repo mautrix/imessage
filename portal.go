@@ -578,6 +578,10 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 		} else if len(msgStatus.StatusCode) != 0 {
 			errString = msgStatus.StatusCode
 		}
+		if portal.bridge.isWarmingUp() {
+			errString = "warmingUp: " + errString
+			humanReadableError = "The bridge is still warming up - please wait"
+		}
 		portal.sendErrorMessage(evt, errors.New(errString), humanReadableError, true, status.MsgStatusPermFailure, msgStatus.ChatGUID)
 	default:
 		portal.log.Warnfln("Unrecognized message status type %s", msgStatus.Status)

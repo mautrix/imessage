@@ -88,6 +88,9 @@ type IMBridge struct {
 	wasConnected         bool
 	hackyTestLoopStarted bool
 
+	firstConnectTime time.Time
+	noPhoneNumbers   bool
+
 	pendingHackyTestGUID     string
 	pendingHackyTestRandomID string
 	hackyTestSuccess         bool
@@ -338,6 +341,25 @@ func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
 	if br.IM.Capabilities().BridgeState {
 		br.latestState = &state
 	}
+	activeNumberCountVal, ok := state.Info["active_phone_number_count"]
+	if ok {
+		br.noPhoneNumbers = int(activeNumberCountVal.(float64)) == 0
+	}
+	wasConnected := br.wasConnected
+	if state.StateEvent == BridgeStatusConnected && !wasConnected && br.firstConnectTime.IsZero() {
+		br.wasConnected = true
+		br.firstConnectTime = time.Now().UTC()
+		br.DB.KV.Set(database.KVBridgeFirstConnect, br.firstConnectTime.Format(time.RFC3339))
+	}
+	if !br.firstConnectTime.IsZero() {
+		if state.Info == nil {
+			state.Info = make(map[string]any)
+		}
+		state.Info["first_connected_time"] = br.firstConnectTime.Format(time.RFC3339)
+		if br.Config.IMessage.Platform == "mac-nosip" {
+			state.Info["warming_up"] = br.isWarmingUp()
+		}
+	}
 	err := br.AS.SendWebsocket(&appservice.WebsocketRequest{
 		Command: "bridge_status",
 		Data:    &state,
@@ -346,8 +368,7 @@ func (br *IMBridge) SendBridgeStatus(state imessage.BridgeStatus) {
 		br.Log.Warnln("Error sending bridge status:", err)
 	}
 	if br.Config.HackyStartupTest.Identifier != "" && state.StateEvent == BridgeStatusConnected && !br.Config.HackyStartupTest.EchoMode {
-		if !br.wasConnected {
-			br.wasConnected = true
+		if !wasConnected {
 			go br.hackyStartupTests(true, false)
 		}
 		if !br.hackyTestLoopStarted && br.Config.HackyStartupTest.PeriodicResolve > 0 {
@@ -433,6 +454,12 @@ func (br *IMBridge) connectToiMessage(wg *sync.WaitGroup) {
 	}
 }
 
+const warmupPeriod = 2 * 24 * time.Hour
+
+func (br *IMBridge) isWarmingUp() bool {
+	return br.Config.IMessage.Platform == "mac-nosip" && br.noPhoneNumbers && !br.firstConnectTime.IsZero() && time.Since(br.firstConnectTime) < warmupPeriod
+}
+
 func (br *IMBridge) Start() {
 	if br.Config.Bridge.MessageStatusEvents {
 		sendStatusStart := br.DB.KV.Get(database.KVSendStatusStart)
@@ -446,6 +473,13 @@ func (br *IMBridge) Start() {
 		}
 	}
 	br.wasConnected = br.DB.KV.Get(database.KVBridgeWasConnected) == "true"
+	if firstConnectTime := br.DB.KV.Get(database.KVBridgeFirstConnect); firstConnectTime != "" {
+		var err error
+		br.firstConnectTime, err = time.Parse(time.RFC3339, firstConnectTime)
+		if err != nil {
+			br.ZLog.Warn().Err(err).Msg("Failed to parse first connect time from database")
+		}
+	}
 
 	needsPortalFinding := br.Config.Bridge.FindPortalsIfEmpty && br.DB.Portal.Count() == 0 &&
 		br.DB.KV.Get(database.KVLookedForPortals) != "true"
