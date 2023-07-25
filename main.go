@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,12 +40,12 @@ import (
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/configupgrade"
 
 	"go.mau.fi/mautrix-imessage/config"
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
+	"go.mau.fi/mautrix-imessage/imessage/mac"
 	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 	"go.mau.fi/mautrix-imessage/ipc"
 )
@@ -650,34 +651,44 @@ func (br *IMBridge) HandleFlags() bool {
 }
 
 func main() {
-	br := &IMBridge{
-		portalsByMXID: make(map[id.RoomID]*Portal),
-		portalsByGUID: make(map[string]*Portal),
-		puppets:       make(map[string]*Puppet),
-		userCache:     make(map[id.UserID]*User),
+	inputStr := os.Args[1]
+	byteArray, err := hex.DecodeString(inputStr)
+	if err != nil {
+		return
 	}
-	br.Bridge = bridge.Bridge{
-		Name: "mautrix-imessage",
 
-		URL:          "https://github.com/mautrix/imessage",
-		Description:  "A Matrix-iMessage puppeting bridge.",
-		Version:      "0.1.0",
-		ProtocolName: "iMessage",
+	decoded, err := mac.MeowDecodeAttributedString(byteArray)
+	fmt.Printf("%+v\n", decoded)
+	return
 
-		AdditionalShortFlags: "po",
-		AdditionalLongFlags:  " [-u <url>]",
+	// br := &IMBridge{
+	// 	portalsByMXID: make(map[id.RoomID]*Portal),
+	// 	portalsByGUID: make(map[string]*Portal),
+	// 	puppets:       make(map[string]*Puppet),
+	// 	userCache:     make(map[id.UserID]*User),
+	// }
+	// br.Bridge = bridge.Bridge{
+	// 	Name: "mautrix-imessage",
 
-		CryptoPickleKey: "go.mau.fi/mautrix-imessage",
+	// 	URL:          "https://github.com/mautrix/imessage",
+	// 	Description:  "A Matrix-iMessage puppeting bridge.",
+	// 	Version:      "0.1.0",
+	// 	ProtocolName: "iMessage",
 
-		ConfigUpgrader: &configupgrade.StructUpgrader{
-			SimpleUpgrader: configupgrade.SimpleUpgrader(config.DoUpgrade),
-			Blocks:         config.SpacedBlocks,
-			Base:           ExampleConfig,
-		},
+	// 	AdditionalShortFlags: "po",
+	// 	AdditionalLongFlags:  " [-u <url>]",
 
-		Child: br,
-	}
-	br.InitVersion(Tag, Commit, BuildTime)
+	// 	CryptoPickleKey: "go.mau.fi/mautrix-imessage",
 
-	br.Main()
+	// 	ConfigUpgrader: &configupgrade.StructUpgrader{
+	// 		SimpleUpgrader: configupgrade.SimpleUpgrader(config.DoUpgrade),
+	// 		Blocks:         config.SpacedBlocks,
+	// 		Base:           ExampleConfig,
+	// 	},
+
+	// 	Child: br,
+	// }
+	// br.InitVersion(Tag, Commit, BuildTime)
+
+	// br.Main()
 }

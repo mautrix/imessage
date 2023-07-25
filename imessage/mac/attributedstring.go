@@ -73,6 +73,10 @@ func (as *AttributedString) SortAttachments(log maulogger.Logger, attachments []
 	return output
 }
 
+func MeowDecodeAttributedString(data []byte) (*AttributedString, error) {
+	return meowDecodeAttributedString(data)
+}
+
 func meowDecodeAttributedString(data []byte) (*AttributedString, error) {
 	runtime.LockOSThread()
 	pool := C.meowMakePool()
