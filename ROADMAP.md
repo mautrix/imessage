@@ -12,6 +12,9 @@
 | Reactions            | 🛑    | ?   | ✔️             |
 | Read receipts        | 🛑    | ?   | ✔️             |
 | Typing notifications | 🛑    | ?   | ✔️             |
+| Delete messages      | ❌    | ❌  | ❌             |
+| Edit messages        | ❌    | ❌  | ❌             |
+
 
 ## iMessage → Matrix
 | Feature              | macOS | iOS | macOS (no SIP) |
@@ -26,6 +29,8 @@
 | User metadata        | ✔️    | ✔️  | ✔️             |
 | Group metadata       | ✔️    | ✔️  | ✔️             |
 | Backfilling history  | ✔️    | ✔️  | ✔️             |
+| Delete messages      | ❌    | ❌  | ❌             |
+| Edit messages        | ❌    | ❌  | ❌             |
 
 ## Android SMS
 #### Supported
