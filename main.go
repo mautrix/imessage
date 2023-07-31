@@ -465,6 +465,17 @@ func (br *IMBridge) isWarmingUp() bool {
 }
 
 func (br *IMBridge) Start() {
+	br.Log.Debugln("Finding bridge user")
+	br.user = br.loadDBUser()
+	br.user.initDoublePuppet()
+
+	// If this bridge is in OnlyBackfill mode, then only run the backfill
+	// queue, and not the new message listeners.
+	if br.Config.Bridge.Backfill.OnlyBackfill {
+		br.user.runOnlyBackfillMode()
+		return
+	}
+
 	if br.Config.Bridge.MessageStatusEvents {
 		sendStatusStart := br.DB.KV.Get(database.KVSendStatusStart)
 		if len(sendStatusStart) > 0 {
@@ -488,9 +499,6 @@ func (br *IMBridge) Start() {
 	needsPortalFinding := br.Config.Bridge.FindPortalsIfEmpty && br.DB.Portal.Count() == 0 &&
 		br.DB.KV.Get(database.KVLookedForPortals) != "true"
 
-	br.Log.Debugln("Finding bridge user")
-	br.user = br.loadDBUser()
-	br.user.initDoublePuppet()
 	var startupGroup sync.WaitGroup
 	startupGroup.Add(1)
 	br.Log.Debugln("Connecting to iMessage")
@@ -633,7 +641,10 @@ func (br *IMBridge) ipcStop(_ json.RawMessage) interface{} {
 }
 
 func (br *IMBridge) Stop() {
-	br.Log.Debugln("Stopping iMessage connector")
+	br.ZLog.Debug().Msg("Stopping iMessage connector")
+	if br.Config.Bridge.Backfill.OnlyBackfill {
+		return
+	}
 	br.IM.Stop()
 	br.IMHandler.Stop()
 }

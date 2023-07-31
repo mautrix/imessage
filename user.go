@@ -47,6 +47,10 @@ type User struct {
 	mgmtCreateLock sync.Mutex
 
 	spaceMembershipChecked bool
+
+	BackfillQueue  *BackfillQueue
+	backfillStatus BackfillStatus
+	backfillError  error
 }
 
 var _ bridge.User = (*User)(nil)

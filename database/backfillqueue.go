@@ -127,23 +127,6 @@ func (bq *BackfillQuery) Count(ctx context.Context, userID id.UserID) (count int
 	return
 }
 
-func (bq *BackfillQuery) HasUnstartedOrInFlight(userID id.UserID) bool {
-	bq.backfillQueryLock.Lock()
-	defer bq.backfillQueryLock.Unlock()
-
-	rows, err := bq.db.Query(getUnstartedOrInFlightQuery, userID)
-	if err != nil || rows == nil {
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			bq.log.Warnfln("Failed to query backfill queue jobs: %v", err)
-		}
-		// No rows means that there are no unstarted or in flight backfill
-		// requests.
-		return false
-	}
-	defer rows.Close()
-	return rows.Next()
-}
-
 func (bq *BackfillQuery) DeleteAll(userID id.UserID) {
 	bq.backfillQueryLock.Lock()
 	defer bq.backfillQueryLock.Unlock()

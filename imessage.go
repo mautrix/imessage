@@ -291,7 +291,7 @@ func (imh *iMessageHandler) HandleBackfillTask(task *imessage.BackfillTask) {
 		return
 	}
 	portal.log.Debugfln("Running backfill %s in background", task.BackfillID)
-	go portal.sendBackfill(task.BackfillID, task.Messages, false)
+	go portal.sendBackfill(task.BackfillID, task.Messages, false, false, false)
 }
 
 func (imh *iMessageHandler) HandleContact(contact *imessage.Contact) {

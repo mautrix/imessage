@@ -243,13 +243,14 @@ type Portal struct {
 
 	SecondaryGUIDs []string
 
-	Messages         chan *imessage.Message
-	ReadReceipts     chan *imessage.ReadReceipt
-	MessageStatuses  chan *imessage.SendMessageStatus
-	MatrixMessages   chan *event.Event
-	backfillStart    chan struct{}
-	backfillWait     sync.WaitGroup
-	backfillLock     sync.Mutex
+	Messages        chan *imessage.Message
+	ReadReceipts    chan *imessage.ReadReceipt
+	MessageStatuses chan *imessage.SendMessageStatus
+	MatrixMessages  chan *event.Event
+	backfillStart   chan struct{}
+	backfillWait    sync.WaitGroup
+	backfillLock    sync.Mutex
+
 	roomCreateLock   sync.Mutex
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex

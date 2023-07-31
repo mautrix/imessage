@@ -17,12 +17,14 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"runtime/debug"
 	"time"
 
+	"golang.org/x/exp/slices"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
@@ -34,7 +36,28 @@ import (
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
-var PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
+var (
+	PortalCreationDummyEvent = event.Type{Type: "fi.mau.dummy.portal_created", Class: event.MessageEventType}
+	BackfillStatusEvent      = event.Type{Type: "com.beeper.backfill_status", Class: event.StateEventType}
+)
+
+func (user *User) handleHistorySyncsLoop(ctx context.Context) {
+	if !user.bridge.Config.Bridge.Backfill.OnlyBackfill || !user.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending) {
+		user.log.Infofln("Not backfilling history since OnlyBackfill is disabled")
+		return
+	}
+
+	// Start the backfill queue.
+	user.BackfillQueue = &BackfillQueue{
+		BackfillQuery:  user.bridge.DB.Backfill,
+		reCheckChannel: make(chan bool),
+		log:            user.log.Sub("BackfillQueue"),
+	}
+
+	// Handle all backfills in the same loop. Since new chats will not need to
+	// be handled by this loop, priority is all that is needed.
+	go user.HandleBackfillRequestsLoop(ctx)
+}
 
 func (portal *Portal) lockBackfill() {
 	portal.backfillLock.Lock()
@@ -96,7 +119,7 @@ func (portal *Portal) forwardBackfill() {
 	} else if len(messages) == 0 || allSkipped {
 		portal.log.Debugln("Nothing to backfill")
 	} else {
-		portal.sendBackfill(backfillID, messages, true)
+		portal.sendBackfill(backfillID, messages, true, false, false)
 	}
 }
 
@@ -175,7 +198,7 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 	return events, metas, metaIndexes, isRead, nil
 }
 
-func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Message, forward bool) (success bool) {
+func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Message, forward, forwardIfNoMessages, markAsRead bool) (success bool) {
 	idMap := make(map[string][]id.EventID, len(messages))
 	for _, msg := range messages {
 		idMap[msg.GUID] = []id.EventID{}
@@ -189,8 +212,8 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, success, idMap)
 	}()
 	batchSending := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
-	if !batchSending && !forward {
-		portal.log.Debugfln("Dropping non-forward backfill %s as Beeper batch sending is not supported", backfillID)
+	if !batchSending {
+		portal.log.Debugfln("Dropping backfill %s as Beeper batch sending is not supported", backfillID)
 		return true
 	}
 	events, metas, metaIndexes, isRead, err := portal.convertBackfill(messages)
@@ -205,10 +228,11 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	var eventIDs []id.EventID
 	if batchSending {
 		req := &mautrix.ReqBeeperBatchSend{
-			Events:  events,
-			Forward: forward,
+			Events:              events,
+			Forward:             forward,
+			ForwardIfNoMessages: forwardIfNoMessages,
 		}
-		if isRead {
+		if isRead || markAsRead {
 			req.MarkReadBy = portal.bridge.user.MXID
 		}
 		resp, err := portal.MainIntent().BeeperBatchSend(portal.MXID, req)
@@ -235,7 +259,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 			}
 			eventIDs[i] = resp.EventID
 		}
-		if isRead && portal.bridge.user.DoublePuppetIntent != nil {
+		if (isRead || markAsRead) && portal.bridge.user.DoublePuppetIntent != nil {
 			lastReadEvent := eventIDs[len(eventIDs)-1]
 			err := portal.markRead(portal.bridge.user.DoublePuppetIntent, lastReadEvent, time.Time{})
 			if err != nil {
@@ -289,5 +313,122 @@ func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.Event
 			dbMessage.MXID = eventIDs[i]
 			dbMessage.Insert(txn)
 		}
+	}
+}
+
+func (user *User) backfillInChunks(req *database.Backfill, portal *Portal) {
+	if len(portal.MXID) == 0 {
+		user.log.Errorfln("Portal %s has no room ID, but backfill was requested", portal.GUID)
+		return
+	}
+	portal.Sync(false)
+
+	backfillState := user.bridge.DB.Backfill.GetBackfillState(user.MXID, portal.GUID)
+	if backfillState == nil {
+		backfillState = user.bridge.DB.Backfill.NewBackfillState(user.MXID, portal.GUID)
+	}
+	backfillState.SetProcessingBatch(true)
+	defer backfillState.SetProcessingBatch(false)
+	portal.updateBackfillStatus(backfillState)
+
+	var timeStart = imessage.AppleEpoch
+	if req.TimeStart != nil {
+		timeStart = *req.TimeStart
+		user.log.Debugfln("Limiting backfill to start at %v", timeStart)
+	}
+
+	var timeEnd time.Time
+	var forwardIfNoMessages, shouldMarkAsRead bool
+	if req.TimeEnd != nil {
+		timeEnd = *req.TimeEnd
+		user.log.Debugfln("Limiting backfill to end at %v", req.TimeEnd)
+		forwardIfNoMessages = true
+	} else {
+		firstMessage := portal.bridge.DB.Message.GetFirstInChat(portal.GUID)
+		if firstMessage != nil {
+			timeEnd = firstMessage.Time().Add(-1 * time.Millisecond)
+			user.log.Debugfln("Limiting backfill to end at %v", timeEnd)
+		} else {
+			// Portal is empty, but no TimeEnd was set.
+			user.log.Errorln("Portal %s is empty, but no TimeEnd was set", portal.MXID)
+			return
+		}
+	}
+
+	backfillID := fmt.Sprintf("bridge-chunk-%s::%s-%s::%d", portal.GUID, timeStart, timeEnd, time.Now().UnixMilli())
+
+	// If the message was before the unread hours threshold, mark it as
+	// read.
+	lastMessages, err := user.bridge.IM.GetMessagesWithLimit(portal.GUID, 1, backfillID)
+	if err != nil {
+		user.log.Errorfln("Failed to get last message from database")
+		return
+	} else if len(lastMessages) == 1 {
+		shouldMarkAsRead = user.bridge.Config.Bridge.Backfill.UnreadHoursThreshold > 0 &&
+			lastMessages[0].Time.Before(time.Now().Add(time.Duration(-user.bridge.Config.Bridge.Backfill.UnreadHoursThreshold)*time.Hour))
+	}
+
+	var allMsgs []*imessage.Message
+	if req.MaxTotalEvents >= 0 {
+		allMsgs, err = user.bridge.IM.GetMessagesBeforeWithLimit(portal.GUID, timeEnd, req.MaxTotalEvents)
+	} else {
+		allMsgs, err = user.bridge.IM.GetMessagesBetween(portal.GUID, timeStart, timeEnd)
+	}
+	if err != nil {
+		user.log.Errorfln("Failed to get messages between %v and %v: %v", req.TimeStart, timeEnd, err)
+		return
+	}
+
+	if len(allMsgs) == 0 {
+		user.log.Debugfln("Not backfilling %s (%v - %v): no bridgeable messages found", portal.GUID, timeStart, timeEnd)
+		return
+	}
+
+	user.log.Infofln("Backfilling %d messages in %s, %d messages at a time (queue ID: %d)", len(allMsgs), portal.GUID, req.MaxBatchEvents, req.QueueID)
+	toBackfill := allMsgs[0:]
+	for len(toBackfill) > 0 {
+		var msgs []*imessage.Message
+		if len(toBackfill) <= req.MaxBatchEvents || req.MaxBatchEvents < 0 {
+			msgs = toBackfill
+			toBackfill = nil
+		} else {
+			msgs = toBackfill[:req.MaxBatchEvents]
+			toBackfill = toBackfill[req.MaxBatchEvents:]
+		}
+
+		if len(msgs) > 0 {
+			time.Sleep(time.Duration(req.BatchDelay) * time.Second)
+			user.log.Debugfln("Backfilling %d messages in %s (queue ID: %d)", len(msgs), portal.GUID, req.QueueID)
+
+			// The sendBackfill function wants the messages in order, but the
+			// queries give it in reversed order.
+			slices.Reverse(msgs)
+			portal.sendBackfill(backfillID, msgs, false, forwardIfNoMessages, shouldMarkAsRead)
+		}
+	}
+	user.log.Debugfln("Finished backfilling %d messages in %s (queue ID: %d)", len(allMsgs), portal.GUID, req.QueueID)
+
+	if req.TimeStart == nil && req.TimeEnd == nil {
+		// If both the start time and end time are nil, then this is the max
+		// history backfill, so there is no more history to backfill.
+		backfillState.BackfillComplete = true
+		backfillState.FirstExpectedTimestamp = uint64(allMsgs[len(allMsgs)-1].Time.UnixMilli())
+		backfillState.Upsert()
+		portal.updateBackfillStatus(backfillState)
+	}
+}
+
+func (portal *Portal) updateBackfillStatus(backfillState *database.BackfillState) {
+	backfillStatus := "backfilling"
+	if backfillState.BackfillComplete {
+		backfillStatus = "complete"
+	}
+
+	_, err := portal.bridge.Bot.SendStateEvent(portal.MXID, BackfillStatusEvent, "", map[string]any{
+		"status":          backfillStatus,
+		"first_timestamp": backfillState.FirstExpectedTimestamp * 1000,
+	})
+	if err != nil {
+		portal.log.Errorln("Error sending backfill status event:", err)
 	}
 }
