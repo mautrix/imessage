@@ -394,6 +394,14 @@ func (ios *iOSConnector) GetMessagesSinceDate(chatID string, minDate time.Time, 
 	return resp, err
 }
 
+func (ios *iOSConnector) GetMessagesBetween(chatID string, minDate, maxDate time.Time) ([]*imessage.Message, error) {
+	panic("not implemented")
+}
+
+func (ios *iOSConnector) GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) ([]*imessage.Message, error) {
+	panic("not implemented")
+}
+
 func (ios *iOSConnector) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
 	resp := make([]*imessage.Message, 0)
 	err := ios.IPC.Request(context.Background(), ReqGetRecentMessages, &GetRecentMessagesRequest{

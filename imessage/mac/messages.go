@@ -63,9 +63,20 @@ var singleMessageQuery = baseMessagesQuery + `
 WHERE message.guid = $1
 `
 
-var messagesQuery = baseMessagesQuery + `
+var messagesAfterQuery = baseMessagesQuery + `
 WHERE (chat.guid=$1 OR $1='') AND message.date>$2
 ORDER BY message.date ASC
+`
+
+var messagesBetweenQuery = baseMessagesQuery + `
+WHERE (chat.guid=$1 OR $1='') AND message.date>$2 AND message.date<$3
+ORDER BY message.date DESC
+`
+
+var messagesBeforeWithLimitQuery = baseMessagesQuery + `
+WHERE (chat.guid=$1 OR $1='') AND message.date<$2
+ORDER BY message.date DESC
+LIMIT $3
 `
 
 var limitedMessagesQuery = baseMessagesQuery + `
@@ -147,24 +158,35 @@ func (mac *macOSDatabase) prepareMessages() error {
 		return err
 	}
 	if !columnExists(mac.chatDB, "message", "thread_originator_guid") {
-		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
+		messagesAfterQuery = strings.ReplaceAll(messagesAfterQuery, "COALESCE(message.thread_originator_guid, '')", "''")
+		messagesBetweenQuery = strings.ReplaceAll(messagesBetweenQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 		singleMessageQuery = strings.ReplaceAll(singleMessageQuery, "COALESCE(message.thread_originator_guid, '')", "''")
 	}
 	if !columnExists(mac.chatDB, "message", "thread_originator_part") {
-		messagesQuery = strings.ReplaceAll(messagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
+		messagesAfterQuery = strings.ReplaceAll(messagesAfterQuery, "COALESCE(message.thread_originator_part, '')", "''")
+		messagesBetweenQuery = strings.ReplaceAll(messagesBetweenQuery, "COALESCE(message.thread_originator_part, '')", "''")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "COALESCE(message.thread_originator_part, '')", "''")
 		singleMessageQuery = strings.ReplaceAll(singleMessageQuery, "COALESCE(message.thread_originator_part, '')", "''")
 	}
 	if !columnExists(mac.chatDB, "message", "group_action_type") {
-		messagesQuery = strings.ReplaceAll(messagesQuery, "message.group_action_type", "0")
+		messagesAfterQuery = strings.ReplaceAll(messagesAfterQuery, "message.group_action_type", "0")
+		messagesBetweenQuery = strings.ReplaceAll(messagesBetweenQuery, "message.group_action_type", "0")
 		limitedMessagesQuery = strings.ReplaceAll(limitedMessagesQuery, "message.group_action_type", "0")
 		newMessagesQuery = strings.ReplaceAll(newMessagesQuery, "message.group_action_type", "0")
 		singleMessageQuery = strings.ReplaceAll(singleMessageQuery, "message.group_action_type", "0")
 	}
-	mac.messagesQuery, err = mac.chatDB.Prepare(messagesQuery)
+	mac.messagesAfterQuery, err = mac.chatDB.Prepare(messagesAfterQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare message query: %w", err)
+	}
+	mac.messagesBetweenQuery, err = mac.chatDB.Prepare(messagesBetweenQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare message query: %w", err)
+	}
+	mac.messagesBeforeWithLimitQuery, err = mac.chatDB.Prepare(messagesBeforeWithLimitQuery)
 	if err != nil {
 		return fmt.Errorf("failed to prepare message query: %w", err)
 	}
@@ -319,9 +341,27 @@ func (mac *macOSDatabase) GetMessagesWithLimit(chatID string, limit int, backfil
 }
 
 func (mac *macOSDatabase) GetMessagesSinceDate(chatID string, minDate time.Time, _ string) ([]*imessage.Message, error) {
-	res, err := mac.messagesQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
+	res, err := mac.messagesAfterQuery.Query(chatID, minDate.UnixNano()-imessage.AppleEpoch.UnixNano())
 	if err != nil {
 		return nil, fmt.Errorf("error querying messages after date: %w", err)
+	}
+	return mac.scanMessages(res)
+}
+
+func (mac *macOSDatabase) GetMessagesBetween(chatID string, minDate time.Time, maxDate time.Time) ([]*imessage.Message, error) {
+	res, err := mac.messagesBetweenQuery.Query(chatID,
+		minDate.UnixNano()-imessage.AppleEpoch.UnixNano(),
+		maxDate.UnixNano()-imessage.AppleEpoch.UnixNano())
+	if err != nil {
+		return nil, fmt.Errorf("error querying messages between dates: %w", err)
+	}
+	return mac.scanMessages(res)
+}
+
+func (mac *macOSDatabase) GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) ([]*imessage.Message, error) {
+	res, err := mac.messagesBeforeWithLimitQuery.Query(chatID, before.UnixNano()-imessage.AppleEpoch.UnixNano(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("error querying messages before date with limit: %w", err)
 	}
 	return mac.scanMessages(res)
 }

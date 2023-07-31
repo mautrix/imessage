@@ -48,6 +48,8 @@ type API interface {
 	Start(readyCallback func()) error
 	Stop()
 	GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*Message, error)
+	GetMessagesBetween(chatID string, minDate, maxDate time.Time) ([]*Message, error)
+	GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) ([]*Message, error)
 	GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*Message, error)
 	GetChatsWithMessagesAfter(minDate time.Time) ([]ChatIdentifier, error)
 	GetMessage(guid string) (*Message, error)

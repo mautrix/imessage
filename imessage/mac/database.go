@@ -33,24 +33,26 @@ type macOSDatabase struct {
 	log    log.Logger
 	bridge imessage.Bridge
 
-	chatDBPath           string
-	chatDB               *sql.DB
-	messagesQuery        *sql.Stmt
-	singleMessageQuery   *sql.Stmt
-	limitedMessagesQuery *sql.Stmt
-	newMessagesQuery     *sql.Stmt
-	newReceiptsQuery     *sql.Stmt
-	attachmentsQuery     *sql.Stmt
-	chatQuery            *sql.Stmt
-	chatGUIDQuery        *sql.Stmt
-	groupActionQuery     *sql.Stmt
-	recentChatsQuery     *sql.Stmt
-	groupMemberQuery     *sql.Stmt
-	Messages             chan *imessage.Message
-	ReadReceipts         chan *imessage.ReadReceipt
-	stopWakeupDetecting  chan struct{}
-	stopWatching         chan struct{}
-	stopWait             sync.WaitGroup
+	chatDBPath                   string
+	chatDB                       *sql.DB
+	messagesAfterQuery           *sql.Stmt
+	messagesBetweenQuery         *sql.Stmt
+	messagesBeforeWithLimitQuery *sql.Stmt
+	singleMessageQuery           *sql.Stmt
+	limitedMessagesQuery         *sql.Stmt
+	newMessagesQuery             *sql.Stmt
+	newReceiptsQuery             *sql.Stmt
+	attachmentsQuery             *sql.Stmt
+	chatQuery                    *sql.Stmt
+	chatGUIDQuery                *sql.Stmt
+	groupActionQuery             *sql.Stmt
+	recentChatsQuery             *sql.Stmt
+	groupMemberQuery             *sql.Stmt
+	Messages                     chan *imessage.Message
+	ReadReceipts                 chan *imessage.ReadReceipt
+	stopWakeupDetecting          chan struct{}
+	stopWatching                 chan struct{}
+	stopWait                     sync.WaitGroup
 
 	*ContactStore
 }
