@@ -35,6 +35,7 @@ type Database struct {
 	Tapback    *TapbackQuery
 	KV         *KeyValueQuery
 	MergedChat *MergedChatQuery
+	Backfill   *BackfillQuery
 }
 
 func New(parent *dbutil.Database, log maulogger.Logger) *Database {
@@ -70,6 +71,10 @@ func New(parent *dbutil.Database, log maulogger.Logger) *Database {
 	db.MergedChat = &MergedChatQuery{
 		db:  db,
 		log: log.Sub("MergedChat"),
+	}
+	db.Backfill = &BackfillQuery{
+		db:  db,
+		log: log.Sub("Backfill"),
 	}
 	return db
 }

@@ -1,4 +1,4 @@
--- v0 -> v20 (compatible with v18+): Latest schema
+-- v0 -> v21 (compatible with v18+): Latest schema
 
 CREATE TABLE portal (
 	guid              TEXT    PRIMARY KEY,
@@ -76,3 +76,34 @@ END;
 CREATE TRIGGER on_merge_delete_portal AFTER INSERT ON merged_chat WHEN NEW.source_guid<>NEW.target_guid BEGIN
 	DELETE FROM portal WHERE guid=NEW.source_guid;
 END;
+
+CREATE TABLE backfill_queue (
+    queue_id INTEGER PRIMARY KEY
+        -- only: postgres
+        GENERATED ALWAYS AS IDENTITY
+        ,
+    user_mxid        TEXT,
+    priority         INTEGER NOT NULL,
+    portal_guid      TEXT,
+    time_start       TIMESTAMP,
+    time_end         TIMESTAMP,
+    dispatch_time    TIMESTAMP,
+    completed_at     TIMESTAMP,
+    batch_delay      INTEGER,
+    max_batch_events INTEGER NOT NULL,
+    max_total_events INTEGER,
+
+    FOREIGN KEY (user_mxid) REFERENCES "user" (mxid) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (portal_guid) REFERENCES portal (guid) ON DELETE CASCADE
+);
+
+CREATE TABLE backfill_state (
+    user_mxid         TEXT,
+    portal_guid       TEXT,
+    processing_batch  BOOLEAN,
+    backfill_complete BOOLEAN,
+    first_expected_ts BIGINT,
+    PRIMARY KEY (user_mxid, portal_guid),
+    FOREIGN KEY (user_mxid) REFERENCES "user" (mxid) ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (portal_guid) REFERENCES portal (guid) ON DELETE CASCADE
+);

@@ -92,6 +92,16 @@ func (mq *MessageQuery) GetLastInChat(chat string) *Message {
 	return msg
 }
 
+func (mq *MessageQuery) GetFirstInChat(chat string) *Message {
+	msg := mq.get("SELECT portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp "+
+		"FROM message WHERE portal_guid=$1 ORDER BY timestamp ASC LIMIT 1", chat)
+	if msg == nil || msg.Timestamp == 0 {
+		// Old db, we don't know what the first message is.
+		return nil
+	}
+	return msg
+}
+
 func (mq *MessageQuery) GetEarliestTimestampInChat(chat string) (int64, error) {
 	row := mq.db.QueryRow("SELECT MIN(timestamp) FROM message WHERE portal_guid=$1", chat)
 	var timestamp int64
