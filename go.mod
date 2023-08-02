@@ -9,11 +9,11 @@ require (
 	github.com/rs/zerolog v1.29.1
 	github.com/strukturag/libheif v1.16.2
 	github.com/tidwall/gjson v1.14.4
-	golang.org/x/crypto v0.10.0
+	golang.org/x/crypto v0.11.0
 	golang.org/x/image v0.7.0
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.4-0.20230705130948-35b847445993
+	maunium.net/go/mautrix v0.15.5-0.20230729114956-ff77fa8ec663
 )
 
 require (
@@ -28,9 +28,9 @@ require (
 	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/yuin/goldmark v1.5.4 // indirect
 	go.mau.fi/zeroconfig v0.1.2 // indirect
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
-	golang.org/x/net v0.11.0 // indirect
-	golang.org/x/sys v0.9.0 // indirect
+	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1 // indirect
+	golang.org/x/net v0.12.0 // indirect
+	golang.org/x/sys v0.10.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
