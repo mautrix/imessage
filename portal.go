@@ -61,18 +61,22 @@ func (br *IMBridge) GetPortalByMXID(mxid id.RoomID) *Portal {
 }
 
 func (br *IMBridge) GetPortalByGUID(guid string) *Portal {
+	return br.GetPortalByGUIDWithTransaction(nil, guid)
+}
+
+func (br *IMBridge) GetPortalByGUIDWithTransaction(txn dbutil.Execable, guid string) *Portal {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
-	return br.maybeGetPortalByGUID(guid, true)
+	return br.maybeGetPortalByGUID(txn, guid, true)
 }
 
 func (br *IMBridge) GetPortalByGUIDIfExists(guid string) *Portal {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
-	return br.maybeGetPortalByGUID(guid, false)
+	return br.maybeGetPortalByGUID(nil, guid, false)
 }
 
-func (br *IMBridge) maybeGetPortalByGUID(guid string, createIfNotExist bool) *Portal {
+func (br *IMBridge) maybeGetPortalByGUID(txn dbutil.Execable, guid string, createIfNotExist bool) *Portal {
 	if br.Config.Bridge.DisableSMSPortals && strings.HasPrefix(guid, "SMS;-;") {
 		parsed := imessage.ParseIdentifier(guid)
 		if !parsed.IsGroup && parsed.Service == "SMS" {
@@ -86,7 +90,7 @@ func (br *IMBridge) maybeGetPortalByGUID(guid string, createIfNotExist bool) *Po
 	}
 	portal, ok := br.portalsByGUID[guid]
 	if !ok {
-		return br.loadDBPortal(nil, br.DB.Portal.GetByGUID(guid), fallbackGUID)
+		return br.loadDBPortal(txn, br.DB.Portal.GetByGUID(guid), fallbackGUID)
 	}
 	return portal
 }
@@ -98,7 +102,7 @@ func (br *IMBridge) GetMessagesSince(chatGUID string, since time.Time) (out []st
 func (br *IMBridge) ReIDPortal(oldGUID, newGUID string, mergeExisting bool) bool {
 	br.portalsLock.Lock()
 	defer br.portalsLock.Unlock()
-	portal := br.maybeGetPortalByGUID(oldGUID, false)
+	portal := br.maybeGetPortalByGUID(nil, oldGUID, false)
 	if portal == nil {
 		br.Log.Debugfln("Ignoring chat ID change %s->%s, no portal with old ID found", oldGUID, newGUID)
 		return false
@@ -114,7 +118,7 @@ func (portal *Portal) reIDInto(newGUID string, newPortal *Portal, lock, mergeExi
 		defer br.portalsLock.Unlock()
 	}
 	if newPortal == nil {
-		newPortal = br.maybeGetPortalByGUID(newGUID, false)
+		newPortal = br.maybeGetPortalByGUID(nil, newGUID, false)
 	}
 	if newPortal != nil {
 		if mergeExisting && portal.MXID != "" && newPortal.MXID != "" && br.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
