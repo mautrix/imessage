@@ -357,7 +357,7 @@ func (portal *Portal) SyncWithInfo(chatInfo *imessage.ChatInfo) {
 	portal.zlog.Debug().Interface("chat_info", chatInfo).Msg("Syncing with chat info")
 	update := false
 	if chatInfo.ThreadID != "" && chatInfo.ThreadID != portal.ThreadID {
-		portal.log.Infoln("Found portal thread ID in sync: %s (prev: %s)", chatInfo.ThreadID, portal.ThreadID)
+		portal.log.Infofln("Found portal thread ID in sync: %s (prev: %s)", chatInfo.ThreadID, portal.ThreadID)
 		portal.ThreadID = chatInfo.ThreadID
 		update = true
 	}
