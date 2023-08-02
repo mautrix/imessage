@@ -116,6 +116,7 @@ SELECT DISTINCT chat.guid, chat.group_id FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
 WHERE message.date>$1
+ORDER BY message.date DESC
 `
 
 const newReceiptsQuery = `
