@@ -211,7 +211,7 @@ func (br *IMBridge) Init() {
 		})
 		br.Bridge.BeeperNetworkName = "androidsms"
 		br.Bridge.BeeperServiceName = "androidsms"
-	} else if br.Config.IMessage.Platform == "mac-nosip" {
+	} else if br.Config.IMessage.Platform == "mac-nosip" || br.Config.Bridge.Backfill.OnlyBackfill {
 		br.Bridge.BeeperNetworkName = "imessage"
 		br.Bridge.BeeperServiceName = "imessagecloud"
 	} else {
