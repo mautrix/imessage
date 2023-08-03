@@ -390,6 +390,18 @@ func (portal *Portal) Sync(backfill bool) {
 	portal.ensureUserInvited(portal.bridge.user)
 	portal.addToSpace(portal.bridge.user)
 
+	pls, err := portal.MainIntent().PowerLevels(portal.MXID)
+	if err != nil {
+		portal.zlog.Warn().Err(err).Msg("Failed to get power levels")
+	} else if portal.updatePowerLevels(pls) {
+		resp, err := portal.MainIntent().SetPowerLevels(portal.MXID, pls)
+		if err != nil {
+			portal.zlog.Warn().Err(err).Msg("Failed to update power levels")
+		} else {
+			portal.zlog.Debug().Str("event_id", resp.EventID.String()).Msg("Updated power levels")
+		}
+	}
+
 	if !portal.IsPrivateChat() {
 		chatInfo, err := portal.bridge.IM.GetChatInfo(portal.GUID, portal.ThreadID)
 		if err != nil {
@@ -591,16 +603,17 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 	anyone := 0
 	nope := 99
-	invite := 50
 	return &event.PowerLevelsEventContent{
 		UsersDefault:    anyone,
 		EventsDefault:   anyone,
 		RedactPtr:       &anyone,
 		StateDefaultPtr: &nope,
 		BanPtr:          &nope,
-		InvitePtr:       &invite,
+		InvitePtr:       &nope,
+		KickPtr:         &nope,
 		Users: map[id.UserID]int{
 			portal.MainIntent().UserID: 100,
+			portal.bridge.Bot.UserID:   100,
 		},
 		Events: map[string]int{
 			event.StateRoomName.Type:   anyone,
@@ -608,6 +621,10 @@ func (portal *Portal) GetBasePowerLevels() *event.PowerLevelsEventContent {
 			event.StateTopic.Type:      anyone,
 		},
 	}
+}
+
+func (portal *Portal) updatePowerLevels(pl *event.PowerLevelsEventContent) bool {
+	return pl.EnsureUserLevel(portal.bridge.Bot.UserID, 100)
 }
 
 func (portal *Portal) getBridgeInfoStateKey() string {
