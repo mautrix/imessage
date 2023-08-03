@@ -219,6 +219,10 @@ func (br *IMBridge) Init() {
 		br.Bridge.BeeperServiceName = "imessage"
 	}
 
+	if br.Config.Bridge.Backfill.OnlyBackfill {
+		br.ProtocolName = "iMessage (Backfill)"
+	}
+
 	br.IMHandler = NewiMessageHandler(br)
 	br.WebsocketHandler = NewWebsocketCommandHandler(br)
 	br.wsOnConnectWait.Add(1)
