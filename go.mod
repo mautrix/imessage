@@ -13,7 +13,7 @@ require (
 	golang.org/x/image v0.7.0
 	maunium.net/go/mauflag v1.0.0
 	maunium.net/go/maulogger/v2 v2.4.1
-	maunium.net/go/mautrix v0.15.5-0.20230729114956-ff77fa8ec663
+	maunium.net/go/mautrix v0.15.5-0.20230803204106-2212b451f1ca
 )
 
 require (
