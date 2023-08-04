@@ -196,6 +196,7 @@ func (br *IMBridge) Init() {
 	br.IPC.SetHandler("merge-rooms", br.ipcMergeRooms)
 	br.IPC.SetHandler("split-rooms", br.ipcSplitRooms)
 	br.IPC.SetHandler("do-auto-merge", br.ipcDoAutoMerge)
+	br.IPC.SetHandler("backfill-status", br.ipcBackfillStatus)
 
 	br.Log.Debugln("Initializing iMessage connector")
 	var err error
@@ -318,6 +319,10 @@ func (br *IMBridge) ipcDoAutoMerge(_ json.RawMessage) any {
 	}
 	br.UpdateMerges(contacts)
 	return struct{}{}
+}
+
+func (br *IMBridge) ipcBackfillStatus(_ json.RawMessage) any {
+	return br.user.GetBackfillInfo()
 }
 
 type StartSyncRequest struct {
