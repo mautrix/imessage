@@ -475,8 +475,10 @@ func (br *IMBridge) Start() {
 	br.user.initDoublePuppet()
 
 	// If this bridge is in OnlyBackfill mode, then only run the backfill
-	// queue, and not the new message listeners.
+	// queue and the IPC listener, and not the new message listeners.
 	if br.Config.Bridge.Backfill.OnlyBackfill {
+		br.ZLog.Debug().Msg("Starting IPC loop")
+		go br.IPC.Loop()
 		br.user.runOnlyBackfillMode()
 		return
 	}
