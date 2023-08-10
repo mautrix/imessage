@@ -22,8 +22,8 @@ import (
 
 	log "maunium.net/go/maulogger/v2"
 
+	"go.mau.fi/util/dbutil"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )

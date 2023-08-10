@@ -3,7 +3,7 @@ package upgrades
 import (
 	"fmt"
 
-	"maunium.net/go/mautrix/util/dbutil"
+	"go.mau.fi/util/dbutil"
 )
 
 const createMessageTable2 = `CREATE TABLE message (

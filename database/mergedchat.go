@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mau.fi/util/dbutil"
 	log "maunium.net/go/maulogger/v2"
-	"maunium.net/go/mautrix/util/dbutil"
 )
 
 type MergedChatQuery struct {

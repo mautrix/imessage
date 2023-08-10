@@ -1,7 +1,7 @@
 package upgrades
 
 import (
-	"maunium.net/go/mautrix/util/dbutil"
+	"go.mau.fi/util/dbutil"
 )
 
 const createPortalTable2 = `CREATE TABLE portal (

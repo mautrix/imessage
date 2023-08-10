@@ -17,8 +17,8 @@
 package config
 
 import (
+	up "go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
-	up "maunium.net/go/mautrix/util/configupgrade"
 )
 
 func DoUpgrade(helper *up.Helper) {

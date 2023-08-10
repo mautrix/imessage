@@ -34,12 +34,12 @@ import (
 
 	"maunium.net/go/mautrix/event"
 
+	"go.mau.fi/util/configupgrade"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/commands"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/configupgrade"
 
 	"go.mau.fi/mautrix-imessage/config"
 	"go.mau.fi/mautrix-imessage/database"

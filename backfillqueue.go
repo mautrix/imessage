@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
+	"go.mau.fi/util/dbutil"
 	log "maunium.net/go/maulogger/v2"
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/id"
-	"maunium.net/go/mautrix/util/dbutil"
 
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -215,7 +215,7 @@ func (user *User) runOnlyBackfillMode() {
 		user.setBackfillDone(log)
 		return
 	} else {
-		err = user.bridge.Crypto.ShareOneTimeKeys(context.Background())
+		err = user.bridge.Crypto.ShareKeys(context.Background())
 		if err != nil {
 			user.setBackfillError(log, err, "Error sharing keys")
 		}
