@@ -217,7 +217,6 @@ func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		MessageStatuses: make(chan *imessage.SendMessageStatus, 100),
 		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
-		pendingMSSFails: make(map[id.EventID]context.CancelFunc),
 	}
 	portal.log = maulogadapt.ZeroAsMau(&portal.zlog)
 	if !br.IM.Capabilities().MessageSendResponses {
@@ -254,9 +253,6 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
-
-	pendingMSSFails     map[id.EventID]context.CancelFunc
-	pendingMSSFailsLock sync.RWMutex
 
 	userIsTyping bool
 	typingLock   sync.Mutex
@@ -575,12 +571,6 @@ func (portal *Portal) HandleiMessageSendMessageStatus(msgStatus *imessage.SendMe
 			Status:     status.MsgStatusDelivered,
 			ReportedBy: status.MsgReportedByBridge,
 		})
-		portal.pendingMSSFailsLock.Lock()
-		cancel, ok := portal.pendingMSSFails[eventID]
-		if ok {
-			cancel()
-		}
-		portal.pendingMSSFailsLock.Unlock()
 		if p := portal.GetDMPuppet(); p != nil {
 			go portal.sendSuccessMessageStatus(eventID, msgStatus.Service, msgStatus.ChatGUID, []id.UserID{p.MXID})
 		}
@@ -1155,37 +1145,6 @@ func (portal *Portal) sendSuccessMessageStatus(eventID id.EventID, service, hand
 	if !portal.Encrypted {
 		statusIntent = portal.MainIntent()
 	}
-
-	// Hack: don't send MSS success before the message is delivered, instead send a failure if the delivery doesn't happen in 5 minutes.
-	if mainContent.DeliveredToUsers != nil && len(*mainContent.DeliveredToUsers) == 0 {
-		ctx, cancel := context.WithCancel(context.Background())
-		portal.pendingMSSFailsLock.Lock()
-		portal.pendingMSSFails[eventID] = cancel
-		portal.pendingMSSFailsLock.Unlock()
-		go func() {
-			defer func() {
-				portal.pendingMSSFailsLock.Lock()
-				delete(portal.pendingMSSFails, eventID)
-				cancel()
-				portal.pendingMSSFailsLock.Unlock()
-			}()
-			select {
-			case <-time.After(5 * time.Minute):
-			case <-ctx.Done():
-				return
-			}
-			mainContent.Status = event.MessageStatusRetriable
-			mainContent.Reason = "com.beeper.imessage.delivery_timeout"
-			mainContent.Error = "delivery timeout"
-			mainContent.Message = "delivering message timed out"
-			_, err := statusIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, content)
-			if err != nil {
-				portal.log.Warnln("Failed to send message send status event:", err)
-			}
-		}()
-		return
-	}
-
 	_, err := statusIntent.SendMessageEvent(portal.MXID, event.BeeperMessageStatus, content)
 	if err != nil {
 		portal.log.Warnln("Failed to send message send status event:", err)
