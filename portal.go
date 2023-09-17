@@ -1366,13 +1366,19 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 		}
 	}
 
+	mimeType := mimetype.Detect(data).String()
+
+	// iMessage clients do not seem to understand a video is a video if the extension is missing.
+	if len(strings.Split(filename, ".")) == 1 && strings.HasPrefix(mimeType, "video/") {
+		filename = fmt.Sprintf("%s.%s", filename, mimeType[len("video/"):])
+	}
+	
 	var dir, filePath string
 	dir, filePath, err = imessage.SendFilePrepare(filename, data)
 	if err != nil {
 		portal.log.Errorfln("failed to prepare to send file: %w", err)
 		return
 	}
-	mimeType := mimetype.Detect(data).String()
 	isVoiceMemo := false
 	_, isMSC3245Voice := evt.Content.Raw["org.matrix.msc3245.voice"]
 
