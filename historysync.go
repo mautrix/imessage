@@ -212,10 +212,6 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, success, idMap)
 	}()
 	batchSending := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
-	if !batchSending {
-		portal.log.Debugfln("Dropping backfill %s as Beeper batch sending is not supported", backfillID)
-		return true
-	}
 	events, metas, metaIndexes, isRead, err := portal.convertBackfill(messages)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert messages for backfill: %v", err)
