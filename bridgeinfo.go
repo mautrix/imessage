@@ -17,34 +17,38 @@
 package main
 
 import (
-	"reflect"
-
-	"maunium.net/go/mautrix/event"
+    "reflect"
+    "maunium.net/go/mautrix/event"
 )
 
-const bridgeInfoProto = "fi.mau.imessage"
-const bridgeInfoHandle = "fi.mau.imessage.handle"
-const bridgeInfoService = "fi.mau.imessage.service"
+// Bridge information constants
+const (
+    bridgeInfoProto   = "fi.mau.imessage"
+    bridgeInfoHandle  = "fi.mau.imessage.handle"
+    bridgeInfoService = "fi.mau.imessage.service"
+)
 
+// CustomBridgeInfoSection defines custom fields for the bridge information section.
 type CustomBridgeInfoSection struct {
-	event.BridgeInfoSection
+    event.BridgeInfoSection
 
-	GUID    string `json:"fi.mau.imessage.guid,omitempty"`
-	Service string `json:"fi.mau.imessage.service,omitempty"`
-	IsGroup bool   `json:"fi.mau.imessage.is_group,omitempty"`
-
-	SendStatusStart int64  `json:"com.beeper.send_status_start,omitempty"`
-	TimeoutSeconds  int    `json:"com.beeper.timeout_seconds,omitempty"`
-	DeviceID        string `json:"com.beeper.device_id,omitempty"`
-	ThreadID        string `json:"com.beeper.thread_id,omitempty"`
+    GUID           string `json:"fi.mau.imessage.guid,omitempty"`
+    Service        string `json:"fi.mau.imessage.service,omitempty"`
+    IsGroup        bool   `json:"fi.mau.imessage.is_group,omitempty"`
+    SendStatusStart int64  `json:"com.beeper.send_status_start,omitempty"`
+    TimeoutSeconds  int    `json:"com.beeper.timeout_seconds,omitempty"`
+    DeviceID        string `json:"com.beeper.device_id,omitempty"`
+    ThreadID        string `json:"com.beeper.thread_id,omitempty"`
 }
 
+// CustomBridgeInfoContent represents the custom content structure for bridge events.
 type CustomBridgeInfoContent struct {
-	event.BridgeEventContent
-	Channel CustomBridgeInfoSection `json:"channel"`
+    event.BridgeEventContent
+    Channel CustomBridgeInfoSection `json:"channel"`
 }
 
 func init() {
-	event.TypeMap[event.StateBridge] = reflect.TypeOf(CustomBridgeInfoContent{})
-	event.TypeMap[event.StateHalfShotBridge] = reflect.TypeOf(CustomBridgeInfoContent{})
+    // Registering custom types for Matrix event handling
+    event.TypeMap[event.StateBridge] = reflect.TypeOf(CustomBridgeInfoContent{})
+    event.TypeMap[event.StateHalfShotBridge] = reflect.TypeOf(CustomBridgeInfoContent{})
 }
