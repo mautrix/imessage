@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/rs/zerolog"
 	log "maunium.net/go/maulogger/v2"
 
 	"maunium.net/go/mautrix/id"
@@ -117,6 +118,7 @@ type BridgeStatus struct {
 type Bridge interface {
 	GetIPC() *ipc.Processor
 	GetLog() log.Logger
+	GetZLog() zerolog.Logger
 	GetConnectorConfig() *PlatformConfig
 	PingServer() (start, serverTs, end time.Time)
 	SendBridgeStatus(state BridgeStatus)

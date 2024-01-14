@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	flag "maunium.net/go/mauflag"
 	"maunium.net/go/maulogger/v2"
 
@@ -239,6 +240,10 @@ func (br *IMBridge) GetIPC() *ipc.Processor {
 
 func (br *IMBridge) GetLog() maulogger.Logger {
 	return br.Log
+}
+
+func (br *IMBridge) GetZLog() zerolog.Logger {
+	return br.ZLog
 }
 
 func (br *IMBridge) GetConnectorConfig() *imessage.PlatformConfig {
