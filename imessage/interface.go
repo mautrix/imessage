@@ -142,6 +142,9 @@ type PlatformConfig struct {
 	PingInterval int64 `yaml:"ping_interval_seconds"`
 
 	DeleteMediaAfterUpload bool `yaml:"delete_media_after_upload"`
+
+	BlueBubblesURL      string `yaml:"bluebubbles_url"`
+	BlueBubblesPassword string `yaml:"bluebubbles_password"`
 }
 
 func (pc *PlatformConfig) BridgeName() string {
