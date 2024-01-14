@@ -242,7 +242,7 @@ func (br *IMBridge) GetLog() maulogger.Logger {
 	return br.Log
 }
 
-func (br *IMBridge) GetZLog() zerolog.Logger {
+func (br *IMBridge) GetZLog() *zerolog.Logger {
 	return br.ZLog
 }
 

@@ -118,7 +118,7 @@ type BridgeStatus struct {
 type Bridge interface {
 	GetIPC() *ipc.Processor
 	GetLog() log.Logger
-	GetZLog() zerolog.Logger
+	GetZLog() *zerolog.Logger
 	GetConnectorConfig() *PlatformConfig
 	PingServer() (start, serverTs, end time.Time)
 	SendBridgeStatus(state BridgeStatus)
