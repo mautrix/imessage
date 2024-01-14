@@ -43,11 +43,16 @@ func init() {
 }
 
 func (bb *blueBubbles) Start(readyCallback func()) error {
+	//TODO: setup the webhooks from BBs here
 	readyCallback()
 	return nil
 }
 
-func (bb *blueBubbles) Stop() {}
+func (bb *blueBubbles) Stop() {
+	//TODO: cleanup the webhooks from BBs here
+}
+
+// These functions should all be "get" -ting data FROM bluebubbles
 
 var ErrNotImplemented = errors.New("not implemented")
 
@@ -74,6 +79,24 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
 	return nil, ErrNotImplemented
 }
+
+func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, error) {
+	return nil, ErrNotImplemented
+}
+
+func (bb *blueBubbles) GetContactList() ([]*imessage.Contact, error) {
+	return nil, ErrNotImplemented
+}
+
+func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
+	return nil, ErrNotImplemented
+}
+
+func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
+	return nil, ErrNotImplemented
+}
+
+// These functions all provide "channels" to allow concurrent processing in the bridge
 
 func (bb *blueBubbles) MessageChan() <-chan *imessage.Message {
 	return bb.messageChan
@@ -103,21 +126,7 @@ func (bb *blueBubbles) BackfillTaskChan() <-chan *imessage.BackfillTask {
 	return bb.backfillTaskChan
 }
 
-func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, error) {
-	return nil, ErrNotImplemented
-}
-
-func (bb *blueBubbles) GetContactList() ([]*imessage.Contact, error) {
-	return nil, ErrNotImplemented
-}
-
-func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
-	return nil, ErrNotImplemented
-}
-
-func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
-	return nil, ErrNotImplemented
-}
+// These functions should all be "send" -ing data TO bluebubbles
 
 func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	return nil, ErrNotImplemented
