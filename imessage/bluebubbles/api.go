@@ -24,7 +24,18 @@ type blueBubbles struct {
 }
 
 func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
-	return &blueBubbles{bridge: bridge, log: bridge.GetZLog().With().Str("component", "bluebubbles").Logger()}, nil
+	return &blueBubbles{
+		bridge: bridge,
+		log:    bridge.GetZLog().With().Str("component", "bluebubbles").Logger(),
+
+		messageChan:       make(chan *imessage.Message, 256),
+		receiptChan:       make(chan *imessage.ReadReceipt, 32),
+		typingChan:        make(chan *imessage.TypingNotification, 32),
+		chatChan:          make(chan *imessage.ChatInfo, 32),
+		contactChan:       make(chan *imessage.Contact, 2048),
+		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
+		backfillTaskChan:  make(chan *imessage.BackfillTask, 32),
+	}, nil
 }
 
 func init() {
