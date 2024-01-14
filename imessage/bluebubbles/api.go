@@ -1,8 +1,13 @@
 package bluebubbles
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -77,7 +82,85 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 }
 
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
-	return nil, ErrNotImplemented
+	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/chat/query?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
+	method := "POST"
+
+	limit := 1000
+	offset := 0
+
+	for {
+		payload := fmt.Sprintf(`{
+            "limit": %d,
+            "offset": %d,
+            "with": [
+                "lastMessage",
+                "sms"
+            ],
+            "sort": "lastmessage"
+        }`, limit, offset)
+
+		client := &http.Client{}
+		req, err := http.NewRequest(method, url, strings.NewReader(payload))
+		if err != nil {
+			return nil, err
+		}
+
+		res, err := client.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer res.Body.Close()
+
+		var result map[string]interface{}
+		if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+			return nil, err
+		}
+
+		chatsData, ok := result["data"].([]interface{})
+		if !ok {
+			return nil, errors.New("Invalid response format")
+		}
+
+		if len(chatsData) == 0 {
+			// No more data, break out of the loop
+			break
+		}
+
+		for _, chat := range chatsData {
+			chatMap, ok := chat.(map[string]interface{})
+			if !ok {
+				return nil, errors.New("Invalid chat format in response")
+			}
+
+			properties, ok := chatMap["properties"].([]interface{})
+			if !ok || len(properties) == 0 {
+				return nil, errors.New("Invalid properties format in chat")
+			}
+
+			lsmdStr, ok := properties[0].(map[string]interface{})["LSMD"].(string)
+			if !ok {
+				return nil, errors.New("Invalid LSMD format in chat properties")
+			}
+
+			lsmd, err := time.Parse(time.RFC3339, lsmdStr)
+			if err != nil {
+				return nil, err
+			}
+
+			if lsmd.After(minDate) {
+				// The last sent message date is after the minDate, add this chat to the return
+				resp = append(resp, imessage.ChatIdentifier{
+					ChatGUID: fmt.Sprintf("%v", chatMap["guid"]),
+					ThreadID: fmt.Sprintf("%v", chatMap["chatIdentifier"]),
+				})
+			}
+		}
+
+		// Update offset for the next request
+		offset += limit
+	}
+
+	return resp, nil
 }
 
 func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, error) {
@@ -97,7 +180,6 @@ func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, erro
 }
 
 // These functions all provide "channels" to allow concurrent processing in the bridge
-
 func (bb *blueBubbles) MessageChan() <-chan *imessage.Message {
 	return bb.messageChan
 }
@@ -129,6 +211,40 @@ func (bb *blueBubbles) BackfillTaskChan() <-chan *imessage.BackfillTask {
 // These functions should all be "send" -ing data TO bluebubbles
 
 func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+
+	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/message/text?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
+	method := "POST"
+
+	payload := strings.NewReader(fmt.Sprintf(`{
+    "chatGuid": "%s",
+    "tempGuid": "",
+    "message": "%s",
+    "method": "apple-script",
+    "selectedMessageGuid": "%s"
+}`, chatID, text, replyTo))
+
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, payload)
+
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		bb.log.Err(err)
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	_, err = io.ReadAll(res.Body)
+	if err != nil {
+		bb.log.Err(err)
+		return nil, err
+	}
+
+	bb.log.Print("Sent a message!")
+
 	return nil, ErrNotImplemented
 }
 
