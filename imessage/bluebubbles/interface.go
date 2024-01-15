@@ -41,3 +41,32 @@ type Chat struct {
 	ChatIdentifier string `json:"chatIdentifier"`
 	GroupId        string `json:"groupId"`
 }
+
+type ContactResponse struct {
+	Status  int64     `json:"status"`
+	Message string    `json:"message"`
+	Data    []Contact `json:"data"`
+}
+
+type Contact struct {
+	PhoneNumbers []PhoneNumber `json:"phoneNumbers,omitempty"`
+	Emails       []Email       `json:"emails,omitempty"`
+	FirstName    string        `json:"firstName,omitempty"`
+	LastName     string        `json:"lastName,omitempty"`
+	DisplayName  string        `json:"displayName,omitempty"`
+	Nickname     string        `json:"nickname,omitempty"`
+	Birthday     string        `json:"birthday,omitempty"`
+	Avatar       string        `json:"avatar,omitempty"`
+	SourceType   string        `json:"sourceType,omitempty"`
+	ID           string        `json:"id,omitempty"`
+}
+
+type PhoneNumber struct {
+	Address string      `json:"address,omitempty"`
+	ID      interface{} `json:"id,omitempty"`
+}
+
+type Email struct {
+	Address string      `json:"address,omitempty"`
+	ID      interface{} `json:"id,omitempty"`
+}

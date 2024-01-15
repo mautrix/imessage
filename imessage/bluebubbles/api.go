@@ -350,64 +350,17 @@ func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, err
 	return nil, ErrNotImplemented
 }
 
-type Contact struct {
-	PhoneNumbers []PhoneNumber `json:"phoneNumbers,omitempty"`
-	Emails       []Email       `json:"emails,omitempty"`
-	FirstName    string        `json:"firstName,omitempty"`
-	LastName     string        `json:"lastName,omitempty"`
-	DisplayName  string        `json:"displayName,omitempty"`
-	Nickname     string        `json:"nickname,omitempty"`
-	Birthday     string        `json:"birthday,omitempty"`
-	Avatar       string        `json:"avatar,omitempty"`
-	SourceType   string        `json:"sourceType,omitempty"`
-	ID           string        `json:"id,omitempty"`
-}
-
-type PhoneNumber struct {
-	Address string      `json:"address,omitempty"`
-	ID      interface{} `json:"id,omitempty"`
-}
-
-type Email struct {
-	Address string      `json:"address,omitempty"`
-	ID      interface{} `json:"id,omitempty"`
-}
-
 func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
+	bb.log.Trace().Msg("GetContactList")
+	var contactResponse ContactResponse
 
-	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/contact?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
-	method := "GET"
-
-	client := &http.Client{}
-	req, err := http.NewRequest(method, url, nil)
-
+	err = bb.apiPost("/api/v1/contact", nil, &contactResponse)
 	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-	res, err := client.Do(req)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-
-	var contactList []Contact
-
-	err = json.Unmarshal(body, &contactList)
-	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 
 	// Convert to imessage.Contact type
-	for _, contact := range contactList {
+	for _, contact := range contactResponse.Data {
 		imessageContact := &imessage.Contact{
 			FirstName: contact.FirstName,
 			LastName:  contact.LastName,
