@@ -1,11 +1,13 @@
 package bluebubbles
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -254,83 +256,84 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 	return nil, ErrNotImplemented
 }
 
+func (bb *blueBubbles) apiUrl(path string) string {
+	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
+		// TODO error handling for bad config
+		return ""
+	}
+
+	u.Path = path
+
+	q := u.Query()
+	q.Add("password", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
+	u.RawQuery = q.Encode()
+
+	url := u.String()
+
+	return url
+}
+
+func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) (err error) {
+	url := bb.apiUrl(path)
+
+	bb.log.Info().Str("url", url).Msg("Making POST request")
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error marshalling payload")
+		return err
+	}
+
+	response, err := http.Post(url, "application/json", bytes.NewBuffer(payloadJSON))
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error making POST request")
+		return err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error reading response body")
+		return err
+	}
+
+	if err := json.Unmarshal(responseBody, target); err != nil {
+		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
+		return err
+	}
+
+	return nil
+}
+
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
-	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/chat/query?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
-	method := "POST"
+	// TODO: find out how to make queries based on minDate and the bluebubbles API
+	// TODO: pagination
+	limit := int64(5)
+	offset := int64(0)
 
-	limit := 1000
-	offset := 0
+	request := ChatQueryRequest{
+		Limit:  limit,
+		Offset: offset,
+		With: []string{
+			"lastMessage",
+			"sms",
+		},
+		Sort: "lastmessage",
+	}
+	var response ChatQueryResponse
 
-	for {
-		payload := fmt.Sprintf(`{
-            "limit": %d,
-            "offset": %d,
-            "with": [
-                "lastMessage",
-                "sms"
-            ],
-            "sort": "lastmessage"
-        }`, limit, offset)
+	err = bb.apiPost("/api/v1/chat/query", request, &response)
+	if err != nil {
+		return nil, err
+	}
 
-		client := &http.Client{}
-		req, err := http.NewRequest(method, url, strings.NewReader(payload))
-		if err != nil {
-			return nil, err
-		}
-
-		res, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer res.Body.Close()
-
-		var result map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
-			return nil, err
-		}
-
-		chatsData, ok := result["data"].([]interface{})
-		if !ok {
-			return nil, errors.New("invalid response format")
-		}
-
-		if len(chatsData) == 0 {
-			// No more data, break out of the loop
-			break
-		}
-
-		for _, chat := range chatsData {
-			chatMap, ok := chat.(map[string]interface{})
-			if !ok {
-				return nil, errors.New("invalid chat format in response")
-			}
-
-			properties, ok := chatMap["properties"].([]interface{})
-			if !ok || len(properties) == 0 {
-				return nil, errors.New("invalid properties format in chat")
-			}
-
-			lsmdStr, ok := properties[0].(map[string]interface{})["LSMD"].(string)
-			if !ok {
-				return nil, errors.New("invalid LSMD format in chat properties")
-			}
-
-			lsmd, err := time.Parse(time.RFC3339, lsmdStr)
-			if err != nil {
-				return nil, err
-			}
-
-			if lsmd.After(minDate) {
-				// The last sent message date is after the minDate, add this chat to the return
-				resp = append(resp, imessage.ChatIdentifier{
-					ChatGUID: fmt.Sprintf("%v", chatMap["guid"]),
-					ThreadID: fmt.Sprintf("%v", chatMap["chatIdentifier"]),
-				})
-			}
-		}
-
-		// Update offset for the next request
-		offset += limit
+	for _, chat := range *response.Data {
+		resp = append(resp, imessage.ChatIdentifier{
+			ChatGUID: fmt.Sprintf("%v", chat.GUID),
+			ThreadID: fmt.Sprintf("%v", chat.ChatIdentifier), // TODO Is this the right one to use?
+		})
 	}
 
 	return resp, nil
