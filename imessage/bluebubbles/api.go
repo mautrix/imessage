@@ -290,9 +290,6 @@ func (bb *blueBubbles) apiUrl(path string, queryParams *map[string]string) strin
 func (bb *blueBubbles) apiGet(path string, queryParams *map[string]string, target interface{}) (err error) {
 	url := bb.apiUrl(path, queryParams)
 
-	// debug log url
-	bb.log.Debug().Str("url", url).Msg("URL")
-
 	response, err := http.Get(url)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making GET request")
@@ -305,9 +302,6 @@ func (bb *blueBubbles) apiGet(path string, queryParams *map[string]string, targe
 		bb.log.Error().Err(err).Msg("Error reading response body")
 		return err
 	}
-
-	// debug log responseBody
-	bb.log.Debug().Str("responseBody", string(responseBody)).Msg("Response body")
 
 	if err := json.Unmarshal(responseBody, target); err != nil {
 		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
