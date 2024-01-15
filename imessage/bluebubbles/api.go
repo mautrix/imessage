@@ -126,112 +126,67 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 	}
 }
 
-type BlueBubblesWebhookData struct {
-	AssociatedMessageGuid string            `json:"associatedMessageGuid,omitempty"`
-	AssociatedMessageType interface{}       `json:"associatedMessageType,omitempty"`
-	Attachments           []interface{}     `json:"attachments,omitempty"`
-	AttributedBody        interface{}       `json:"attributedBody,omitempty"`
-	BalloonBundleId       interface{}       `json:"balloonBundleId,omitempty"`
-	Chats                 []BlueBubblesChat `json:"chats,omitempty"`
-	DateCreated           int64             `json:"dateCreated,omitempty"`
-	DateDelivered         int64             `json:"dateDelivered,omitempty"`
-	DateEdited            int64             `json:"dateEdited,omitempty"`
-	DateRead              int64             `json:"dateRead,omitempty"`
-	DateRetracted         int64             `json:"dateRetracted,omitempty"`
-	Error                 int               `json:"error,omitempty"`
-	ExpressiveSendStyleId interface{}       `json:"expressiveSendStyleId,omitempty"`
-	GroupActionType       int               `json:"groupActionType,omitempty"`
-	GroupTitle            string            `json:"groupTitle,omitempty"`
-	Guid                  string            `json:"guid,omitempty"`
-	Handle                BlueBubblesHandle `json:"handle,omitempty"`
-	HandleId              int               `json:"handleId,omitempty"`
-	HasDdResults          bool              `json:"hasDdResults,omitempty"`
-	HasPayloadData        bool              `json:"hasPayloadData,omitempty"`
-	IsArchived            bool              `json:"isArchived,omitempty"`
-	IsFromMe              bool              `json:"isFromMe,omitempty"`
-	ItemType              int               `json:"itemType,omitempty"`
-	MessageSummaryInfo    interface{}       `json:"messageSummaryInfo,omitempty"`
-	OriginalROWID         int               `json:"originalROWID,omitempty"`
-	OtherHandle           int               `json:"otherHandle,omitempty"`
-	PartCount             int               `json:"partCount,omitempty"`
-	PayloadData           interface{}       `json:"payloadData,omitempty"`
-	Subject               string            `json:"subject,omitempty"`
-	Text                  string            `json:"text,omitempty"`
-	ThreadOriginatorGuid  string            `json:"threadOriginatorGuid,omitempty"`
-}
+func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) interface{} {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleNewMessage")
 
-type BlueBubblesChat struct {
-	ChatIdentifier string `json:"chatIdentifier,omitempty"`
-	DisplayName    string `json:"displayName,omitempty"`
-	Guid           string `json:"guid,omitempty"`
-	IsArchived     bool   `json:"isArchived,omitempty"`
-	OriginalROWID  int    `json:"originalROWID,omitempty"`
-	Style          int    `json:"style,omitempty"`
-}
+	var data Message
+	err := json.Unmarshal(rawMessage, &data)
+	if err != nil {
+		bb.log.Warn().AnErr("err", err).Msg("Failed to parse incoming message")
+		return nil
+	}
 
-type BlueBubblesHandle struct {
-	Address           string      `json:"address,omitempty"`
-	Country           string      `json:"country,omitempty"`
-	OriginalROWID     int         `json:"originalROWID,omitempty"`
-	Service           string      `json:"service,omitempty"`
-	UncanonicalizedId interface{} `json:"uncanonicalizedId,omitempty"`
-}
+	var message imessage.Message
 
-func (bb *blueBubbles) handleNewMessage(data interface{}) {
-	bb.log.Trace().Interface("data", data).Msg("handleNewMessage")
-	// var message imessage.Message
+	// Convert bluebubbles.Message to imessage.Message
+	message.GUID = data.GUID
+	message.Time = time.Unix(0, data.DateCreated*int64(time.Millisecond))
+	message.Subject = data.Subject
+	message.Text = data.Text
+	message.ChatGUID = data.Chats[0].GUID
+	message.JSONSenderGUID = data.Handle.Address
+	message.Sender = imessage.Identifier{
+		LocalID: data.Handle.Address,
+		Service: data.Handle.Service,
+		IsGroup: false,
+	}
+	// message.JSONTargetGUID = ""
+	// message.Target = imessage.ParseIdentifier(data.Guid)
+	message.Service = data.Handle.Service
+	message.IsFromMe = data.IsFromMe
+	message.IsRead = false
+	if message.IsRead {
+		message.ReadAt = time.Unix(0, data.DateRead*int64(time.Millisecond))
+	}
+	message.IsDelivered = true
+	message.IsSent = true
+	message.IsEmote = false
+	// message.IsAudioMessage = data.ItemType == AudioMessageType
 
-	// // Convert BlueBubblesWebhookData to imessage.Message
-	// message.GUID = data.Guid
-	// message.Time = time.Unix(0, data.DateCreated*int64(time.Millisecond))
-	// message.Subject = data.Subject
-	// message.Text = data.Text
-	// message.ChatGUID = data.Chats[0].Guid
-	// message.JSONSenderGUID = data.Handle.Address
-	// message.Sender = imessage.Identifier{
-	// 	LocalID: data.Handle.Address,
-	// 	Service: data.Handle.Service,
-	// 	IsGroup: false,
+	// TODO: ReplyTo
+	// message.ReplyToGUID = data.ThreadOriginatorGuid
+	// message.ReplyToPart = data.PartCount
+
+	// TODO: Tapbacks
+	// message.Tapback = nil
+
+	// TODO: Attachments
+	// message.Attachments = make([]*imessage.Attachment, len(data.Attachments))
+	// for i, blueBubblesAttachment := range data.Attachments {
+	// 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
 	// }
-	// // message.JSONTargetGUID = ""
-	// // message.Target = imessage.ParseIdentifier(data.Guid)
-	// message.Service = data.Handle.Service
-	// message.IsFromMe = data.IsFromMe
-	// message.IsRead = false
-	// if message.IsRead {
-	// 	message.ReadAt = time.Unix(0, data.DateRead*int64(time.Millisecond))
-	// }
-	// message.IsDelivered = true
-	// message.IsSent = true
-	// message.IsEmote = false
-	// // message.IsAudioMessage = data.ItemType == AudioMessageType
 
-	// // TODO: ReplyTo
-	// // message.ReplyToGUID = data.ThreadOriginatorGuid
-	// // message.ReplyToPart = data.PartCount
+	message.GroupActionType = imessage.GroupActionType(data.GroupActionType)
+	message.NewGroupName = data.GroupTitle
+	// message.Metadata = convertMessageMetadata(data.Metadata)
+	message.ThreadID = data.ThreadOriginatorGuid
 
-	// // TODO: Tapbacks
-	// // message.Tapback = nil
-
-	// // TODO: Attachments
-	// // message.Attachments = make([]*imessage.Attachment, len(data.Attachments))
-	// // for i, blueBubblesAttachment := range data.Attachments {
-	// // 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
-	// // }
-
-	// message.GroupActionType = imessage.GroupActionType(data.GroupActionType)
-	// message.NewGroupName = data.GroupTitle
-	// // message.Metadata = convertMessageMetadata(data.Metadata)
-	// message.ThreadID = data.ThreadOriginatorGuid
-
-	// // Handle new message logic
-	// bb.log.Debug().Msg("Handling new message webhook")
-
-	// select {
-	// case bb.messageChan <- &message:
-	// default:
-	// 	bb.log.Warn().Msg("Incoming message buffer is full")
-	// }
+	select {
+	case bb.messageChan <- &message:
+	default:
+		bb.log.Warn().Msg("Incoming message buffer is full")
+	}
+	return nil
 }
 
 // func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
