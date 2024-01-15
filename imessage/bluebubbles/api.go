@@ -48,13 +48,186 @@ func init() {
 }
 
 func (bb *blueBubbles) Start(readyCallback func()) error {
-	//TODO: setup the webhooks from BBs here
+	//TODO: automatically configure the webhook within bluebubbles
+
+	//TODO: parameterize the url and port at some point
+	http.HandleFunc("/bluebubbles/webhook", bb.webhookHandler)
+	go http.ListenAndServe(":8080", nil)
 	readyCallback()
+
 	return nil
 }
 
 func (bb *blueBubbles) Stop() {
 	//TODO: cleanup the webhooks from BBs here
+}
+
+type BlueBubblesWebhook struct {
+	Data BlueBubblesWebhookData `json:"data"`
+	Type string                 `json:"type"`
+}
+
+type BlueBubblesWebhookData struct {
+	AssociatedMessageGuid string            `json:"associatedMessageGuid,omitempty"`
+	AssociatedMessageType interface{}       `json:"associatedMessageType,omitempty"`
+	Attachments           []interface{}     `json:"attachments,omitempty"`
+	AttributedBody        interface{}       `json:"attributedBody,omitempty"`
+	BalloonBundleId       interface{}       `json:"balloonBundleId,omitempty"`
+	Chats                 []BlueBubblesChat `json:"chats,omitempty"`
+	DateCreated           int64             `json:"dateCreated,omitempty"`
+	DateDelivered         int64             `json:"dateDelivered,omitempty"`
+	DateEdited            int64             `json:"dateEdited,omitempty"`
+	DateRead              int64             `json:"dateRead,omitempty"`
+	DateRetracted         int64             `json:"dateRetracted,omitempty"`
+	Error                 int               `json:"error,omitempty"`
+	ExpressiveSendStyleId interface{}       `json:"expressiveSendStyleId,omitempty"`
+	GroupActionType       int               `json:"groupActionType,omitempty"`
+	GroupTitle            string            `json:"groupTitle,omitempty"`
+	Guid                  string            `json:"guid,omitempty"`
+	Handle                BlueBubblesHandle `json:"handle,omitempty"`
+	HandleId              int               `json:"handleId,omitempty"`
+	HasDdResults          bool              `json:"hasDdResults,omitempty"`
+	HasPayloadData        bool              `json:"hasPayloadData,omitempty"`
+	IsArchived            bool              `json:"isArchived,omitempty"`
+	IsFromMe              bool              `json:"isFromMe,omitempty"`
+	ItemType              int               `json:"itemType,omitempty"`
+	MessageSummaryInfo    interface{}       `json:"messageSummaryInfo,omitempty"`
+	OriginalROWID         int               `json:"originalROWID,omitempty"`
+	OtherHandle           int               `json:"otherHandle,omitempty"`
+	PartCount             int               `json:"partCount,omitempty"`
+	PayloadData           interface{}       `json:"payloadData,omitempty"`
+	Subject               string            `json:"subject,omitempty"`
+	Text                  string            `json:"text,omitempty"`
+	ThreadOriginatorGuid  string            `json:"threadOriginatorGuid,omitempty"`
+}
+
+type BlueBubblesChat struct {
+	ChatIdentifier string `json:"chatIdentifier,omitempty"`
+	DisplayName    string `json:"displayName,omitempty"`
+	Guid           string `json:"guid,omitempty"`
+	IsArchived     bool   `json:"isArchived,omitempty"`
+	OriginalROWID  int    `json:"originalROWID,omitempty"`
+	Style          int    `json:"style,omitempty"`
+}
+
+type BlueBubblesHandle struct {
+	Address           string      `json:"address,omitempty"`
+	Country           string      `json:"country,omitempty"`
+	OriginalROWID     int         `json:"originalROWID,omitempty"`
+	Service           string      `json:"service,omitempty"`
+	UncanonicalizedId interface{} `json:"uncanonicalizedId,omitempty"`
+}
+
+func (bb *blueBubbles) webhookHandler(w http.ResponseWriter, r *http.Request) {
+	// Parse JSON data from BlueBubbles webhook into a generic map
+	var webhookData BlueBubblesWebhook
+	if err := json.NewDecoder(r.Body).Decode(&webhookData); err != nil {
+		// Handle parsing error
+		http.Error(w, "Error parsing webhook data", http.StatusBadRequest)
+		return
+	}
+
+	// Log or inspect the received webhook data
+	bb.log.Info().Interface("WebhookData", webhookData).Msg("Received BlueBubbles webhook")
+
+	// Respond to the request (optional)
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Webhook received successfully"))
+
+	// Switch based on webhook type
+	switch webhookData.Type {
+	case "new-message":
+		// Handle new message webhook
+		bb.handleNewMessage(webhookData.Data)
+	case "updated-message":
+		// Handle updated message webhook
+		bb.handleUpdatedMessage(webhookData.Data)
+	case "chat-read-status-changed":
+		// Handle chat read status changed webhook
+		bb.handleChatReadStatusChanged(webhookData.Data)
+	case "typing-indicator":
+		// Handle typing indicator webhook
+		bb.handleTypingIndicator(webhookData.Data)
+	default:
+		// Handle unknown webhook type
+		bb.log.Warn().Str("Type", webhookData.Type).Msg("Unknown webhook type")
+	}
+}
+
+// Common Handlers for new events
+
+func (bb *blueBubbles) handleNewMessage(data BlueBubblesWebhookData) {
+	var message imessage.Message
+
+	// Convert BlueBubblesWebhookData to imessage.Message
+	message.GUID = data.Guid
+	message.Time = time.Unix(0, data.DateCreated*int64(time.Millisecond))
+	message.Subject = data.Subject
+	message.Text = data.Text
+	message.ChatGUID = data.Chats[0].Guid
+	message.JSONSenderGUID = data.Handle.Address
+	message.Sender = imessage.Identifier{
+		LocalID: data.Handle.Address,
+		Service: data.Handle.Service,
+		IsGroup: false,
+	}
+	// message.JSONTargetGUID = ""
+	// message.Target = imessage.ParseIdentifier(data.Guid)
+	message.Service = data.Handle.Service
+	message.IsFromMe = data.IsFromMe
+	message.IsRead = false
+	if message.IsRead {
+		message.ReadAt = time.Unix(0, data.DateRead*int64(time.Millisecond))
+	}
+	message.IsDelivered = true
+	message.IsSent = true
+	message.IsEmote = false
+	// message.IsAudioMessage = data.ItemType == AudioMessageType
+
+	// TODO: ReplyTo
+	// message.ReplyToGUID = data.ThreadOriginatorGuid
+	// message.ReplyToPart = data.PartCount
+
+	// TODO: Tapbacks
+	// message.Tapback = nil
+
+	// TODO: Attachments
+	// message.Attachments = make([]*imessage.Attachment, len(data.Attachments))
+	// for i, blueBubblesAttachment := range data.Attachments {
+	// 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
+	// }
+
+	message.GroupActionType = imessage.GroupActionType(data.GroupActionType)
+	message.NewGroupName = data.GroupTitle
+	// message.Metadata = convertMessageMetadata(data.Metadata)
+	message.ThreadID = data.ThreadOriginatorGuid
+
+	// Handle new message logic
+	bb.log.Debug().Msg("Handling new message webhook")
+
+	select {
+	case bb.messageChan <- &message:
+	default:
+		bb.log.Warn().Msg("Incoming message buffer is full")
+	}
+}
+
+func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
+	// Handle updated message logic
+	bb.log.Info().Msg("Handling updated message webhook")
+	// Add your logic to forward data to Matrix or perform other actions
+}
+
+func (bb *blueBubbles) handleChatReadStatusChanged(data BlueBubblesWebhookData) {
+	// Handle chat read status changed logic
+	bb.log.Info().Msg("Handling chat read status changed webhook")
+	// Add your logic to forward data to Matrix or perform other actions
+}
+
+func (bb *blueBubbles) handleTypingIndicator(data BlueBubblesWebhookData) {
+	// Handle typing indicator logic
+	bb.log.Info().Msg("Handling typing indicator webhook")
+	// Add your logic to forward data to Matrix or perform other actions
 }
 
 // These functions should all be "get" -ting data FROM bluebubbles
@@ -118,7 +291,7 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 
 		chatsData, ok := result["data"].([]interface{})
 		if !ok {
-			return nil, errors.New("Invalid response format")
+			return nil, errors.New("invalid response format")
 		}
 
 		if len(chatsData) == 0 {
@@ -129,17 +302,17 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 		for _, chat := range chatsData {
 			chatMap, ok := chat.(map[string]interface{})
 			if !ok {
-				return nil, errors.New("Invalid chat format in response")
+				return nil, errors.New("invalid chat format in response")
 			}
 
 			properties, ok := chatMap["properties"].([]interface{})
 			if !ok || len(properties) == 0 {
-				return nil, errors.New("Invalid properties format in chat")
+				return nil, errors.New("invalid properties format in chat")
 			}
 
 			lsmdStr, ok := properties[0].(map[string]interface{})["LSMD"].(string)
 			if !ok {
-				return nil, errors.New("Invalid LSMD format in chat properties")
+				return nil, errors.New("invalid LSMD format in chat properties")
 			}
 
 			lsmd, err := time.Parse(time.RFC3339, lsmdStr)
@@ -167,8 +340,76 @@ func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, err
 	return nil, ErrNotImplemented
 }
 
-func (bb *blueBubbles) GetContactList() ([]*imessage.Contact, error) {
-	return nil, ErrNotImplemented
+type Contact struct {
+	PhoneNumbers []PhoneNumber `json:"phoneNumbers,omitempty"`
+	Emails       []Email       `json:"emails,omitempty"`
+	FirstName    string        `json:"firstName,omitempty"`
+	LastName     string        `json:"lastName,omitempty"`
+	DisplayName  string        `json:"displayName,omitempty"`
+	Nickname     string        `json:"nickname,omitempty"`
+	Birthday     string        `json:"birthday,omitempty"`
+	Avatar       string        `json:"avatar,omitempty"`
+	SourceType   string        `json:"sourceType,omitempty"`
+	ID           string        `json:"id,omitempty"`
+}
+
+type PhoneNumber struct {
+	Address string      `json:"address,omitempty"`
+	ID      interface{} `json:"id,omitempty"`
+}
+
+type Email struct {
+	Address string      `json:"address,omitempty"`
+	ID      interface{} `json:"id,omitempty"`
+}
+
+func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
+
+	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/contact?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
+	method := "GET"
+
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	var contactList []Contact
+
+	err = json.Unmarshal(body, &contactList)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	// Convert to imessage.Contact type
+	for _, contact := range contactList {
+		imessageContact := &imessage.Contact{
+			FirstName: contact.FirstName,
+			LastName:  contact.LastName,
+			Nickname:  contact.Nickname,
+			Phones:    convertPhones(contact.PhoneNumbers),
+			Emails:    convertEmails(contact.Emails),
+			UserGUID:  contact.ID,
+		}
+		resp = append(resp, imessageContact)
+	}
+
+	return resp, nil
 }
 
 func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
@@ -245,7 +486,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 
 	bb.log.Print("Sent a message!")
 
-	return nil, ErrNotImplemented
+	return nil, nil
 }
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
@@ -278,6 +519,27 @@ func (bb *blueBubbles) PrepareDM(guid string) error {
 
 func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupResponse, error) {
 	return nil, ErrNotImplemented
+}
+
+// Helper functions
+
+func convertPhones(phoneNumbers []PhoneNumber) []string {
+	var phones []string
+	for _, phone := range phoneNumbers {
+		// Convert the phone number format as needed
+		phones = append(phones, phone.Address)
+	}
+	return phones
+}
+
+// Helper function to convert email addresses
+func convertEmails(emails []Email) []string {
+	var emailAddresses []string
+	for _, email := range emails {
+		// Convert the email address format as needed
+		emailAddresses = append(emailAddresses, email.Address)
+	}
+	return emailAddresses
 }
 
 // These functions are probably not necessary
