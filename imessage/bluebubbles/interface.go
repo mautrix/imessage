@@ -7,18 +7,31 @@ type PageMetadata struct {
 	Limit  int64 `json:"limit"`
 }
 
+type QuerySort string
+
+const (
+	QuerySortLastMessage QuerySort = "lastmessage"
+)
+
 type ChatQueryRequest struct {
 	// TODO Other Fields
-	Limit  int64    `json:"limit"`
-	Offset int64    `json:"offset"`
-	With   []string `json:"with"`
-	Sort   string   `json:"sort"`
+	Limit  int64           `json:"limit"`
+	Offset int64           `json:"offset"`
+	With   []ChatQueryWith `json:"with"`
+	Sort   QuerySort       `json:"sort"`
 }
+
+type ChatQueryWith string
+
+const (
+	ChatQueryWithSMS         ChatQueryWith = "sms"
+	ChatQueryWithLastMessage ChatQueryWith = "lastMessage"
+)
 
 type ChatQueryResponse struct {
 	Status   int64        `json:"status"`
 	Message  string       `json:"message"`
-	Data     *[]Chat      `json:"data"`
+	Data     []Chat       `json:"data"`
 	Metadata PageMetadata `json:"metadata"`
 }
 

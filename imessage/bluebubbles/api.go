@@ -316,11 +316,11 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 	request := ChatQueryRequest{
 		Limit:  limit,
 		Offset: offset,
-		With: []string{
-			"lastMessage",
-			"sms",
+		With: []ChatQueryWith{
+			ChatQueryWithLastMessage,
+			ChatQueryWithSMS,
 		},
-		Sort: "lastmessage",
+		Sort: QuerySortLastMessage,
 	}
 	var response ChatQueryResponse
 
@@ -329,10 +329,10 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 		return nil, err
 	}
 
-	for _, chat := range *response.Data {
+	for _, chat := range response.Data {
 		resp = append(resp, imessage.ChatIdentifier{
-			ChatGUID: fmt.Sprintf("%v", chat.GUID),
-			ThreadID: fmt.Sprintf("%v", chat.ChatIdentifier), // TODO Is this the right one to use?
+			ChatGUID: chat.GUID,
+			ThreadID: chat.GroupId,
 		})
 	}
 
