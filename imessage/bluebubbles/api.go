@@ -237,22 +237,27 @@ func (bb *blueBubbles) handleTypingIndicator(data BlueBubblesWebhookData) {
 var ErrNotImplemented = errors.New("not implemented")
 
 func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Str("backfillID", backfillID).Msg("GetMessagesSinceDate")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.Time) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Time("maxDate", maxDate).Msg("GetMessagesBetween")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Time("before", before).Int("limit", limit).Msg("GetMessagesBeforeWithLimit")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("GetMessagesWithLimit")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err error) {
+	bb.log.Trace().Str("guid", guid).Msg("GetMessage")
 	return nil, ErrNotImplemented
 }
 
@@ -308,6 +313,7 @@ func (bb *blueBubbles) apiPost(path string, payload interface{}, target interfac
 }
 
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
+	bb.log.Trace().Time("minDate", minDate).Msg("GetChatsWithMessagesAfter")
 	// TODO: find out how to make queries based on minDate and the bluebubbles API
 	// TODO: pagination
 	limit := int64(5)
@@ -340,6 +346,7 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 }
 
 func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, error) {
+	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
 	return nil, ErrNotImplemented
 }
 
@@ -416,10 +423,12 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 }
 
 func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("threadID", threadID).Msg("GetChatInfo")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
+	bb.log.Trace().Str("chatID", chatID).Msg("GetGroupAvatar")
 	return nil, ErrNotImplemented
 }
 
@@ -493,6 +502,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 }
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("filename", filename).Str("pathOnDisk", pathOnDisk).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Str("mimeType", mimeType).Bool("voiceMemo", voiceMemo).Interface("metadata", metadata).Msg("SendFile")
 	return nil, ErrNotImplemented
 }
 
@@ -501,26 +511,32 @@ func (bb *blueBubbles) SendFileCleanup(sendFileDir string) {
 }
 
 func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Interface("tapback", tapback).Bool("remove", remove).Msg("SendTapback")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
+	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
 	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
+	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("SendTypingNotification")
 	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) ResolveIdentifier(identifier string) (string, error) {
+	bb.log.Trace().Str("identifier", identifier).Msg("ResolveIdentifier")
 	return "", ErrNotImplemented
 }
 
 func (bb *blueBubbles) PrepareDM(guid string) error {
+	bb.log.Trace().Str("guid", guid).Msg("PrepareDM")
 	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupResponse, error) {
+	bb.log.Trace().Interface("users", users).Msg("CreateGroup")
 	return nil, ErrNotImplemented
 }
 
