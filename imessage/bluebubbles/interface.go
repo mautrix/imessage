@@ -82,3 +82,8 @@ type Email struct {
 	Address string      `json:"address,omitempty"`
 	ID      interface{} `json:"id,omitempty"`
 }
+
+type TypingNotification struct {
+	Display bool   `json:"display"`
+	GUID    string `json:"guid"`
+}

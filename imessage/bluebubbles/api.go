@@ -102,13 +102,19 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 		if bytes.HasPrefix(payload, []byte("42")) {
 			payload = bytes.TrimPrefix(payload, []byte("42"))
 
-			var incomingWebsocketMessage []interface{}
+			var incomingWebsocketMessage []json.RawMessage
 			if err := json.Unmarshal(payload, &incomingWebsocketMessage); err != nil {
 				bb.log.Error().Err(err).Msg("Error parsing message from BlueBubbles websocket")
 				continue
 			}
 
-			switch incomingWebsocketMessage[0] {
+			var websocketMessageType string
+			if err := json.Unmarshal(incomingWebsocketMessage[0], &websocketMessageType); err != nil {
+				bb.log.Error().Err(err).Msg("Error parsing message type from BlueBubbles websocket")
+				continue
+			}
+
+			switch websocketMessageType {
 			case TypingIndicator:
 				bb.handleTypingIndicator(incomingWebsocketMessage[1])
 			case NewMessage:
@@ -240,8 +246,27 @@ func (bb *blueBubbles) handleNewMessage(data interface{}) {
 // 	// Add your logic to forward data to Matrix or perform other actions
 // }
 
-func (bb *blueBubbles) handleTypingIndicator(data interface{}) {
-	bb.log.Trace().Interface("data", data).Msg("handleTypingIndicator")
+func (bb *blueBubbles) handleTypingIndicator(data json.RawMessage) interface{} {
+	bb.log.Trace().RawJSON("data", data).Msg("handleTypingIndicator")
+
+	var typingNotification TypingNotification
+	err := json.Unmarshal(data, &typingNotification)
+	if err != nil {
+		bb.log.Warn().AnErr("err", err).Msg("Failed to parse incoming typing notification")
+		return nil
+	}
+
+	notif := imessage.TypingNotification{
+		ChatGUID: typingNotification.GUID,
+		Typing:   typingNotification.Display,
+	}
+
+	select {
+	case bb.typingChan <- &notif:
+	default:
+		bb.log.Warn().Msg("Incoming typing notification buffer is full")
+	}
+	return nil
 }
 
 // These functions should all be "get" -ting data FROM bluebubbles
