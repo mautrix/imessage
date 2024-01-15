@@ -12,15 +12,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
+const (
+	TypingIndicator string = "typing-indicator"
+	NewMessage      string = "new-message"
+)
+
 type blueBubbles struct {
 	bridge            imessage.Bridge
 	log               zerolog.Logger
+	ws                *websocket.Conn
 	messageChan       chan *imessage.Message
 	receiptChan       chan *imessage.ReadReceipt
 	typingChan        chan *imessage.TypingNotification
@@ -50,23 +57,67 @@ func init() {
 }
 
 func (bb *blueBubbles) Start(readyCallback func()) error {
-	//TODO: automatically configure the webhook within bluebubbles
+	bb.log.Trace().Msg("Start")
 
-	//TODO: parameterize the url and port at some point
-	http.HandleFunc("/bluebubbles/webhook", bb.webhookHandler)
-	go http.ListenAndServe(":8080", nil)
-	readyCallback()
+	ws, _, err := websocket.DefaultDialer.Dial(bb.wsUrl(), nil)
+	if err != nil {
+		return err
+	}
+	err = ws.WriteMessage(websocket.TextMessage, []byte("40"))
+	if err != nil {
+		return err
+	}
+	bb.ws = ws
+
+	go bb.PollForWebsocketMessages()
 
 	return nil
 }
 
 func (bb *blueBubbles) Stop() {
-	//TODO: cleanup the webhooks from BBs here
+	bb.log.Trace().Msg("Stop")
+	bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
 }
 
-type BlueBubblesWebhook struct {
-	Data BlueBubblesWebhookData `json:"data"`
-	Type string                 `json:"type"`
+func (bb *blueBubbles) PollForWebsocketMessages() {
+	defer func() {
+		bb.ws.Close()
+	}()
+
+	for {
+		_, payload, err := bb.ws.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				bb.log.Error().Err(err).Msg("Error reading message from BlueBubbles websocket")
+			}
+			break
+		}
+
+		if bytes.Equal(payload, []byte("2")) {
+			bb.log.Debug().Msg("Received ping from BlueBubbles websocket")
+			bb.ws.WriteMessage(websocket.TextMessage, []byte("3"))
+			continue
+		}
+
+		if bytes.HasPrefix(payload, []byte("42")) {
+			payload = bytes.TrimPrefix(payload, []byte("42"))
+
+			var incomingWebsocketMessage []interface{}
+			if err := json.Unmarshal(payload, &incomingWebsocketMessage); err != nil {
+				bb.log.Error().Err(err).Msg("Error parsing message from BlueBubbles websocket")
+				continue
+			}
+
+			switch incomingWebsocketMessage[0] {
+			case TypingIndicator:
+				bb.handleTypingIndicator(incomingWebsocketMessage[1])
+			case NewMessage:
+				bb.handleNewMessage(incomingWebsocketMessage[1])
+			default:
+				bb.log.Warn().Any("WebsocketMessageType", incomingWebsocketMessage[0]).Msg("Unknown websocket message type")
+			}
+		}
+	}
 }
 
 type BlueBubblesWebhookData struct {
@@ -120,116 +171,77 @@ type BlueBubblesHandle struct {
 	UncanonicalizedId interface{} `json:"uncanonicalizedId,omitempty"`
 }
 
-func (bb *blueBubbles) webhookHandler(w http.ResponseWriter, r *http.Request) {
-	// Parse JSON data from BlueBubbles webhook into a generic map
-	var webhookData BlueBubblesWebhook
-	if err := json.NewDecoder(r.Body).Decode(&webhookData); err != nil {
-		// Handle parsing error
-		http.Error(w, "Error parsing webhook data", http.StatusBadRequest)
-		return
-	}
+func (bb *blueBubbles) handleNewMessage(data interface{}) {
+	bb.log.Trace().Interface("data", data).Msg("handleNewMessage")
+	// var message imessage.Message
 
-	// Log or inspect the received webhook data
-	bb.log.Info().Interface("WebhookData", webhookData).Msg("Received BlueBubbles webhook")
-
-	// Respond to the request (optional)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Webhook received successfully"))
-
-	// Switch based on webhook type
-	switch webhookData.Type {
-	case "new-message":
-		// Handle new message webhook
-		bb.handleNewMessage(webhookData.Data)
-	case "updated-message":
-		// Handle updated message webhook
-		bb.handleUpdatedMessage(webhookData.Data)
-	case "chat-read-status-changed":
-		// Handle chat read status changed webhook
-		bb.handleChatReadStatusChanged(webhookData.Data)
-	case "typing-indicator":
-		// Handle typing indicator webhook
-		bb.handleTypingIndicator(webhookData.Data)
-	default:
-		// Handle unknown webhook type
-		bb.log.Warn().Str("Type", webhookData.Type).Msg("Unknown webhook type")
-	}
-}
-
-// Common Handlers for new events
-
-func (bb *blueBubbles) handleNewMessage(data BlueBubblesWebhookData) {
-	var message imessage.Message
-
-	// Convert BlueBubblesWebhookData to imessage.Message
-	message.GUID = data.Guid
-	message.Time = time.Unix(0, data.DateCreated*int64(time.Millisecond))
-	message.Subject = data.Subject
-	message.Text = data.Text
-	message.ChatGUID = data.Chats[0].Guid
-	message.JSONSenderGUID = data.Handle.Address
-	message.Sender = imessage.Identifier{
-		LocalID: data.Handle.Address,
-		Service: data.Handle.Service,
-		IsGroup: false,
-	}
-	// message.JSONTargetGUID = ""
-	// message.Target = imessage.ParseIdentifier(data.Guid)
-	message.Service = data.Handle.Service
-	message.IsFromMe = data.IsFromMe
-	message.IsRead = false
-	if message.IsRead {
-		message.ReadAt = time.Unix(0, data.DateRead*int64(time.Millisecond))
-	}
-	message.IsDelivered = true
-	message.IsSent = true
-	message.IsEmote = false
-	// message.IsAudioMessage = data.ItemType == AudioMessageType
-
-	// TODO: ReplyTo
-	// message.ReplyToGUID = data.ThreadOriginatorGuid
-	// message.ReplyToPart = data.PartCount
-
-	// TODO: Tapbacks
-	// message.Tapback = nil
-
-	// TODO: Attachments
-	// message.Attachments = make([]*imessage.Attachment, len(data.Attachments))
-	// for i, blueBubblesAttachment := range data.Attachments {
-	// 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
+	// // Convert BlueBubblesWebhookData to imessage.Message
+	// message.GUID = data.Guid
+	// message.Time = time.Unix(0, data.DateCreated*int64(time.Millisecond))
+	// message.Subject = data.Subject
+	// message.Text = data.Text
+	// message.ChatGUID = data.Chats[0].Guid
+	// message.JSONSenderGUID = data.Handle.Address
+	// message.Sender = imessage.Identifier{
+	// 	LocalID: data.Handle.Address,
+	// 	Service: data.Handle.Service,
+	// 	IsGroup: false,
 	// }
+	// // message.JSONTargetGUID = ""
+	// // message.Target = imessage.ParseIdentifier(data.Guid)
+	// message.Service = data.Handle.Service
+	// message.IsFromMe = data.IsFromMe
+	// message.IsRead = false
+	// if message.IsRead {
+	// 	message.ReadAt = time.Unix(0, data.DateRead*int64(time.Millisecond))
+	// }
+	// message.IsDelivered = true
+	// message.IsSent = true
+	// message.IsEmote = false
+	// // message.IsAudioMessage = data.ItemType == AudioMessageType
 
-	message.GroupActionType = imessage.GroupActionType(data.GroupActionType)
-	message.NewGroupName = data.GroupTitle
-	// message.Metadata = convertMessageMetadata(data.Metadata)
-	message.ThreadID = data.ThreadOriginatorGuid
+	// // TODO: ReplyTo
+	// // message.ReplyToGUID = data.ThreadOriginatorGuid
+	// // message.ReplyToPart = data.PartCount
 
-	// Handle new message logic
-	bb.log.Debug().Msg("Handling new message webhook")
+	// // TODO: Tapbacks
+	// // message.Tapback = nil
 
-	select {
-	case bb.messageChan <- &message:
-	default:
-		bb.log.Warn().Msg("Incoming message buffer is full")
-	}
+	// // TODO: Attachments
+	// // message.Attachments = make([]*imessage.Attachment, len(data.Attachments))
+	// // for i, blueBubblesAttachment := range data.Attachments {
+	// // 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
+	// // }
+
+	// message.GroupActionType = imessage.GroupActionType(data.GroupActionType)
+	// message.NewGroupName = data.GroupTitle
+	// // message.Metadata = convertMessageMetadata(data.Metadata)
+	// message.ThreadID = data.ThreadOriginatorGuid
+
+	// // Handle new message logic
+	// bb.log.Debug().Msg("Handling new message webhook")
+
+	// select {
+	// case bb.messageChan <- &message:
+	// default:
+	// 	bb.log.Warn().Msg("Incoming message buffer is full")
+	// }
 }
 
-func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
-	// Handle updated message logic
-	bb.log.Info().Msg("Handling updated message webhook")
-	// Add your logic to forward data to Matrix or perform other actions
-}
+// func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
+// 	// Handle updated message logic
+// 	bb.log.Info().Msg("Handling updated message webhook")
+// 	// Add your logic to forward data to Matrix or perform other actions
+// }
 
-func (bb *blueBubbles) handleChatReadStatusChanged(data BlueBubblesWebhookData) {
-	// Handle chat read status changed logic
-	bb.log.Info().Msg("Handling chat read status changed webhook")
-	// Add your logic to forward data to Matrix or perform other actions
-}
+// func (bb *blueBubbles) handleChatReadStatusChanged(data interface{}) {
+// 	// Handle chat read status changed logic
+// 	bb.log.Info().Msg("Handling chat read status changed webhook")
+// 	// Add your logic to forward data to Matrix or perform other actions
+// }
 
-func (bb *blueBubbles) handleTypingIndicator(data BlueBubblesWebhookData) {
-	// Handle typing indicator logic
-	bb.log.Info().Msg("Handling typing indicator webhook")
-	// Add your logic to forward data to Matrix or perform other actions
+func (bb *blueBubbles) handleTypingIndicator(data interface{}) {
+	bb.log.Trace().Interface("data", data).Msg("handleTypingIndicator")
 }
 
 // These functions should all be "get" -ting data FROM bluebubbles
@@ -259,6 +271,27 @@ func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID
 func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err error) {
 	bb.log.Trace().Str("guid", guid).Msg("GetMessage")
 	return nil, ErrNotImplemented
+}
+
+func (bb *blueBubbles) wsUrl() string {
+	u, err := url.Parse(strings.Replace(bb.bridge.GetConnectorConfig().BlueBubblesURL, "http", "ws", 1))
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
+		// TODO error handling for bad config
+		return ""
+	}
+
+	u.Path = "socket.io/"
+
+	q := u.Query()
+	q.Add("guid", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
+	q.Add("EIO", "4")
+	q.Add("transport", "websocket")
+	u.RawQuery = q.Encode()
+
+	url := u.String()
+
+	return url
 }
 
 func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
