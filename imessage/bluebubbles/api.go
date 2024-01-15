@@ -502,7 +502,7 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 }
 
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
-	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "api/v1/chat" + chatID + "read?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
+	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "api/v1/chat/" + chatID + "/read?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
 	method := "POST"
 	client := &http.Client{}
 	req, err := http.NewRequest(method, url, nil)
