@@ -261,7 +261,7 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 	return nil, ErrNotImplemented
 }
 
-func (bb *blueBubbles) apiUrl(path string) string {
+func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
 	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
@@ -273,6 +273,11 @@ func (bb *blueBubbles) apiUrl(path string) string {
 
 	q := u.Query()
 	q.Add("password", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
+
+	for key, value := range queryParams {
+		q.Add(key, value)
+	}
+
 	u.RawQuery = q.Encode()
 
 	url := u.String()
@@ -280,10 +285,32 @@ func (bb *blueBubbles) apiUrl(path string) string {
 	return url
 }
 
-func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) (err error) {
-	url := bb.apiUrl(path)
+func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
+	url := bb.apiUrl(path, queryParams)
 
-	bb.log.Info().Str("url", url).Msg("Making POST request")
+	response, err := http.Get(url)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error making GET request")
+		return err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error reading response body")
+		return err
+	}
+
+	if err := json.Unmarshal(responseBody, target); err != nil {
+		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
+		return err
+	}
+
+	return nil
+}
+
+func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) (err error) {
+	url := bb.apiUrl(path, map[string]string{})
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -338,7 +365,7 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 	for _, chat := range response.Data {
 		resp = append(resp, imessage.ChatIdentifier{
 			ChatGUID: chat.GUID,
-			ThreadID: chat.GroupId,
+			ThreadID: chat.GroupID,
 		})
 	}
 
@@ -377,7 +404,41 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 
 func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("threadID", threadID).Msg("GetChatInfo")
-	return nil, ErrNotImplemented
+
+	var chatResponse ChatResponse
+
+	// DEVNOTE: it doesn't appear we should URL Encode the chatID... 😬
+	//          the BlueBubbles API returned 404s, sometimes, with URL encoding
+	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s", chatID), map[string]string{
+		"with": "participants",
+	}, &chatResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	if chatResponse.Data == nil {
+		return nil, errors.New("chat is missing data payload")
+	}
+
+	if chatResponse.Data.GroupID != threadID {
+		return nil, errors.New("threadID does not match")
+	}
+
+	members := make([]string, len(chatResponse.Data.Partipants))
+
+	for i, participant := range chatResponse.Data.Partipants {
+		members[i] = participant.Address
+	}
+
+	chatInfo := &imessage.ChatInfo{
+		JSONChatGUID: chatResponse.Data.GUID,
+		Identifier:   imessage.ParseIdentifier(chatResponse.Data.GUID),
+		DisplayName:  chatResponse.Data.DisplayName,
+		Members:      members,
+		ThreadID:     chatResponse.Data.GroupID,
+	}
+
+	return chatInfo, nil
 }
 
 func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
