@@ -261,7 +261,7 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 	return nil, ErrNotImplemented
 }
 
-func (bb *blueBubbles) apiUrl(path string, queryParams *map[string]string) string {
+func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
 	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
@@ -274,10 +274,8 @@ func (bb *blueBubbles) apiUrl(path string, queryParams *map[string]string) strin
 	q := u.Query()
 	q.Add("password", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
 
-	if queryParams != nil {
-		for key, value := range *queryParams {
-			q.Add(key, value)
-		}
+	for key, value := range queryParams {
+		q.Add(key, value)
 	}
 
 	u.RawQuery = q.Encode()
@@ -287,7 +285,7 @@ func (bb *blueBubbles) apiUrl(path string, queryParams *map[string]string) strin
 	return url
 }
 
-func (bb *blueBubbles) apiGet(path string, queryParams *map[string]string, target interface{}) (err error) {
+func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
 	url := bb.apiUrl(path, queryParams)
 
 	response, err := http.Get(url)
@@ -312,7 +310,7 @@ func (bb *blueBubbles) apiGet(path string, queryParams *map[string]string, targe
 }
 
 func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) (err error) {
-	url := bb.apiUrl(path, nil)
+	url := bb.apiUrl(path, map[string]string{})
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
@@ -367,7 +365,7 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 	for _, chat := range response.Data {
 		resp = append(resp, imessage.ChatIdentifier{
 			ChatGUID: chat.GUID,
-			ThreadID: chat.GroupId,
+			ThreadID: chat.GroupID,
 		})
 	}
 
@@ -411,7 +409,7 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 
 	// DEVNOTE: it doesn't appear we should URL Encode the chatID... 😬
 	//          the BlueBubbles API returned 404s, sometimes, with URL encoding
-	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s", chatID), &map[string]string{
+	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s", chatID), map[string]string{
 		"with": "participants",
 	}, &chatResponse)
 	if err != nil {
@@ -422,7 +420,7 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 		return nil, errors.New("chat is missing data payload")
 	}
 
-	if chatResponse.Data.GroupId != threadID {
+	if chatResponse.Data.GroupID != threadID {
 		return nil, errors.New("threadID does not match")
 	}
 
@@ -437,7 +435,7 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 		Identifier:   imessage.ParseIdentifier(chatResponse.Data.GUID),
 		DisplayName:  chatResponse.Data.DisplayName,
 		Members:      members,
-		ThreadID:     chatResponse.Data.GroupId,
+		ThreadID:     chatResponse.Data.GroupID,
 	}
 
 	return chatInfo, nil

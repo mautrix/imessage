@@ -45,7 +45,7 @@ type Chat struct {
 	// TODO How to get timestamp
 	GUID           string        `json:"guid"`
 	ChatIdentifier string        `json:"chatIdentifier"`
-	GroupId        string        `json:"groupId,omitempty"`
+	GroupID        string        `json:"groupId,omitempty"`
 	DisplayName    string        `json:"displayName"`
 	Partipants     []Participant `json:"participants"`
 }
