@@ -415,7 +415,8 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 
 	var chatResponse ChatResponse
 
-	// DEVNOTE: it doesn't appear we need to URL Encode the chatID... 😬
+	// DEVNOTE: it doesn't appear we should URL Encode the chatID... 😬
+	//          the BlueBubbles API returned 404s, sometimes, with URL encoding
 	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s", chatID), &map[string]string{
 		"with": "participants",
 	}, &chatResponse)
