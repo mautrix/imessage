@@ -502,7 +502,31 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 }
 
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
-	return ErrNotImplemented
+	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "api/v1/chat" + chatID + "read?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
+	method := "POST"
+	client := &http.Client{}
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	res, err := client.Do(req)
+	if err != nil {
+		bb.log.Err(err)
+		return err
+	}
+	defer res.Body.Close()
+
+	_, err = io.ReadAll(res.Body)
+	if err != nil {
+		bb.log.Err(err)
+		return nil
+	}
+
+	bb.log.Print("Read a message!")
+
+	return nil
+
 }
 
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
