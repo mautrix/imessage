@@ -482,16 +482,19 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/message/text?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
 	method := "POST"
 
-	payload := strings.NewReader(fmt.Sprintf(`{
+	payload := fmt.Sprintf(`{
     "chatGuid": "%s",
-    "tempGuid": "",
-    "message": "%s",
-    "method": "apple-script",
-    "selectedMessageGuid": "%s"
-}`, chatID, text, replyTo))
+    "method": "private-api",
+    "message": "%s"
+}`, chatID, text)
+
+	bb.log.Debug().Msg(payload)
 
 	client := &http.Client{}
-	req, err := http.NewRequest(method, url, payload)
+	req, err := http.NewRequest(method, url, strings.NewReader(payload))
+
+	// Set Content-Type header to application/json
+	req.Header.Set("Content-Type", "application/json")
 
 	if err != nil {
 		fmt.Println(err)
@@ -499,18 +502,25 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		bb.log.Err(err)
+		bb.log.Err(err).Msg("Error sending the Message to BlueBubbles")
 		return nil, err
 	}
 	defer res.Body.Close()
 
+	if res.StatusCode != http.StatusOK {
+		bb.log.Err(fmt.Errorf("unexpected status code: %d", res.StatusCode)).Msg("Error sending the Message to BlueBubbles")
+		body, _ := io.ReadAll(res.Body)
+		bb.log.Error().Msgf("Response Body from BlueBubbles was: %s", body)
+		return nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
 	_, err = io.ReadAll(res.Body)
 	if err != nil {
-		bb.log.Err(err)
+		bb.log.Err(err).Msg("Error reading the SendMessage response body from Bluebubbles")
 		return nil, err
 	}
 
-	bb.log.Print("Sent a message!")
+	bb.log.Debug().Msg("Sent a message!")
 
 	return nil, nil
 }
