@@ -20,11 +20,13 @@
 1. Download the most recent `bbctl` from the most recent [GitHub Actions](https://github.com/beeper/bridge-manager/actions) build
 1. Move it somewhere on your system that is in your `$PATH`, and `chmod +x bbctl`
 1. Run `bbctl login` to login to your Beeper Account
+1. Install [`pre-commit`](https://pre-commit.com/#install)
 
 ### Running Locally
 
 1. Clone this repository: `git clone git@github.com:mautrix/imessage.git`
 1. `cd` into `imessage`
+1. Setup `pre-commit` hooks: `pre-commit install`
 1. Switch to the `bluebubbles` branch: `git checkout bluebubbles`
    1. This is temporary while we're developing this feature.
    1. You'll know you're in the right spot if you can see this README in your local code.
