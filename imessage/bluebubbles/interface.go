@@ -35,11 +35,23 @@ type ChatQueryResponse struct {
 	Metadata PageMetadata `json:"metadata"`
 }
 
+type ChatResponse struct {
+	Status  int64  `json:"status"`
+	Message string `json:"message"`
+	Data    *Chat  `json:"data,omitempty"`
+}
+
 type Chat struct {
 	// TODO How to get timestamp
-	GUID           string `json:"guid"`
-	ChatIdentifier string `json:"chatIdentifier"`
-	GroupId        string `json:"groupId"`
+	GUID           string        `json:"guid"`
+	ChatIdentifier string        `json:"chatIdentifier"`
+	GroupId        string        `json:"groupId,omitempty"`
+	DisplayName    string        `json:"displayName"`
+	Partipants     []Participant `json:"participants"`
+}
+
+type Participant struct {
+	Address string `json:"address"`
 }
 
 type ContactResponse struct {
