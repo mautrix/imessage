@@ -1,11 +1,13 @@
 package bluebubbles
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -235,108 +237,116 @@ func (bb *blueBubbles) handleTypingIndicator(data BlueBubblesWebhookData) {
 var ErrNotImplemented = errors.New("not implemented")
 
 func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Str("backfillID", backfillID).Msg("GetMessagesSinceDate")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.Time) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Time("maxDate", maxDate).Msg("GetMessagesBetween")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Time("before", before).Int("limit", limit).Msg("GetMessagesBeforeWithLimit")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
+	bb.log.Trace().Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("GetMessagesWithLimit")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err error) {
+	bb.log.Trace().Str("guid", guid).Msg("GetMessage")
 	return nil, ErrNotImplemented
 }
 
+func (bb *blueBubbles) apiUrl(path string) string {
+	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
+		// TODO error handling for bad config
+		return ""
+	}
+
+	u.Path = path
+
+	q := u.Query()
+	q.Add("password", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
+	u.RawQuery = q.Encode()
+
+	url := u.String()
+
+	return url
+}
+
+func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) (err error) {
+	url := bb.apiUrl(path)
+
+	bb.log.Info().Str("url", url).Msg("Making POST request")
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error marshalling payload")
+		return err
+	}
+
+	response, err := http.Post(url, "application/json", bytes.NewBuffer(payloadJSON))
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error making POST request")
+		return err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error reading response body")
+		return err
+	}
+
+	if err := json.Unmarshal(responseBody, target); err != nil {
+		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
+		return err
+	}
+
+	return nil
+}
+
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
-	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/chat/query?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
-	method := "POST"
+	bb.log.Trace().Time("minDate", minDate).Msg("GetChatsWithMessagesAfter")
+	// TODO: find out how to make queries based on minDate and the bluebubbles API
+	// TODO: pagination
+	limit := int64(5)
+	offset := int64(0)
 
-	limit := 1000
-	offset := 0
+	request := ChatQueryRequest{
+		Limit:  limit,
+		Offset: offset,
+		With: []ChatQueryWith{
+			ChatQueryWithLastMessage,
+			ChatQueryWithSMS,
+		},
+		Sort: QuerySortLastMessage,
+	}
+	var response ChatQueryResponse
 
-	for {
-		payload := fmt.Sprintf(`{
-            "limit": %d,
-            "offset": %d,
-            "with": [
-                "lastMessage",
-                "sms"
-            ],
-            "sort": "lastmessage"
-        }`, limit, offset)
+	err = bb.apiPost("/api/v1/chat/query", request, &response)
+	if err != nil {
+		return nil, err
+	}
 
-		client := &http.Client{}
-		req, err := http.NewRequest(method, url, strings.NewReader(payload))
-		if err != nil {
-			return nil, err
-		}
-
-		res, err := client.Do(req)
-		if err != nil {
-			return nil, err
-		}
-		defer res.Body.Close()
-
-		var result map[string]interface{}
-		if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
-			return nil, err
-		}
-
-		chatsData, ok := result["data"].([]interface{})
-		if !ok {
-			return nil, errors.New("invalid response format")
-		}
-
-		if len(chatsData) == 0 {
-			// No more data, break out of the loop
-			break
-		}
-
-		for _, chat := range chatsData {
-			chatMap, ok := chat.(map[string]interface{})
-			if !ok {
-				return nil, errors.New("invalid chat format in response")
-			}
-
-			properties, ok := chatMap["properties"].([]interface{})
-			if !ok || len(properties) == 0 {
-				return nil, errors.New("invalid properties format in chat")
-			}
-
-			lsmdStr, ok := properties[0].(map[string]interface{})["LSMD"].(string)
-			if !ok {
-				return nil, errors.New("invalid LSMD format in chat properties")
-			}
-
-			lsmd, err := time.Parse(time.RFC3339, lsmdStr)
-			if err != nil {
-				return nil, err
-			}
-
-			if lsmd.After(minDate) {
-				// The last sent message date is after the minDate, add this chat to the return
-				resp = append(resp, imessage.ChatIdentifier{
-					ChatGUID: fmt.Sprintf("%v", chatMap["guid"]),
-					ThreadID: fmt.Sprintf("%v", chatMap["chatIdentifier"]),
-				})
-			}
-		}
-
-		// Update offset for the next request
-		offset += limit
+	for _, chat := range response.Data {
+		resp = append(resp, imessage.ChatIdentifier{
+			ChatGUID: chat.GUID,
+			ThreadID: chat.GroupId,
+		})
 	}
 
 	return resp, nil
 }
 
 func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, error) {
+	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
 	return nil, ErrNotImplemented
 }
 
@@ -413,10 +423,12 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 }
 
 func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("threadID", threadID).Msg("GetChatInfo")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
+	bb.log.Trace().Str("chatID", chatID).Msg("GetGroupAvatar")
 	return nil, ErrNotImplemented
 }
 
@@ -490,6 +502,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 }
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("filename", filename).Str("pathOnDisk", pathOnDisk).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Str("mimeType", mimeType).Bool("voiceMemo", voiceMemo).Interface("metadata", metadata).Msg("SendFile")
 	return nil, ErrNotImplemented
 }
 
@@ -498,26 +511,32 @@ func (bb *blueBubbles) SendFileCleanup(sendFileDir string) {
 }
 
 func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Interface("tapback", tapback).Bool("remove", remove).Msg("SendTapback")
 	return nil, ErrNotImplemented
 }
 
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
+	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
 	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
+	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("SendTypingNotification")
 	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) ResolveIdentifier(identifier string) (string, error) {
+	bb.log.Trace().Str("identifier", identifier).Msg("ResolveIdentifier")
 	return "", ErrNotImplemented
 }
 
 func (bb *blueBubbles) PrepareDM(guid string) error {
+	bb.log.Trace().Str("guid", guid).Msg("PrepareDM")
 	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupResponse, error) {
+	bb.log.Trace().Interface("users", users).Msg("CreateGroup")
 	return nil, ErrNotImplemented
 }
 
