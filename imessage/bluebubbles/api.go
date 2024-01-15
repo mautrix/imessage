@@ -12,15 +12,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
 
+const (
+	TypingIndicator string = "typing-indicator"
+	NewMessage      string = "new-message"
+)
+
 type blueBubbles struct {
 	bridge            imessage.Bridge
 	log               zerolog.Logger
+	ws                *websocket.Conn
 	messageChan       chan *imessage.Message
 	receiptChan       chan *imessage.ReadReceipt
 	typingChan        chan *imessage.TypingNotification
@@ -50,123 +57,93 @@ func init() {
 }
 
 func (bb *blueBubbles) Start(readyCallback func()) error {
-	//TODO: automatically configure the webhook within bluebubbles
+	bb.log.Trace().Msg("Start")
 
-	//TODO: parameterize the url and port at some point
-	http.HandleFunc("/bluebubbles/webhook", bb.webhookHandler)
-	go http.ListenAndServe(":8080", nil)
-	readyCallback()
+	ws, _, err := websocket.DefaultDialer.Dial(bb.wsUrl(), nil)
+	if err != nil {
+		return err
+	}
+	err = ws.WriteMessage(websocket.TextMessage, []byte("40"))
+	if err != nil {
+		return err
+	}
+	bb.ws = ws
+
+	go bb.PollForWebsocketMessages()
 
 	return nil
 }
 
 func (bb *blueBubbles) Stop() {
-	//TODO: cleanup the webhooks from BBs here
+	bb.log.Trace().Msg("Stop")
+	bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
 }
 
-type BlueBubblesWebhook struct {
-	Data BlueBubblesWebhookData `json:"data"`
-	Type string                 `json:"type"`
-}
+func (bb *blueBubbles) PollForWebsocketMessages() {
+	defer func() {
+		bb.ws.Close()
+	}()
 
-type BlueBubblesWebhookData struct {
-	AssociatedMessageGuid string            `json:"associatedMessageGuid,omitempty"`
-	AssociatedMessageType interface{}       `json:"associatedMessageType,omitempty"`
-	Attachments           []interface{}     `json:"attachments,omitempty"`
-	AttributedBody        interface{}       `json:"attributedBody,omitempty"`
-	BalloonBundleId       interface{}       `json:"balloonBundleId,omitempty"`
-	Chats                 []BlueBubblesChat `json:"chats,omitempty"`
-	DateCreated           int64             `json:"dateCreated,omitempty"`
-	DateDelivered         int64             `json:"dateDelivered,omitempty"`
-	DateEdited            int64             `json:"dateEdited,omitempty"`
-	DateRead              int64             `json:"dateRead,omitempty"`
-	DateRetracted         int64             `json:"dateRetracted,omitempty"`
-	Error                 int               `json:"error,omitempty"`
-	ExpressiveSendStyleId interface{}       `json:"expressiveSendStyleId,omitempty"`
-	GroupActionType       int               `json:"groupActionType,omitempty"`
-	GroupTitle            string            `json:"groupTitle,omitempty"`
-	Guid                  string            `json:"guid,omitempty"`
-	Handle                BlueBubblesHandle `json:"handle,omitempty"`
-	HandleId              int               `json:"handleId,omitempty"`
-	HasDdResults          bool              `json:"hasDdResults,omitempty"`
-	HasPayloadData        bool              `json:"hasPayloadData,omitempty"`
-	IsArchived            bool              `json:"isArchived,omitempty"`
-	IsFromMe              bool              `json:"isFromMe,omitempty"`
-	ItemType              int               `json:"itemType,omitempty"`
-	MessageSummaryInfo    interface{}       `json:"messageSummaryInfo,omitempty"`
-	OriginalROWID         int               `json:"originalROWID,omitempty"`
-	OtherHandle           int               `json:"otherHandle,omitempty"`
-	PartCount             int               `json:"partCount,omitempty"`
-	PayloadData           interface{}       `json:"payloadData,omitempty"`
-	Subject               string            `json:"subject,omitempty"`
-	Text                  string            `json:"text,omitempty"`
-	ThreadOriginatorGuid  string            `json:"threadOriginatorGuid,omitempty"`
-}
+	for {
+		_, payload, err := bb.ws.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				bb.log.Error().Err(err).Msg("Error reading message from BlueBubbles websocket")
+			}
+			break
+		}
 
-type BlueBubblesChat struct {
-	ChatIdentifier string `json:"chatIdentifier,omitempty"`
-	DisplayName    string `json:"displayName,omitempty"`
-	Guid           string `json:"guid,omitempty"`
-	IsArchived     bool   `json:"isArchived,omitempty"`
-	OriginalROWID  int    `json:"originalROWID,omitempty"`
-	Style          int    `json:"style,omitempty"`
-}
+		if bytes.Equal(payload, []byte("2")) {
+			bb.log.Debug().Msg("Received ping from BlueBubbles websocket")
+			bb.ws.WriteMessage(websocket.TextMessage, []byte("3"))
+			continue
+		}
 
-type BlueBubblesHandle struct {
-	Address           string      `json:"address,omitempty"`
-	Country           string      `json:"country,omitempty"`
-	OriginalROWID     int         `json:"originalROWID,omitempty"`
-	Service           string      `json:"service,omitempty"`
-	UncanonicalizedId interface{} `json:"uncanonicalizedId,omitempty"`
-}
+		if bytes.HasPrefix(payload, []byte("42")) {
+			payload = bytes.TrimPrefix(payload, []byte("42"))
 
-func (bb *blueBubbles) webhookHandler(w http.ResponseWriter, r *http.Request) {
-	// Parse JSON data from BlueBubbles webhook into a generic map
-	var webhookData BlueBubblesWebhook
-	if err := json.NewDecoder(r.Body).Decode(&webhookData); err != nil {
-		// Handle parsing error
-		http.Error(w, "Error parsing webhook data", http.StatusBadRequest)
-		return
-	}
+			var incomingWebsocketMessage []json.RawMessage
+			if err := json.Unmarshal(payload, &incomingWebsocketMessage); err != nil {
+				bb.log.Error().Err(err).Msg("Error parsing message from BlueBubbles websocket")
+				continue
+			}
 
-	// Log or inspect the received webhook data
-	bb.log.Info().Interface("WebhookData", webhookData).Msg("Received BlueBubbles webhook")
+			var websocketMessageType string
+			if err := json.Unmarshal(incomingWebsocketMessage[0], &websocketMessageType); err != nil {
+				bb.log.Error().Err(err).Msg("Error parsing message type from BlueBubbles websocket")
+				continue
+			}
 
-	// Respond to the request (optional)
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Webhook received successfully"))
-
-	// Switch based on webhook type
-	switch webhookData.Type {
-	case "new-message":
-		// Handle new message webhook
-		bb.handleNewMessage(webhookData.Data)
-	case "updated-message":
-		// Handle updated message webhook
-		bb.handleUpdatedMessage(webhookData.Data)
-	case "chat-read-status-changed":
-		// Handle chat read status changed webhook
-		bb.handleChatReadStatusChanged(webhookData.Data)
-	case "typing-indicator":
-		// Handle typing indicator webhook
-		bb.handleTypingIndicator(webhookData.Data)
-	default:
-		// Handle unknown webhook type
-		bb.log.Warn().Str("Type", webhookData.Type).Msg("Unknown webhook type")
+			switch websocketMessageType {
+			case TypingIndicator:
+				bb.handleTypingIndicator(incomingWebsocketMessage[1])
+			case NewMessage:
+				bb.handleNewMessage(incomingWebsocketMessage[1])
+			default:
+				bb.log.Warn().Any("WebsocketMessageType", incomingWebsocketMessage[0]).Msg("Unknown websocket message type")
+			}
+		}
 	}
 }
 
-// Common Handlers for new events
+func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) interface{} {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleNewMessage")
 
-func (bb *blueBubbles) handleNewMessage(data BlueBubblesWebhookData) {
+	var data Message
+	err := json.Unmarshal(rawMessage, &data)
+	if err != nil {
+		bb.log.Warn().AnErr("err", err).Msg("Failed to parse incoming message")
+		return nil
+	}
+
 	var message imessage.Message
 
-	// Convert BlueBubblesWebhookData to imessage.Message
-	message.GUID = data.Guid
+	// Convert bluebubbles.Message to imessage.Message
+	message.GUID = data.GUID
 	message.Time = time.Unix(0, data.DateCreated*int64(time.Millisecond))
 	message.Subject = data.Subject
 	message.Text = data.Text
-	message.ChatGUID = data.Chats[0].Guid
+	message.ChatGUID = data.Chats[0].GUID
 	message.JSONSenderGUID = data.Handle.Address
 	message.Sender = imessage.Identifier{
 		LocalID: data.Handle.Address,
@@ -204,32 +181,47 @@ func (bb *blueBubbles) handleNewMessage(data BlueBubblesWebhookData) {
 	// message.Metadata = convertMessageMetadata(data.Metadata)
 	message.ThreadID = data.ThreadOriginatorGuid
 
-	// Handle new message logic
-	bb.log.Debug().Msg("Handling new message webhook")
-
 	select {
 	case bb.messageChan <- &message:
 	default:
 		bb.log.Warn().Msg("Incoming message buffer is full")
 	}
+	return nil
 }
 
-func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
-	// Handle updated message logic
-	bb.log.Info().Msg("Handling updated message webhook")
-	// Add your logic to forward data to Matrix or perform other actions
-}
+// func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
+// 	// Handle updated message logic
+// 	bb.log.Info().Msg("Handling updated message webhook")
+// 	// Add your logic to forward data to Matrix or perform other actions
+// }
 
-func (bb *blueBubbles) handleChatReadStatusChanged(data BlueBubblesWebhookData) {
-	// Handle chat read status changed logic
-	bb.log.Info().Msg("Handling chat read status changed webhook")
-	// Add your logic to forward data to Matrix or perform other actions
-}
+// func (bb *blueBubbles) handleChatReadStatusChanged(data interface{}) {
+// 	// Handle chat read status changed logic
+// 	bb.log.Info().Msg("Handling chat read status changed webhook")
+// 	// Add your logic to forward data to Matrix or perform other actions
+// }
 
-func (bb *blueBubbles) handleTypingIndicator(data BlueBubblesWebhookData) {
-	// Handle typing indicator logic
-	bb.log.Info().Msg("Handling typing indicator webhook")
-	// Add your logic to forward data to Matrix or perform other actions
+func (bb *blueBubbles) handleTypingIndicator(data json.RawMessage) interface{} {
+	bb.log.Trace().RawJSON("data", data).Msg("handleTypingIndicator")
+
+	var typingNotification TypingNotification
+	err := json.Unmarshal(data, &typingNotification)
+	if err != nil {
+		bb.log.Warn().AnErr("err", err).Msg("Failed to parse incoming typing notification")
+		return nil
+	}
+
+	notif := imessage.TypingNotification{
+		ChatGUID: typingNotification.GUID,
+		Typing:   typingNotification.Display,
+	}
+
+	select {
+	case bb.typingChan <- &notif:
+	default:
+		bb.log.Warn().Msg("Incoming typing notification buffer is full")
+	}
+	return nil
 }
 
 // These functions should all be "get" -ting data FROM bluebubbles
@@ -259,6 +251,27 @@ func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID
 func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err error) {
 	bb.log.Trace().Str("guid", guid).Msg("GetMessage")
 	return nil, ErrNotImplemented
+}
+
+func (bb *blueBubbles) wsUrl() string {
+	u, err := url.Parse(strings.Replace(bb.bridge.GetConnectorConfig().BlueBubblesURL, "http", "ws", 1))
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
+		// TODO error handling for bad config
+		return ""
+	}
+
+	u.Path = "socket.io/"
+
+	q := u.Query()
+	q.Add("guid", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
+	q.Add("EIO", "4")
+	q.Add("transport", "websocket")
+	u.RawQuery = q.Encode()
+
+	url := u.String()
+
+	return url
 }
 
 func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
