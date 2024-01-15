@@ -510,7 +510,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	if res.StatusCode != http.StatusOK {
 		bb.log.Err(fmt.Errorf("unexpected status code: %d", res.StatusCode)).Msg("Error sending the Message to BlueBubbles")
 		body, _ := io.ReadAll(res.Body)
-		bb.log.Error().Msgf("Response Body from BlueBubbles was: %s", body)
+		bb.log.Error().Bytes("response_body", body).Msg("Response from BlueBubbles")
 		return nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
 	}
 
