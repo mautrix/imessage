@@ -424,6 +424,10 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 		return nil, err
 	}
 
+	if chatResponse.Data == nil {
+		return nil, errors.New("chat is missing data payload")
+	}
+
 	if chatResponse.Data.GroupId != threadID {
 		return nil, errors.New("threadID does not match")
 	}
