@@ -204,56 +204,18 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 		return err
 	}
 
-	var message imessage.Message
+	message, err := convertBBMessageToiMessage(data)
 
-	// Convert bluebubbles.Message to imessage.Message
-	message.GUID = data.GUID
-	message.Time = time.Unix(0, data.DateCreated*int64(time.Millisecond))
-	message.Subject = data.Subject
-	message.Text = data.Text
-	message.ChatGUID = data.Chats[0].GUID
-	message.JSONSenderGUID = data.Handle.Address
-	message.Sender = imessage.Identifier{
-		LocalID: data.Handle.Address,
-		Service: data.Handle.Service,
-		IsGroup: false,
+	if err != nil {
+		return err
 	}
-	// message.JSONTargetGUID = ""
-	// message.Target = imessage.ParseIdentifier(data.Guid)
-	message.Service = data.Handle.Service
-	message.IsFromMe = data.IsFromMe
-	message.IsRead = false
-	if message.IsRead {
-		message.ReadAt = time.Unix(0, data.DateRead*int64(time.Millisecond))
-	}
-	message.IsDelivered = true
-	message.IsSent = true
-	message.IsEmote = false
-	// message.IsAudioMessage = data.ItemType == AudioMessageType
-
-	// TODO: ReplyTo
-	// message.ReplyToGUID = data.ThreadOriginatorGuid
-	// message.ReplyToPart = data.PartCount
-
-	// TODO: Tapbacks
-	// message.Tapback = nil
-
-	// TODO: Attachments
-	// message.Attachments = make([]*imessage.Attachment, len(data.Attachments))
-	// for i, blueBubblesAttachment := range data.Attachments {
-	// 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
-	// }
-
-	message.GroupActionType = imessage.GroupActionType(data.GroupActionType)
-	message.NewGroupName = data.GroupTitle
-	// message.Metadata = convertMessageMetadata(data.Metadata)
-	message.ThreadID = data.ThreadOriginatorGuid
 
 	select {
-	case bb.messageChan <- &message:
+	case bb.messageChan <- message:
 	default:
 		bb.log.Warn().Msg("Incoming message buffer is full")
 	}
+
 	return nil
 }
 
@@ -424,9 +386,16 @@ func (bb *blueBubbles) getMessage(guid string) (*Message, error) {
 func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err error) {
 	bb.log.Trace().Str("guid", guid).Msg("GetMessage")
 
-	// TODO: use getMessage private function above
+	message, err := bb.getMessage(guid)
 
-	return nil, ErrNotImplemented
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err = convertBBMessageToiMessage(*message)
+
+	return resp, nil
+
 }
 
 func (bb *blueBubbles) wsUrl() string {
@@ -853,6 +822,69 @@ func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupRespons
 
 // Helper functions
 
+func convertBBMessageToiMessage(bbMessage Message) (*imessage.Message, error) {
+
+	var message imessage.Message
+
+	// Convert bluebubbles.Message to imessage.Message
+	message.GUID = bbMessage.GUID
+	message.Time = time.Unix(0, bbMessage.DateCreated*int64(time.Millisecond))
+	message.Subject = bbMessage.Subject
+	message.Text = bbMessage.Text
+	message.ChatGUID = bbMessage.Chats[0].GUID
+
+	// TODO: there doesn't seem to be a "from" in the bluebubbles data
+	// message.JSONSenderGUID = bbMessage.Handle.Address
+	// message.Sender = imessage.Identifier{
+	// 	LocalID: bbMessage.Handle.Address,
+	// 	Service: bbMessage.Handle.Service,
+	// 	IsGroup: false,
+	// }
+
+	message.JSONTargetGUID = bbMessage.Handle.Address
+	message.Target = imessage.Identifier{
+		LocalID: bbMessage.Handle.Address,
+		Service: bbMessage.Handle.Service,
+		IsGroup: false,
+	}
+	message.Service = bbMessage.Handle.Service
+	message.IsFromMe = bbMessage.IsFromMe
+	message.IsRead = false
+	if message.IsRead {
+		message.ReadAt = time.Unix(0, bbMessage.DateRead*int64(time.Millisecond))
+	}
+	message.IsDelivered = true
+	message.IsSent = true
+	message.IsEmote = false
+	message.IsAudioMessage = bbMessage.IsAudioMessage
+
+	// TODO: ReplyTo
+	// message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
+	// message.ReplyToPart = bbMessage.PartCount
+
+	// TODO: Tapbacks
+	// if bbMessage.AssociatedMessageGuid != nil {
+	// 	message.Tapback = &imessage.Tapback{
+	// 		TargetGUID: *bbMessage.AssociatedMessageGuid,
+	// 	}
+	// 	message.Tapback.Parse()
+	// } else {
+	// 	message.Tapback = nil
+	// }
+
+	// TODO: Attachments
+	// message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
+	// for i, blueBubblesAttachment := range bbMessage.Attachments {
+	// 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
+	// }
+
+	message.GroupActionType = imessage.GroupActionType(bbMessage.GroupActionType)
+	message.NewGroupName = bbMessage.GroupTitle
+	message.ThreadID = bbMessage.ThreadOriginatorGuid
+
+	return &message, nil
+}
+
 func convertPhones(phoneNumbers []PhoneNumber) []string {
 	var phones []string
 	for _, phone := range phoneNumbers {
@@ -898,7 +930,7 @@ func (bb *blueBubbles) PostStartupSyncHook() {
 func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:     true,
-		SendTapbacks:             false,
+		SendTapbacks:             true,
 		SendReadReceipts:         true,
 		SendTypingNotifications:  true,
 		SendCaptions:             false,

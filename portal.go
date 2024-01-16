@@ -682,6 +682,8 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 		bridgeInfo.Protocol.ID = "imessage-ios"
 	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
 		bridgeInfo.Protocol.ID = "imessage-nosip"
+	} else if portal.bridge.Config.IMessage.Platform == "bluebubbles" {
+		bridgeInfo.Protocol.ID = "imessage-nosip"
 	}
 	return portal.getBridgeInfoStateKey(), bridgeInfo
 }
