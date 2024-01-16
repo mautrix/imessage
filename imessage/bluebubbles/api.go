@@ -292,7 +292,48 @@ func (bb *blueBubbles) handleGroupIconRemoved(data json.RawMessage) (err error) 
 
 func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("data", data).Msg("handleChatReadStatusChanged")
-	return ErrNotImplemented
+
+	var rec MessageReadResponse
+	err = json.Unmarshal(data, &rec)
+	if err != nil {
+		bb.log.Warn().Err(err).Msg("Failed to parse incoming read receipt")
+		return nil
+	}
+
+	chatInfo, err := bb.getChatInfo(rec.ChatGUID)
+	if err != nil {
+		bb.log.Warn().Err(err).Msg("Failed to get chat info")
+		return nil
+	}
+
+	if chatInfo.Data.LastMessage == nil {
+		bb.log.Warn().Msg("Chat info is missing last message")
+		return nil
+	}
+
+	lastMessage, err := bb.getMessage(chatInfo.Data.LastMessage.GUID)
+	if err != nil {
+		bb.log.Warn().Err(err).Msg("Failed to get last message")
+		return nil
+	}
+
+	var now = time.Now()
+
+	var receipt = imessage.ReadReceipt{
+		SenderGUID:     lastMessage.Handle.Address, // TODO: Make sure this is the right field?
+		IsFromMe:       true,
+		ChatGUID:       rec.ChatGUID,
+		ReadUpTo:       chatInfo.Data.LastMessage.GUID,
+		ReadAt:         now,
+		JSONUnixReadAt: timeToFloat(now),
+	}
+
+	select {
+	case bb.receiptChan <- &receipt:
+	default:
+		bb.log.Warn().Msg("Incoming receipt buffer is full")
+	}
+	return nil
 }
 
 // func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
@@ -363,8 +404,26 @@ func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID
 	return nil, ErrNotImplemented
 }
 
+func (bb *blueBubbles) getMessage(guid string) (*Message, error) {
+	bb.log.Trace().Str("guid", guid).Msg("getMessage")
+
+	var messageResponse MessageResponse
+
+	err := bb.apiGet(fmt.Sprintf("/api/v1/message/%s", guid), map[string]string{
+		"with": "chats",
+	}, &messageResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	return &messageResponse.Data, nil
+}
+
 func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err error) {
 	bb.log.Trace().Str("guid", guid).Msg("GetMessage")
+
+	// TODO: use getMessage private function above
+
 	return nil, ErrNotImplemented
 }
 
@@ -440,10 +499,14 @@ func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target
 func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) (err error) {
 	url := bb.apiUrl(path, map[string]string{})
 
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error marshalling payload")
-		return err
+	var payloadJSON []byte = []byte{}
+
+	if payload != nil {
+		payloadJSON, err = json.Marshal(payload)
+		if err != nil {
+			bb.log.Error().Err(err).Msg("Error marshalling payload")
+			return err
+		}
 	}
 
 	response, err := http.Post(url, "application/json", bytes.NewBuffer(payloadJSON))
@@ -530,15 +593,15 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	return resp, nil
 }
 
-func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
-	bb.log.Trace().Str("chatID", chatID).Str("threadID", threadID).Msg("GetChatInfo")
+func (bb *blueBubbles) getChatInfo(chatID string) (*ChatResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Msg("getChatInfo")
 
 	var chatResponse ChatResponse
 
 	// DEVNOTE: it doesn't appear we should URL Encode the chatID... 😬
 	//          the BlueBubbles API returned 404s, sometimes, with URL encoding
 	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s", chatID), map[string]string{
-		"with": "participants",
+		"with": "participants,lastMessage",
 	}, &chatResponse)
 	if err != nil {
 		return nil, err
@@ -548,8 +611,15 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 		return nil, errors.New("chat is missing data payload")
 	}
 
-	if chatResponse.Data.GroupID != threadID {
-		return nil, errors.New("threadID does not match")
+	return &chatResponse, nil
+}
+
+func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("threadID", threadID).Msg("GetChatInfo")
+
+	chatResponse, err := bb.getChatInfo(chatID)
+	if err != nil {
+		return nil, err
 	}
 
 	members := make([]string, len(chatResponse.Data.Partipants))
@@ -657,8 +727,8 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
 
-	var res ChatResponse
-	err := bb.apiPost(fmt.Sprintf("/api/v1/chat/%s/read", chatID), nil, res)
+	var res ReadReceiptResponse
+	err := bb.apiPost(fmt.Sprintf("/api/v1/chat/%s/read", chatID), nil, &res)
 
 	if err != nil {
 		return err
@@ -708,6 +778,13 @@ func convertEmails(emails []Email) []string {
 		emailAddresses = append(emailAddresses, email.Address)
 	}
 	return emailAddresses
+}
+
+func timeToFloat(time time.Time) float64 {
+	if time.IsZero() {
+		return 0
+	}
+	return float64(time.Unix()) + float64(time.Nanosecond())/1e9
 }
 
 // These functions are probably not necessary

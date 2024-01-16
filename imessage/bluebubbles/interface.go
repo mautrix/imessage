@@ -48,6 +48,7 @@ type Chat struct {
 	GroupID        string        `json:"groupId,omitempty"`
 	DisplayName    string        `json:"displayName"`
 	Partipants     []Participant `json:"participants"`
+	LastMessage    *Message      `json:"lastMessage,omitempty"`
 }
 
 type Participant struct {
@@ -122,6 +123,12 @@ type Message struct {
 	ThreadOriginatorGuid  string        `json:"threadOriginatorGuid,omitempty"`
 }
 
+type MessageResponse struct {
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data"`
+}
+
 type Handle struct {
 	Address           string      `json:"address,omitempty"`
 	Country           string      `json:"country,omitempty"`
@@ -141,5 +148,15 @@ type SendChatRequest struct {
 type SendChatResponse struct {
 	Status  int64   `json:"status"`
 	Message string  `json:"message"`
-	Data    Message `json:data,omitempty`
+	Data    Message `json:"data,omitempty"`
+}
+
+type ReadReceiptResponse struct {
+	Status  int64  `json:"status"`
+	Message string `json:"message"`
+}
+
+type MessageReadResponse struct {
+	ChatGUID string `json:"chatGuid"`
+	Read     bool   `json:"read"`
 }
