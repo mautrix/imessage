@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -530,6 +532,63 @@ func (bb *blueBubbles) apiPost(path string, payload interface{}, target interfac
 	return nil
 }
 
+func (bb *blueBubbles) apiPostWithFile(path string, params map[string]interface{}, filePath string, target interface{}) error {
+	url := bb.apiUrl(path, map[string]string{})
+
+	// Create a new buffer to store the file content
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	// Add the file to the request
+	fileWriter, err := writer.CreateFormFile("attachment", filepath.Base(filePath))
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error creating form file")
+		return err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error opening file")
+		return err
+	}
+	defer file.Close()
+
+	_, err = io.Copy(fileWriter, file)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error copying file content")
+		return err
+	}
+
+	// Add other parameters to the request
+	for key, value := range params {
+		_ = writer.WriteField(key, fmt.Sprint(value))
+	}
+
+	// Close the multipart writer
+	writer.Close()
+
+	// Make the HTTP POST request
+	response, err := http.Post(url, writer.FormDataContentType(), &body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error making POST request")
+		return err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error reading response body")
+		return err
+	}
+
+	if err := json.Unmarshal(responseBody, target); err != nil {
+		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
+		return err
+	}
+
+	return nil
+}
+
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
 	bb.log.Trace().Time("minDate", minDate).Msg("GetChatsWithMessagesAfter")
 	// TODO: find out how to make queries based on minDate and the bluebubbles API
@@ -712,7 +771,40 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("filename", filename).Str("pathOnDisk", pathOnDisk).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Str("mimeType", mimeType).Bool("voiceMemo", voiceMemo).Interface("metadata", metadata).Msg("SendFile")
-	return nil, ErrNotImplemented
+
+	// Prepare the payload for the POST request
+	payload := map[string]interface{}{
+		"chatGuid":            chatID,
+		"name":                filename,
+		"method":              "private-api",
+		"selectedMessageGuid": replyTo,
+		"partIndex":           fmt.Sprint(replyToPart),
+	}
+
+	// Define the API endpoint path
+	path := "/api/v1/message/attachment"
+
+	// Make the API POST request with file
+	var response SendChatResponse // Assuming imessage.SendResponse is the correct type
+	if err := bb.apiPostWithFile(path, payload, pathOnDisk, &response); err != nil {
+		return nil, err
+	}
+
+	if response.Status == 200 {
+		bb.log.Debug().Msg("Sent a message!")
+
+		var imessageSendResponse = imessage.SendResponse{
+			GUID:    response.Data.GUID,
+			Service: response.Data.Handle.Service,
+			Time:    time.Unix(0, response.Data.DateCreated*int64(time.Millisecond)),
+		}
+
+		return &imessageSendResponse, nil
+	} else {
+		bb.log.Error().Any("response", response).Msg("Failure when sending message to BlueBubbles")
+
+		return nil, errors.New("could not send message")
+	}
 }
 
 func (bb *blueBubbles) SendFileCleanup(sendFileDir string) {
