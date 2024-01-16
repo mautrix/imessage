@@ -20,8 +20,19 @@ import (
 )
 
 const (
-	TypingIndicator string = "typing-indicator"
-	NewMessage      string = "new-message"
+	// Ref: https://github.com/BlueBubblesApp/bluebubbles-server/blob/master/packages/server/src/server/events.ts
+	NewMessage            string = "new-message"
+	MessageSendError      string = "message-send-error"
+	MessageUpdated        string = "message-updated"
+	ParticipantRemoved    string = "participant-removed"
+	ParticipantAdded      string = "participant-added"
+	ParticipantLeft       string = "participant-left"
+	GroupIconChanged      string = "group-icon-changed"
+	GroupIconRemoved      string = "group-icon-removed"
+	ChatReadStatusChanged string = "chat-read-status-changed"
+	TypingIndicator       string = "typing-indicator"
+	GroupNameChanged      string = "group-name-changed"
+	IMessageAliasRemoved  string = "imessage-alias-removed"
 )
 
 type blueBubbles struct {
@@ -115,10 +126,66 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 			}
 
 			switch websocketMessageType {
-			case TypingIndicator:
-				bb.handleTypingIndicator(incomingWebsocketMessage[1])
 			case NewMessage:
-				bb.handleNewMessage(incomingWebsocketMessage[1])
+				err = bb.handleNewMessage(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling new message")
+				}
+			case MessageSendError:
+				err = bb.handleMessageSendError(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling message send error")
+				}
+			case MessageUpdated:
+				err = bb.handleMessageUpdated(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling message updated")
+				}
+			case ParticipantRemoved:
+				err = bb.handleParticipantRemoved(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling participant removed")
+				}
+			case ParticipantAdded:
+				err = bb.handleParticipantAdded(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling participant added")
+				}
+			case ParticipantLeft:
+				err = bb.handleParticipantLeft(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling participant left")
+				}
+			case GroupIconChanged:
+				err = bb.handleGroupIconChanged(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling group icon changed")
+				}
+			case GroupIconRemoved:
+				err = bb.handleGroupIconRemoved(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling group icon removed")
+				}
+			case ChatReadStatusChanged:
+				err = bb.handleChatReadStatusChanged(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling chat read status changed")
+				}
+			case TypingIndicator:
+				err = bb.handleTypingIndicator(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling typing indicator")
+				}
+			case GroupNameChanged:
+				err = bb.handleGroupNameChanged(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling group name changed")
+				}
+			case IMessageAliasRemoved:
+				err = bb.handleIMessageAliasRemoved(incomingWebsocketMessage[1])
+				if err != nil {
+					bb.log.Error().Err(err).Msg("Error handling iMessage alias removed")
+				}
 			default:
 				bb.log.Warn().Any("WebsocketMessageType", incomingWebsocketMessage[0]).Msg("Unknown websocket message type")
 			}
@@ -126,14 +193,13 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 	}
 }
 
-func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) interface{} {
+func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleNewMessage")
 
 	var data Message
-	err := json.Unmarshal(rawMessage, &data)
+	err = json.Unmarshal(rawMessage, &data)
 	if err != nil {
-		bb.log.Warn().AnErr("err", err).Msg("Failed to parse incoming message")
-		return nil
+		return err
 	}
 
 	var message imessage.Message
@@ -189,6 +255,46 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) interface{} 
 	return nil
 }
 
+func (bb *blueBubbles) handleMessageSendError(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleMessageSendError")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleMessageUpdated(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleMessageUpdated")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleParticipantRemoved(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleParticipantRemoved")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleParticipantAdded(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleParticipantAdded")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleParticipantLeft(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleParticipantLeft")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleGroupIconChanged(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleGroupIconChanged")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleGroupIconRemoved(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleGroupIconRemoved")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleChatReadStatusChanged")
+	return ErrNotImplemented
+}
+
 // func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
 // 	// Handle updated message logic
 // 	bb.log.Info().Msg("Handling updated message webhook")
@@ -201,14 +307,13 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) interface{} 
 // 	// Add your logic to forward data to Matrix or perform other actions
 // }
 
-func (bb *blueBubbles) handleTypingIndicator(data json.RawMessage) interface{} {
+func (bb *blueBubbles) handleTypingIndicator(data json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("data", data).Msg("handleTypingIndicator")
 
 	var typingNotification TypingNotification
-	err := json.Unmarshal(data, &typingNotification)
+	err = json.Unmarshal(data, &typingNotification)
 	if err != nil {
-		bb.log.Warn().AnErr("err", err).Msg("Failed to parse incoming typing notification")
-		return nil
+		return err
 	}
 
 	notif := imessage.TypingNotification{
@@ -222,6 +327,16 @@ func (bb *blueBubbles) handleTypingIndicator(data json.RawMessage) interface{} {
 		bb.log.Warn().Msg("Incoming typing notification buffer is full")
 	}
 	return nil
+}
+
+func (bb *blueBubbles) handleGroupNameChanged(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleGroupNameChanged")
+	return ErrNotImplemented
+}
+
+func (bb *blueBubbles) handleIMessageAliasRemoved(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleIMessageAliasRemoved")
+	return ErrNotImplemented
 }
 
 // These functions should all be "get" -ting data FROM bluebubbles
