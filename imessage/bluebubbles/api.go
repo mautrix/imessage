@@ -377,10 +377,18 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 	message, err := bb.getMessage(guid)
 
 	if err != nil {
+		bb.log.Err(err).Str("guid", guid).Any("response", message).Msg("Failed to get a message from BlueBubbles")
+
 		return nil, err
 	}
 
 	resp, err = convertBBMessageToiMessage(*message)
+
+	if err != nil {
+		bb.log.Err(err).Str("guid", guid).Any("response", message).Msg("Failed to parse a message from BlueBubbles")
+
+		return nil, err
+	}
 
 	return resp, nil
 
