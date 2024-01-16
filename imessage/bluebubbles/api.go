@@ -736,7 +736,7 @@ func (bb *blueBubbles) BackfillTaskChan() <-chan *imessage.BackfillTask {
 
 func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 
-	request := SendChatRequest{
+	request := SendTextRequest{
 		ChatGUID:            chatID,
 		Method:              "private-api",
 		Message:             text,
@@ -744,7 +744,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 		PartIndex:           replyToPart,
 	}
 
-	var res SendChatResponse
+	var res SendTextResponse
 
 	err := bb.apiPost("/api/v1/message/text", request, &res)
 
@@ -785,7 +785,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 	path := "/api/v1/message/attachment"
 
 	// Make the API POST request with file
-	var response SendChatResponse // Assuming imessage.SendResponse is the correct type
+	var response SendTextResponse
 	if err := bb.apiPostWithFile(path, payload, pathOnDisk, &response); err != nil {
 		return nil, err
 	}

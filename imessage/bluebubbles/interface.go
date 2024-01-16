@@ -90,37 +90,55 @@ type TypingNotification struct {
 }
 
 type Message struct {
-	AssociatedMessageGuid string        `json:"associatedMessageGuid,omitempty"`
-	AssociatedMessageType interface{}   `json:"associatedMessageType,omitempty"`
-	Attachments           []interface{} `json:"attachments,omitempty"`
-	AttributedBody        interface{}   `json:"attributedBody,omitempty"`
-	BalloonBundleId       interface{}   `json:"balloonBundleId,omitempty"`
-	Chats                 []Chat        `json:"chats,omitempty"`
-	DateCreated           int64         `json:"dateCreated,omitempty"`
-	DateDelivered         int64         `json:"dateDelivered,omitempty"`
-	DateEdited            int64         `json:"dateEdited,omitempty"`
-	DateRead              int64         `json:"dateRead,omitempty"`
-	DateRetracted         int64         `json:"dateRetracted,omitempty"`
-	Error                 int           `json:"error,omitempty"`
-	ExpressiveSendStyleId interface{}   `json:"expressiveSendStyleId,omitempty"`
-	GroupActionType       int           `json:"groupActionType,omitempty"`
-	GroupTitle            string        `json:"groupTitle,omitempty"`
-	GUID                  string        `json:"guid,omitempty"`
-	Handle                Handle        `json:"handle,omitempty"`
-	HandleId              int           `json:"handleId,omitempty"`
-	HasDdResults          bool          `json:"hasDdResults,omitempty"`
-	HasPayloadData        bool          `json:"hasPayloadData,omitempty"`
-	IsArchived            bool          `json:"isArchived,omitempty"`
-	IsFromMe              bool          `json:"isFromMe,omitempty"`
-	ItemType              int           `json:"itemType,omitempty"`
-	MessageSummaryInfo    interface{}   `json:"messageSummaryInfo,omitempty"`
-	OriginalROWID         int           `json:"originalROWID,omitempty"`
-	OtherHandle           int           `json:"otherHandle,omitempty"`
-	PartCount             int           `json:"partCount,omitempty"`
-	PayloadData           interface{}   `json:"payloadData,omitempty"`
-	Subject               string        `json:"subject,omitempty"`
-	Text                  string        `json:"text,omitempty"`
-	ThreadOriginatorGuid  string        `json:"threadOriginatorGuid,omitempty"`
+	AssociatedMessageGuid string       `json:"associatedMessageGuid,omitempty"`
+	AssociatedMessageType interface{}  `json:"associatedMessageType,omitempty"`
+	Attachments           []Attachment `json:"attachments,omitempty"`
+	AttributedBody        interface{}  `json:"attributedBody,omitempty"`
+	BalloonBundleId       interface{}  `json:"balloonBundleId,omitempty"`
+	Chats                 []Chat       `json:"chats,omitempty"`
+	DateCreated           int64        `json:"dateCreated,omitempty"`
+	DateDelivered         int64        `json:"dateDelivered,omitempty"`
+	DateEdited            int64        `json:"dateEdited,omitempty"`
+	DateRead              int64        `json:"dateRead,omitempty"`
+	DateRetracted         int64        `json:"dateRetracted,omitempty"`
+	Error                 int          `json:"error,omitempty"`
+	ExpressiveSendStyleId interface{}  `json:"expressiveSendStyleId,omitempty"`
+	GroupActionType       int          `json:"groupActionType,omitempty"`
+	GroupTitle            string       `json:"groupTitle,omitempty"`
+	GUID                  string       `json:"guid,omitempty"`
+	Handle                Handle       `json:"handle,omitempty"`
+	HandleId              int          `json:"handleId,omitempty"`
+	HasDdResults          bool         `json:"hasDdResults,omitempty"`
+	HasPayloadData        bool         `json:"hasPayloadData,omitempty"`
+	IsArchived            bool         `json:"isArchived,omitempty"`
+	IsFromMe              bool         `json:"isFromMe,omitempty"`
+	ItemType              int          `json:"itemType,omitempty"`
+	MessageSummaryInfo    interface{}  `json:"messageSummaryInfo,omitempty"`
+	OriginalROWID         int          `json:"originalROWID,omitempty"`
+	OtherHandle           int          `json:"otherHandle,omitempty"`
+	PartCount             int          `json:"partCount,omitempty"`
+	PayloadData           interface{}  `json:"payloadData,omitempty"`
+	Subject               string       `json:"subject,omitempty"`
+	Text                  string       `json:"text,omitempty"`
+	ThreadOriginatorGuid  string       `json:"threadOriginatorGuid,omitempty"`
+}
+
+type Attachment struct {
+	OriginalRowID  int         `json:"originalROWID,omitempty"`
+	GUID           string      `json:"guid,omitempty"`
+	UTI            string      `json:"uti,omitempty"`
+	MimeType       string      `json:"mimeType,omitempty"`
+	TransferName   string      `json:"transferName,omitempty"`
+	TotalBytes     int64       `json:"totalBytes,omitempty"`
+	TransferState  int         `json:"transferState,omitempty"`
+	IsOutgoing     bool        `json:"isOutgoing,omitempty"`
+	HideAttachment bool        `json:"hideAttachment,omitempty"`
+	IsSticker      bool        `json:"isSticker,omitempty"`
+	OriginalGUID   string      `json:"originalGuid,omitempty"`
+	HasLivePhoto   bool        `json:"hasLivePhoto,omitempty"`
+	Height         int64       `json:"height,omitempty"`
+	Width          int64       `json:"width,omitempty"`
+	Metadata       interface{} `json:"metadata,omitempty"`
 }
 
 type MessageResponse struct {
@@ -137,7 +155,7 @@ type Handle struct {
 	UncanonicalizedId interface{} `json:"uncanonicalizedId,omitempty"`
 }
 
-type SendChatRequest struct {
+type SendTextRequest struct {
 	ChatGUID            string `json:"chatGuid"`
 	Method              string `json:"method"`
 	Message             string `json:"message"`
@@ -145,7 +163,7 @@ type SendChatRequest struct {
 	PartIndex           int    `json:"partIndex"`
 }
 
-type SendChatResponse struct {
+type SendTextResponse struct {
 	Status  int64   `json:"status"`
 	Message string  `json:"message"`
 	Data    Message `json:"data,omitempty"`
