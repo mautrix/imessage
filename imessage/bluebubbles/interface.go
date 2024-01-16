@@ -143,9 +143,10 @@ type Attachment struct {
 }
 
 type MessageResponse struct {
-	Status  int64   `json:"status"`
-	Message string  `json:"message"`
-	Data    Message `json:"data"`
+	Status  int64       `json:"status"`
+	Message string      `json:"message"`
+	Data    Message     `json:"data"`
+	Error   interface{} `json:"error,omitempty"`
 }
 
 type Handle struct {
