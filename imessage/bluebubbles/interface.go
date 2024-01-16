@@ -129,3 +129,17 @@ type Handle struct {
 	Service           string      `json:"service,omitempty"`
 	UncanonicalizedId interface{} `json:"uncanonicalizedId,omitempty"`
 }
+
+type SendChatRequest struct {
+	ChatGUID            string `json:"chatGuid"`
+	Method              string `json:"method"`
+	Message             string `json:"message"`
+	SelectedMessageGuid string `json:"selectedMessageGuid"`
+	PartIndex           int    `json:"partIndex"`
+}
+
+type SendChatResponse struct {
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:data,omitempty`
+}

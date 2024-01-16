@@ -492,50 +492,37 @@ func (bb *blueBubbles) BackfillTaskChan() <-chan *imessage.BackfillTask {
 
 func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 
-	url := bb.bridge.GetConnectorConfig().BlueBubblesURL + "/api/v1/message/text?password=" + bb.bridge.GetConnectorConfig().BlueBubblesPassword
-	method := "POST"
-
-	payload := fmt.Sprintf(`{
-    "chatGuid": "%s",
-    "method": "private-api",
-    "message": "%s"
-}`, chatID, text)
-
-	bb.log.Debug().Msg(payload)
-
-	client := &http.Client{}
-	req, err := http.NewRequest(method, url, strings.NewReader(payload))
-
-	// Set Content-Type header to application/json
-	req.Header.Set("Content-Type", "application/json")
-
-	if err != nil {
-		fmt.Println(err)
-		return nil, err
-	}
-	res, err := client.Do(req)
-	if err != nil {
-		bb.log.Err(err).Msg("Error sending the Message to BlueBubbles")
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		bb.log.Err(fmt.Errorf("unexpected status code: %d", res.StatusCode)).Msg("Error sending the Message to BlueBubbles")
-		body, _ := io.ReadAll(res.Body)
-		bb.log.Error().Bytes("response_body", body).Msg("Response from BlueBubbles")
-		return nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	request := SendChatRequest{
+		ChatGUID:            chatID,
+		Method:              "private-api",
+		Message:             text,
+		SelectedMessageGuid: replyTo,
+		PartIndex:           replyToPart,
 	}
 
-	_, err = io.ReadAll(res.Body)
+	var res SendChatResponse
+
+	err := bb.apiPost("/api/v1/message/text", request, &res)
+
 	if err != nil {
-		bb.log.Err(err).Msg("Error reading the SendMessage response body from Bluebubbles")
 		return nil, err
 	}
 
-	bb.log.Debug().Msg("Sent a message!")
+	if res.Status == 200 {
+		bb.log.Debug().Msg("Sent a message!")
 
-	return nil, nil
+		var imessageSendResponse = imessage.SendResponse{
+			GUID:    res.Data.GUID,
+			Service: res.Data.Handle.Service,
+			Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
+		}
+
+		return &imessageSendResponse, nil
+	} else {
+		bb.log.Error().Any("response", res).Msg("Failure when sending message to BlueBubbles")
+
+		return nil, errors.New("could not send message")
+	}
 }
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
@@ -554,7 +541,17 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
-	return ErrNotImplemented
+
+	var res ChatResponse
+	err := bb.apiPost(fmt.Sprintf("/api/v1/chat/%s/read", chatID), nil, res)
+
+	if err != nil {
+		return err
+	}
+
+	bb.log.Debug().Str("chatID", chatID).Msg("Marked a chat as Read")
+
+	return nil
 }
 
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
@@ -616,14 +613,14 @@ func (bb *blueBubbles) PostStartupSyncHook() {
 
 func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
-		MessageSendResponses:     false,
+		MessageSendResponses:     true,
 		SendTapbacks:             false,
-		SendReadReceipts:         false,
-		SendTypingNotifications:  false,
+		SendReadReceipts:         true,
+		SendTypingNotifications:  true,
 		SendCaptions:             false,
 		BridgeState:              false,
 		MessageStatusCheckpoints: false,
-		DeliveredStatus:          false,
+		DeliveredStatus:          true,
 		ContactChatMerging:       false,
 		RichLinks:                false,
 		ChatBridgeResult:         false,
