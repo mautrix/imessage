@@ -300,18 +300,6 @@ func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err er
 	return nil
 }
 
-// func (bb *blueBubbles) handleUpdatedMessage(data BlueBubblesWebhookData) {
-// 	// Handle updated message logic
-// 	bb.log.Info().Msg("Handling updated message webhook")
-// 	// Add your logic to forward data to Matrix or perform other actions
-// }
-
-// func (bb *blueBubbles) handleChatReadStatusChanged(data interface{}) {
-// 	// Handle chat read status changed logic
-// 	bb.log.Info().Msg("Handling chat read status changed webhook")
-// 	// Add your logic to forward data to Matrix or perform other actions
-// }
-
 func (bb *blueBubbles) handleTypingIndicator(data json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("data", data).Msg("handleTypingIndicator")
 
@@ -396,166 +384,6 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 
 	return resp, nil
 
-}
-
-func (bb *blueBubbles) wsUrl() string {
-	u, err := url.Parse(strings.Replace(bb.bridge.GetConnectorConfig().BlueBubblesURL, "http", "ws", 1))
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
-		// TODO error handling for bad config
-		return ""
-	}
-
-	u.Path = "socket.io/"
-
-	q := u.Query()
-	q.Add("guid", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
-	q.Add("EIO", "4")
-	q.Add("transport", "websocket")
-	u.RawQuery = q.Encode()
-
-	url := u.String()
-
-	return url
-}
-
-func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
-	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
-		// TODO error handling for bad config
-		return ""
-	}
-
-	u.Path = path
-
-	q := u.Query()
-	q.Add("password", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
-
-	for key, value := range queryParams {
-		q.Add(key, value)
-	}
-
-	u.RawQuery = q.Encode()
-
-	url := u.String()
-
-	return url
-}
-
-func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
-	url := bb.apiUrl(path, queryParams)
-
-	response, err := http.Get(url)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error making GET request")
-		return err
-	}
-	defer response.Body.Close()
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error reading response body")
-		return err
-	}
-
-	if err := json.Unmarshal(responseBody, target); err != nil {
-		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
-		return err
-	}
-
-	return nil
-}
-
-func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) (err error) {
-	url := bb.apiUrl(path, map[string]string{})
-
-	var payloadJSON []byte = []byte{}
-
-	if payload != nil {
-		payloadJSON, err = json.Marshal(payload)
-		if err != nil {
-			bb.log.Error().Err(err).Msg("Error marshalling payload")
-			return err
-		}
-	}
-
-	response, err := http.Post(url, "application/json", bytes.NewBuffer(payloadJSON))
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error making POST request")
-		return err
-	}
-	defer response.Body.Close()
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error reading response body")
-		return err
-	}
-
-	if err := json.Unmarshal(responseBody, target); err != nil {
-		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
-		return err
-	}
-
-	return nil
-}
-
-func (bb *blueBubbles) apiPostWithFile(path string, params map[string]interface{}, filePath string, target interface{}) error {
-	url := bb.apiUrl(path, map[string]string{})
-
-	// Create a new buffer to store the file content
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-
-	// Add the file to the request
-	fileWriter, err := writer.CreateFormFile("attachment", filepath.Base(filePath))
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error creating form file")
-		return err
-	}
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error opening file")
-		return err
-	}
-	defer file.Close()
-
-	_, err = io.Copy(fileWriter, file)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error copying file content")
-		return err
-	}
-
-	// Add other parameters to the request
-	for key, value := range params {
-		_ = writer.WriteField(key, fmt.Sprint(value))
-	}
-
-	// Close the multipart writer
-	writer.Close()
-
-	// Make the HTTP POST request
-	response, err := http.Post(url, writer.FormDataContentType(), &body)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error making POST request")
-		return err
-	}
-	defer response.Body.Close()
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error reading response body")
-		return err
-	}
-
-	if err := json.Unmarshal(responseBody, target); err != nil {
-		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
-		return err
-	}
-
-	return nil
 }
 
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
@@ -795,14 +623,42 @@ func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 		return err
 	}
 
-	bb.log.Debug().Str("chatID", chatID).Msg("Marked a chat as Read")
+	if res.Status != 200 {
+		bb.log.Error().Any("response", res).Str("chatID", chatID).Msg("Failure when marking a chat as read")
+
+		return errors.New("could not mark chat as read")
+	}
+
+	bb.log.Trace().Str("chatID", chatID).Msg("Marked a chat as Read")
 
 	return nil
 }
 
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
 	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("SendTypingNotification")
-	return ErrNotImplemented
+
+	var res ReadReceiptResponse
+	var err error
+
+	if typing {
+		err = bb.apiPost(fmt.Sprintf("/api/v1/chat/%s/typing", chatID), nil, &res)
+	} else {
+		err = bb.apiDelete(fmt.Sprintf("/api/v1/chat/%s/typing", chatID), nil, &res)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if res.Status != 200 {
+		bb.log.Error().Any("response", res).Str("chatID", chatID).Bool("typing", typing).Msg("Failure when updating typing status")
+
+		return errors.New("could not update typing status")
+	}
+
+	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("Update typing status")
+
+	return nil
 }
 
 func (bb *blueBubbles) ResolveIdentifier(identifier string) (string, error) {
@@ -821,6 +677,182 @@ func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupRespons
 }
 
 // Helper functions
+
+func (bb *blueBubbles) wsUrl() string {
+	u, err := url.Parse(strings.Replace(bb.bridge.GetConnectorConfig().BlueBubblesURL, "http", "ws", 1))
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
+		// TODO error handling for bad config
+		return ""
+	}
+
+	u.Path = "socket.io/"
+
+	q := u.Query()
+	q.Add("guid", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
+	q.Add("EIO", "4")
+	q.Add("transport", "websocket")
+	u.RawQuery = q.Encode()
+
+	url := u.String()
+
+	return url
+}
+
+func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
+	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
+		// TODO error handling for bad config
+		return ""
+	}
+
+	u.Path = path
+
+	q := u.Query()
+	q.Add("password", bb.bridge.GetConnectorConfig().BlueBubblesPassword)
+
+	for key, value := range queryParams {
+		q.Add(key, value)
+	}
+
+	u.RawQuery = q.Encode()
+
+	url := u.String()
+
+	return url
+}
+
+func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
+	url := bb.apiUrl(path, queryParams)
+
+	response, err := http.Get(url)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error making GET request")
+		return err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error reading response body")
+		return err
+	}
+
+	if err := json.Unmarshal(responseBody, target); err != nil {
+		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
+		return err
+	}
+
+	return nil
+}
+
+func (bb *blueBubbles) apiPost(path string, payload interface{}, target interface{}) error {
+	return bb.apiRequest("POST", path, payload, target)
+}
+
+func (bb *blueBubbles) apiDelete(path string, payload interface{}, target interface{}) error {
+	return bb.apiRequest("DELETE", path, payload, target)
+}
+
+func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, target interface{}) (err error) {
+	url := bb.apiUrl(path, map[string]string{})
+
+	var payloadJSON []byte
+	if payload != nil {
+		payloadJSON, err = json.Marshal(payload)
+		if err != nil {
+			bb.log.Error().Err(err).Msg("Error marshalling payload")
+			return err
+		}
+	}
+
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(payloadJSON))
+	if err != nil {
+		bb.log.Error().Err(err).Msgf("Error creating %s request", method)
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	response, err := client.Do(req)
+	if err != nil {
+		bb.log.Error().Err(err).Msgf("Error making %s request", method)
+		return err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error reading response body")
+		return err
+	}
+
+	if err := json.Unmarshal(responseBody, target); err != nil {
+		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
+		return err
+	}
+
+	return nil
+}
+
+func (bb *blueBubbles) apiPostWithFile(path string, params map[string]interface{}, filePath string, target interface{}) error {
+	url := bb.apiUrl(path, map[string]string{})
+
+	// Create a new buffer to store the file content
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+
+	// Add the file to the request
+	fileWriter, err := writer.CreateFormFile("attachment", filepath.Base(filePath))
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error creating form file")
+		return err
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error opening file")
+		return err
+	}
+	defer file.Close()
+
+	_, err = io.Copy(fileWriter, file)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error copying file content")
+		return err
+	}
+
+	// Add other parameters to the request
+	for key, value := range params {
+		_ = writer.WriteField(key, fmt.Sprint(value))
+	}
+
+	// Close the multipart writer
+	writer.Close()
+
+	// Make the HTTP POST request
+	response, err := http.Post(url, writer.FormDataContentType(), &body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error making POST request")
+		return err
+	}
+	defer response.Body.Close()
+
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error reading response body")
+		return err
+	}
+
+	if err := json.Unmarshal(responseBody, target); err != nil {
+		bb.log.Error().Err(err).Msg("Error unmarshalling response body")
+		return err
+	}
+
+	return nil
+}
 
 func convertBBMessageToiMessage(bbMessage Message) (*imessage.Message, error) {
 

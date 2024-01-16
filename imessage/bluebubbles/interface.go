@@ -171,8 +171,15 @@ type SendTextResponse struct {
 }
 
 type ReadReceiptResponse struct {
-	Status  int64  `json:"status"`
-	Message string `json:"message"`
+	Status  int64       `json:"status"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data"`
+}
+
+type StartTypingResponse struct {
+	Status  int64       `json:"status"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data"`
 }
 
 type MessageReadResponse struct {
