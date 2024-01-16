@@ -769,7 +769,7 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(payloadJSON))
 	if err != nil {
-		bb.log.Error().Err(err).Msgf("Error creating %s request", method)
+		bb.log.Error().Err(err).Str("method", method).Msg("Error creating request")
 		return err
 	}
 
@@ -778,7 +778,7 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 	client := &http.Client{}
 	response, err := client.Do(req)
 	if err != nil {
-		bb.log.Error().Err(err).Msgf("Error making %s request", method)
+		bb.log.Error().Err(err).Str("method", method).Msg("Error making request")
 		return err
 	}
 	defer response.Body.Close()
