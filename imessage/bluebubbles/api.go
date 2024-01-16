@@ -637,7 +637,7 @@ func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
 	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("SendTypingNotification")
 
-	var res ReadReceiptResponse
+	var res TypingResponse
 	var err error
 
 	if typing {
