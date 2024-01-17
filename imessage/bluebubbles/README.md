@@ -38,6 +38,17 @@ bbctl run --local-dev --param 'bluebubbles_url=<YOUR BLUEBUBBLES URL>' --param '
 
 _NOTE_: Double check that the `config.yaml` that was automatically generated has the correct values set for `bluebubbles_url` and `bluebubbles_password`, as sometimes `bbctl run` doesn't copy the `param` properly.
 
+#### Troubleshooting
+
+If you encounter strange errors, try resetting your environment:
+
+```bash
+bbctl delete sh-imessage
+rm ./mautrix-imessage ./mautrix-imessage.db config.yaml
+```
+
+Then start from the `bbctl run ...` command, and ensure that `bluebubbles_url` and `bluebubbles_password` are set in your config.
+
 ### Contributing
 
 1. Find an open issue or bug
