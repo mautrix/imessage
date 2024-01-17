@@ -170,6 +170,20 @@ type SendTextResponse struct {
 	Data    Message `json:"data,omitempty"`
 }
 
+type SendReactionRequest struct {
+	ChatGUID            string `json:"chatGuid"`
+	Reaction            string `json:"reaction"`
+	SelectedMessageGuid string `json:"selectedMessageGuid"`
+	PartIndex           int    `json:"partIndex"`
+}
+
+type SendReactionResponse struct {
+	Status  int64       `json:"status"`
+	Message string      `json:"message"`
+	Data    Message     `json:"data,omitempty"`
+	Error   interface{} `json:"error"`
+}
+
 type ReadReceiptResponse struct {
 	Status  int64       `json:"status"`
 	Message string      `json:"message"`

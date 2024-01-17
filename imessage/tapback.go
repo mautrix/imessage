@@ -119,3 +119,24 @@ func (amt TapbackType) Emoji() string {
 		return "\ufffd" // "�"
 	}
 }
+
+func (amt TapbackType) Name() string {
+	switch amt {
+	case 0:
+		return ""
+	case TapbackLove:
+		return "love" // "❤️"
+	case TapbackLike:
+		return "like" // "👍️"
+	case TapbackDislike:
+		return "dislike" // "👎️"
+	case TapbackLaugh:
+		return "laugh" // "😂"
+	case TapbackEmphasis:
+		return "emphasize" // "‼️"
+	case TapbackQuestion:
+		return "question" // "❓️"
+	default:
+		return "" // "�"
+	}
+}
