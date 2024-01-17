@@ -204,7 +204,7 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 		return err
 	}
 
-	message, err := convertBBMessageToiMessage(data)
+	message, err := bb.convertBBMessageToiMessage(data)
 
 	if err != nil {
 		return err
@@ -382,7 +382,7 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 		return nil, err
 	}
 
-	resp, err = convertBBMessageToiMessage(*message)
+	resp, err = bb.convertBBMessageToiMessage(*message)
 
 	if err != nil {
 		bb.log.Err(err).Str("guid", guid).Any("response", message).Msg("Failed to parse a message from BlueBubbles")
@@ -862,7 +862,7 @@ func (bb *blueBubbles) apiPostWithFile(path string, params map[string]interface{
 	return nil
 }
 
-func convertBBMessageToiMessage(bbMessage Message) (*imessage.Message, error) {
+func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.Message, error) {
 
 	var message imessage.Message
 
@@ -912,17 +912,53 @@ func convertBBMessageToiMessage(bbMessage Message) (*imessage.Message, error) {
 	// 	message.Tapback = nil
 	// }
 
-	// TODO: Attachments
-	// message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
-	// for i, blueBubblesAttachment := range bbMessage.Attachments {
-	// 	message.Attachments[i] = convertAttachment(blueBubblesAttachment)
-	// }
+	message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
+	for i, blueBubblesAttachment := range bbMessage.Attachments {
+		attachment, err := bb.convertAttachment(blueBubblesAttachment)
+		if err != nil {
+			bb.log.Warn().Err(err).Msg("Error converting attachment")
+			continue
+		}
+		message.Attachments[i] = attachment
+	}
 
 	message.GroupActionType = imessage.GroupActionType(bbMessage.GroupActionType)
 	message.NewGroupName = bbMessage.GroupTitle
 	message.ThreadID = bbMessage.ThreadOriginatorGuid
 
 	return &message, nil
+}
+
+func (bb *blueBubbles) convertAttachment(attachment Attachment) (*imessage.Attachment, error) {
+	url := bb.apiUrl(fmt.Sprintf("/api/v1/attachment/%s/download", attachment.GUID), map[string]string{})
+
+	response, err := http.Get(url)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error making GET request")
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	// Create a temp file and read the response body into it
+	tempFile, err := os.CreateTemp(os.TempDir(), attachment.GUID)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error creating temp file")
+		return nil, err
+	}
+	defer tempFile.Close()
+
+	_, err = io.Copy(tempFile, response.Body)
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error copying response body to temp file")
+		return nil, err
+	}
+
+	return &imessage.Attachment{
+		GUID:       attachment.GUID,
+		PathOnDisk: tempFile.Name(),
+		FileName:   attachment.TransferName,
+		MimeType:   attachment.MimeType,
+	}, nil
 }
 
 func convertPhones(phoneNumbers []PhoneNumber) []string {
