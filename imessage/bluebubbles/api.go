@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -537,42 +538,35 @@ func (bb *blueBubbles) BackfillTaskChan() <-chan *imessage.BackfillTask {
 	return bb.backfillTaskChan
 }
 
-// These functions should all be "send" -ing data TO bluebubbles
-
 func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
 	request := SendTextRequest{
-		ChatGUID:            chatID,
-		Method:              "private-api",
-		Message:             text,
-		SelectedMessageGuid: replyTo,
-		PartIndex:           replyToPart,
+		ChatGUID: chatID,
+		Method:   "apple-script",
+		Message:  text,
+		TempGuid: fmt.Sprintf("temp-%s", RandString(8)),
 	}
 
 	var res SendTextResponse
 
 	err := bb.apiPost("/api/v1/message/text", request, &res)
-
 	if err != nil {
 		return nil, err
 	}
 
-	if res.Status == 200 {
-		bb.log.Debug().Msg("Sent a message!")
-
-		var imessageSendResponse = imessage.SendResponse{
-			GUID:    res.Data.GUID,
-			Service: res.Data.Handle.Service,
-			Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
-		}
-
-		return &imessageSendResponse, nil
-	} else {
+	if res.Status != 200 {
 		bb.log.Error().Any("response", res).Msg("Failure when sending message to BlueBubbles")
 
 		return nil, errors.New("could not send message")
+
 	}
+
+	return &imessage.SendResponse{
+		GUID:    res.Data.GUID,
+		Service: res.Data.Handle.Service,
+		Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
+	}, nil
 }
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
@@ -988,6 +982,16 @@ func timeToFloat(time time.Time) float64 {
 		return 0
 	}
 	return float64(time.Unix()) + float64(time.Nanosecond())/1e9
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func RandString(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
 }
 
 // These functions are probably not necessary

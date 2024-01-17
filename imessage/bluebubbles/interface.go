@@ -158,11 +158,10 @@ type Handle struct {
 }
 
 type SendTextRequest struct {
-	ChatGUID            string `json:"chatGuid"`
-	Method              string `json:"method"`
-	Message             string `json:"message"`
-	SelectedMessageGuid string `json:"selectedMessageGuid"`
-	PartIndex           int    `json:"partIndex"`
+	ChatGUID string `json:"chatGuid"`
+	Method   string `json:"method"`
+	Message  string `json:"message"`
+	TempGuid string `json:"tempGuid"`
 }
 
 type SendTextResponse struct {
