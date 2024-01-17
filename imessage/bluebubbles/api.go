@@ -540,6 +540,7 @@ func (bb *blueBubbles) BackfillTaskChan() <-chan *imessage.BackfillTask {
 // These functions should all be "send" -ing data TO bluebubbles
 
 func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
 	request := SendTextRequest{
 		ChatGUID:            chatID,
@@ -596,7 +597,9 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 	}
 
 	if response.Status == 200 {
-		bb.log.Debug().Msg("Sent a message!")
+		bb.log.Debug().Msg("Sent a file!")
+
+		bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
 
 		var imessageSendResponse = imessage.SendResponse{
 			GUID:    response.Data.GUID,
@@ -1009,7 +1012,7 @@ func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 		SendTapbacks:             true,
 		SendReadReceipts:         true,
 		SendTypingNotifications:  true,
-		SendCaptions:             false,
+		SendCaptions:             true,
 		BridgeState:              false,
 		MessageStatusCheckpoints: false,
 		DeliveredStatus:          true,
