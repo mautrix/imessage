@@ -615,7 +615,33 @@ func (bb *blueBubbles) SendFileCleanup(sendFileDir string) {
 
 func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Interface("tapback", tapback).Bool("remove", remove).Msg("SendTapback")
-	return nil, ErrNotImplemented
+
+	request := SendReactionRequest{
+		ChatGUID:            chatID,
+		SelectedMessageGuid: targetGUID,
+		PartIndex:           targetPart,
+		Reaction:            tapback.Name(),
+	}
+
+	var res SendReactionResponse
+
+	err := bb.apiPost("/api/v1/message/react", request, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.Status != 200 {
+		bb.log.Error().Any("response", res).Msg("Failure when sending message to BlueBubbles")
+
+		return nil, errors.New("could not send message")
+
+	}
+
+	return &imessage.SendResponse{
+		GUID:    res.Data.GUID,
+		Service: res.Data.Handle.Service,
+		Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
+	}, nil
 }
 
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
