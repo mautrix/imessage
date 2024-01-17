@@ -165,9 +165,10 @@ type SendTextRequest struct {
 }
 
 type SendTextResponse struct {
-	Status  int64   `json:"status"`
-	Message string  `json:"message"`
-	Data    Message `json:"data,omitempty"`
+	Status  int64       `json:"status"`
+	Message string      `json:"message"`
+	Data    Message     `json:"data,omitempty"`
+	Error   interface{} `json:"error,omitempty"`
 }
 
 type SendReactionRequest struct {
