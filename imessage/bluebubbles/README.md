@@ -13,6 +13,16 @@
       1. Please let us know if there's more you find that doesn't work...
 1. Familiarize yourself with the [BlueBubbles API](https://documenter.getpostman.com/view/765844/UV5RnfwM#4e5fd735-bd88-41c1-bc8f-96394b91f5e6)
 
+## Using the Bridge (Start with the Prerequisties!)
+
+1. Download the most recent `bbctl` from the most recent [GitHub Actions](https://github.com/beeper/bridge-manager/actions) build
+1. Move it somewhere on your system that is in your `$PATH`, and `chmod +x bbctl`
+1. Run `bbctl login` to login to your Beeper Account
+1. Download the most recent `mautrix-imessage` from the [`bluebubbles` branch](https://mau.dev/mautrix/imessage/-/artifacts)
+1. Run `bbctl run --custom-startup-command ~/PATH/TO/EXTRACTED/ARTIFACT/mautrix-imessage --param 'imessage_platform=bluebubbles' sh-imessage`
+1. When prompted, provide your `Server Address` listed in the BlueBubbles server UI
+1. When prompted, provide your `Server Password` listed in the BlueBubbles server UI
+
 ## Development
 
 <!-- TODO: This experience could be greatly improved -->
