@@ -133,7 +133,7 @@ type Message struct {
 	Subject                   string        `json:"subject,omitempty"`
 	Text                      string        `json:"text,omitempty"`
 	ThreadOriginatorGuid      string        `json:"threadOriginatorGuid,omitempty"`
-	ThreadOriginatorPart      interface{}   `json:"threadOriginatorPart,omitempty"`
+	ThreadOriginatorPart      string        `json:"threadOriginatorPart,omitempty"`
 	TimeExpressiveSendStyleId interface{}   `json:"timeExpressiveSendStyleId,omitempty"`
 	WasDeliveredQuietly       bool          `json:"wasDeliveredQuietly,omitempty"`
 }
@@ -172,10 +172,12 @@ type Handle struct {
 }
 
 type SendTextRequest struct {
-	ChatGUID string `json:"chatGuid"`
-	Method   string `json:"method"`
-	Message  string `json:"message"`
-	TempGuid string `json:"tempGuid"`
+	ChatGUID            string `json:"chatGuid"`
+	Method              string `json:"method"`
+	Message             string `json:"message"`
+	TempGuid            string `json:"tempGuid"`
+	SelectedMessageGuid string `json:"selectedMessageGuid,omitempty"`
+	PartIndex           *int   `json:"partIndex,omitempty"`
 }
 
 type SendTextResponse struct {

@@ -586,10 +586,12 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
 	request := SendTextRequest{
-		ChatGUID: chatID,
-		Method:   "apple-script",
-		Message:  text,
-		TempGuid: fmt.Sprintf("temp-%s", RandString(8)),
+		ChatGUID:            chatID,
+		Method:              "apple-script",
+		Message:             text,
+		TempGuid:            fmt.Sprintf("temp-%s", RandString(8)),
+		SelectedMessageGuid: replyTo,
+		PartIndex:           &replyToPart,
 	}
 
 	var res SendTextResponse
@@ -964,9 +966,9 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	if message.IsRead {
 		message.ReadAt = time.Unix(0, bbMessage.DateRead*int64(time.Millisecond))
 	}
-	message.IsDelivered = true
-	message.IsSent = true
-	message.IsEmote = false
+	message.IsDelivered = true // TODO this may need to be based on the bbMessage.DateDelivered != 0
+	message.IsSent = true      // assume yes because we made it to this part of the code
+	message.IsEmote = false    // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
 
 	message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
