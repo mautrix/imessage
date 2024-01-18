@@ -308,7 +308,7 @@ func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err er
 
 	var receipt = imessage.ReadReceipt{
 		SenderGUID:     lastMessage.Handle.Address, // TODO: Make sure this is the right field?
-		IsFromMe:       true,
+		IsFromMe:       false,                      // changing this to false as I believe read reciepts will always be from others
 		ChatGUID:       rec.ChatGUID,
 		ReadUpTo:       chatInfo.Data.LastMessage.GUID,
 		ReadAt:         now,
