@@ -979,7 +979,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// } else {
 	// 	message.ReplyToPart = num
 	// }
-  
+
 	// Tapbacks
 	if bbMessage.AssociatedMessageGuid != "" &&
 		bbMessage.AssociatedMessageType != "" {
