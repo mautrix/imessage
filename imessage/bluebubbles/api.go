@@ -932,17 +932,17 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// 	message.ReplyToPart = num
 	// }
 
-	// TODO: Tapbacks, when this code is activated, tapbacks stop coming through
-	// if bbMessage.AssociatedMessageGuid != "" &&
-	// 	bbMessage.AssociatedMessageType != "" {
-	// 	message.Tapback = &imessage.Tapback{
-	// 		TargetGUID: bbMessage.AssociatedMessageGuid,
-	// 		Type:       imessage.TapbackFromName(bbMessage.AssociatedMessageType),
-	// 	}
-	// 	message.Tapback.Parse()
-	// } else {
-	// 	message.Tapback = nil
-	// }
+	// Tapbacks work E2E now!
+	if bbMessage.AssociatedMessageGuid != "" &&
+		bbMessage.AssociatedMessageType != "" {
+		message.Tapback = &imessage.Tapback{
+			TargetGUID: bbMessage.AssociatedMessageGuid,
+			Type:       imessage.TapbackFromName(bbMessage.AssociatedMessageType),
+		}
+		message.Tapback.Parse()
+	} else {
+		message.Tapback = nil
+	}
 
 	message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
 	for i, blueBubblesAttachment := range bbMessage.Attachments {
