@@ -95,6 +95,25 @@ func TapbackFromEmoji(emoji string) TapbackType {
 	}
 }
 
+func TapbackFromName(name string) TapbackType {
+	switch name {
+	case "love":
+		return TapbackLove
+	case "like":
+		return TapbackLike
+	case "dislike":
+		return TapbackDislike
+	case "laugh":
+		return TapbackLaugh
+	case "emphasize":
+		return TapbackEmphasis
+	case "question":
+		return TapbackQuestion
+	default:
+		return 0
+	}
+}
+
 func (amt TapbackType) String() string {
 	return amt.Emoji()
 }
