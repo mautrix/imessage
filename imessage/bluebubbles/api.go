@@ -26,7 +26,7 @@ const (
 	// Ref: https://github.com/BlueBubblesApp/bluebubbles-server/blob/master/packages/server/src/server/events.ts
 	NewMessage            string = "new-message"
 	MessageSendError      string = "message-send-error"
-	MessageUpdated        string = "message-updated"
+	MessageUpdated        string = "updated-message"
 	ParticipantRemoved    string = "participant-removed"
 	ParticipantAdded      string = "participant-added"
 	ParticipantLeft       string = "participant-left"
@@ -225,8 +225,30 @@ func (bb *blueBubbles) handleMessageSendError(data json.RawMessage) (err error) 
 	return ErrNotImplemented
 }
 
-func (bb *blueBubbles) handleMessageUpdated(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleMessageUpdated")
+func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleMessageUpdated")
+
+	//TODO: This code words just fine, unless you send a caption with a picture. then it duplicates your message in the matrix client (not visible to the other imessage user though)
+	// 		Let's get the multipart message working before we worry about this function
+	// var data Message
+	// err = json.Unmarshal(rawMessage, &data)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// message, err := bb.convertBBMessageToiMessage(data)
+
+	// if err != nil {
+	// 	return err
+	// }
+
+	// select {
+	// case bb.messageChan <- message:
+	// default:
+	// 	bb.log.Warn().Msg("Incoming message buffer is full")
+	// }
+
+	// return nil
 	return ErrNotImplemented
 }
 
@@ -286,7 +308,7 @@ func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err er
 
 	var receipt = imessage.ReadReceipt{
 		SenderGUID:     lastMessage.Handle.Address, // TODO: Make sure this is the right field?
-		IsFromMe:       true,
+		IsFromMe:       false,                      // changing this to false as I believe read reciepts will always be from others
 		ChatGUID:       rec.ChatGUID,
 		ReadUpTo:       chatInfo.Data.LastMessage.GUID,
 		ReadAt:         now,
@@ -918,20 +940,24 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.Text = bbMessage.Text
 	message.ChatGUID = bbMessage.Chats[0].GUID
 
-	// TODO: there doesn't seem to be a "from" in the bluebubbles data
-	// message.JSONSenderGUID = bbMessage.Handle.Address
-	// message.Sender = imessage.Identifier{
-	// 	LocalID: bbMessage.Handle.Address,
-	// 	Service: bbMessage.Handle.Service,
-	// 	IsGroup: false,
-	// }
-
-	message.JSONTargetGUID = bbMessage.Handle.Address
-	message.Target = imessage.Identifier{
-		LocalID: bbMessage.Handle.Address,
-		Service: bbMessage.Handle.Service,
-		IsGroup: false,
+	// bbMessage.Handle seems to always be the other person,
+	// so the sender/target depends on whether the message is from you
+	if bbMessage.IsFromMe {
+		message.JSONTargetGUID = bbMessage.Handle.Address
+		message.Target = imessage.Identifier{
+			LocalID: bbMessage.Handle.Address,
+			Service: bbMessage.Handle.Service,
+			IsGroup: false,
+		}
+	} else {
+		message.JSONSenderGUID = bbMessage.Handle.Address
+		message.Sender = imessage.Identifier{
+			LocalID: bbMessage.Handle.Address,
+			Service: bbMessage.Handle.Service,
+			IsGroup: false,
+		}
 	}
+
 	message.Service = bbMessage.Handle.Service
 	message.IsFromMe = bbMessage.IsFromMe
 	message.IsRead = false
@@ -954,7 +980,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// 	message.ReplyToPart = num
 	// }
 
-	// Tapbacks work E2E now!
+	// Tapbacks
 	if bbMessage.AssociatedMessageGuid != "" &&
 		bbMessage.AssociatedMessageType != "" {
 		message.Tapback = &imessage.Tapback{
