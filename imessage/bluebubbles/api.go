@@ -450,16 +450,38 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 	return resp, nil
 }
 
-func (bb *blueBubbles) GetContactInfo(identifier string) (*imessage.Contact, error) {
+func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact, err error) {
 	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
-	return nil, ErrNotImplemented
+
+	var contactResponse ContactResponse
+
+	err = bb.apiPost("/api/v1/contact/query", nil, &contactResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to imessage.Contact type
+	for _, contact := range contactResponse.Data {
+		resp = &imessage.Contact{
+			FirstName: contact.FirstName,
+			LastName:  contact.LastName,
+			Nickname:  contact.Nickname,
+			Phones:    convertPhones(contact.PhoneNumbers),
+			Emails:    convertEmails(contact.Emails),
+			UserGUID:  contact.ID,
+		}
+		return resp, nil
+	}
+
+	return nil, errors.New("no contacts found for address")
 }
 
 func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	bb.log.Trace().Msg("GetContactList")
+
 	var contactResponse ContactResponse
 
-	err = bb.apiPost("/api/v1/contact", nil, &contactResponse)
+	err = bb.apiGet("/api/v1/contact", nil, &contactResponse)
 	if err != nil {
 		return nil, err
 	}
@@ -957,7 +979,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// } else {
 	// 	message.ReplyToPart = num
 	// }
-
+  
 	// Tapbacks
 	if bbMessage.AssociatedMessageGuid != "" &&
 		bbMessage.AssociatedMessageType != "" {
