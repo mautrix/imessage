@@ -122,6 +122,7 @@ type Message struct {
 	Subject               string        `json:"subject,omitempty"`
 	Text                  string        `json:"text,omitempty"`
 	ThreadOriginatorGuid  string        `json:"threadOriginatorGuid,omitempty"`
+	ThreadOriginatorPart  string        `json:"threadOriginatorPart,omitempty"`
 }
 
 type Attachment struct {

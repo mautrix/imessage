@@ -921,14 +921,23 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.IsEmote = false
 	message.IsAudioMessage = bbMessage.IsAudioMessage
 
-	// TODO: ReplyTo
-	// message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
-	// message.ReplyToPart = bbMessage.PartCount
+	message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
 
-	// TODO: Tapbacks
-	// if bbMessage.AssociatedMessageGuid != nil {
+	// TODO: ReplyToPart from bluebubbles looks like "0:0:17" in one test I did
+	// 		I don't know what the value means, or how to parse it
+	// num, err := strconv.Atoi(bbMessage.ThreadOriginatorPart)
+	// if err != nil {
+	// 	bb.log.Err(err).Str("ThreadOriginatorPart", bbMessage.ThreadOriginatorPart).Msg("Unable to convert ThreadOriginatorPart to an int")
+	// } else {
+	// 	message.ReplyToPart = num
+	// }
+
+	// TODO: Tapbacks, when this code is activated, tapbacks stop coming through
+	// if bbMessage.AssociatedMessageGuid != "" &&
+	// 	bbMessage.AssociatedMessageType != "" {
 	// 	message.Tapback = &imessage.Tapback{
-	// 		TargetGUID: *bbMessage.AssociatedMessageGuid,
+	// 		TargetGUID: bbMessage.AssociatedMessageGuid,
+	// 		Type:       imessage.TapbackFromName(bbMessage.AssociatedMessageType),
 	// 	}
 	// 	message.Tapback.Parse()
 	// } else {
