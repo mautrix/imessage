@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -375,7 +376,37 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 
 func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
 	bb.log.Trace().Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("GetMessagesWithLimit")
-	return nil, ErrNotImplemented
+
+	var messageResponse GetMessagesResponse
+
+	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s/message", chatID), map[string]string{
+		"limit": strconv.Itoa(limit),
+		"sort":  "DESC",
+	}, &messageResponse)
+	if err != nil {
+		bb.log.Err(err).Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("Failed to get messages from BlueBubbles")
+		return nil, err
+	}
+
+	var imessages []*imessage.Message
+
+	for _, bbMessage := range messageResponse.Data {
+		imessage, err := bb.convertBBMessageToiMessage(bbMessage)
+
+		if err != nil {
+			bb.log.Err(err).Str("chatID", chatID).Msg("Failed to convert message from BlueBubbles format to Matrix format")
+			return nil, err
+		}
+
+		imessages = append(imessages, imessage)
+	}
+
+	// Beeper's client will display the messages in the order of this list, even though it has the timestamps
+	// to get the most recent `limit` of messages, BB has to return in DESC order,
+	// but we need to reverse that so beeper shows them correctly
+	imessages = reverseList(imessages)
+
+	return imessages, nil
 }
 
 func (bb *blueBubbles) getMessage(guid string) (*Message, error) {
@@ -1101,6 +1132,21 @@ func RandString(n int) string {
 		b[i] = letterRunes[rand.Intn(len(letterRunes))]
 	}
 	return string(b)
+}
+
+func reverseList(input []*imessage.Message) []*imessage.Message {
+	// Get the length of the slice
+	length := len(input)
+
+	// Create a new slice to store the reversed elements
+	reversed := make([]*imessage.Message, length)
+
+	// Iterate over the original slice in reverse order
+	for i, value := range input {
+		reversed[length-i-1] = value
+	}
+
+	return reversed
 }
 
 // These functions are probably not necessary

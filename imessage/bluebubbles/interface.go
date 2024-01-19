@@ -160,6 +160,13 @@ type Attachment struct {
 	Metadata       interface{} `json:"metadata,omitempty"`
 }
 
+type GetMessagesResponse struct {
+	Status  int64       `json:"status"`
+	Message string      `json:"message"`
+	Data    []Message   `json:"data"`
+	Error   interface{} `json:"error,omitempty"`
+}
+
 type MessageResponse struct {
 	Status  int64       `json:"status"`
 	Message string      `json:"message"`
