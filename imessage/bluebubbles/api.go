@@ -230,26 +230,25 @@ func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err err
 
 	//TODO: This code words just fine, unless you send a caption with a picture. then it duplicates your message in the matrix client (not visible to the other imessage user though)
 	// 		Let's get the multipart message working before we worry about this function
-	// var data Message
-	// err = json.Unmarshal(rawMessage, &data)
-	// if err != nil {
-	// 	return err
-	// }
+	var data Message
+	err = json.Unmarshal(rawMessage, &data)
+	if err != nil {
+		return err
+	}
 
-	// message, err := bb.convertBBMessageToiMessage(data)
+	message, err := bb.convertBBMessageToiMessage(data)
 
-	// if err != nil {
-	// 	return err
-	// }
+	if err != nil {
+		return err
+	}
 
-	// select {
-	// case bb.messageChan <- message:
-	// default:
-	// 	bb.log.Warn().Msg("Incoming message buffer is full")
-	// }
+	select {
+	case bb.messageChan <- message:
+	default:
+		bb.log.Warn().Msg("Incoming message buffer is full")
+	}
 
-	// return nil
-	return ErrNotImplemented
+	return nil
 }
 
 func (bb *blueBubbles) handleParticipantRemoved(data json.RawMessage) (err error) {
@@ -453,27 +452,43 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact, err error) {
 	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
 
+	request := ContactQueryRequest{
+		Addresses: []string{
+			identifier,
+		},
+	}
+
 	var contactResponse ContactResponse
 
-	err = bb.apiPost("/api/v1/contact/query", nil, &contactResponse)
+	err = bb.apiPost("/api/v1/contact/query", request, &contactResponse)
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert to imessage.Contact type
-	for _, contact := range contactResponse.Data {
-		resp = &imessage.Contact{
-			FirstName: contact.FirstName,
-			LastName:  contact.LastName,
-			Nickname:  contact.Nickname,
-			Phones:    convertPhones(contact.PhoneNumbers),
-			Emails:    convertEmails(contact.Emails),
-			UserGUID:  contact.ID,
+	if len(contactResponse.Data) == 1 {
+		for _, contact := range contactResponse.Data {
+			resp = &imessage.Contact{
+				FirstName: contact.FirstName,
+				LastName:  contact.LastName,
+				Nickname:  contact.Nickname,
+				Phones:    convertPhones(contact.PhoneNumbers),
+				Emails:    convertEmails(contact.Emails),
+				UserGUID:  contact.ID,
+			}
+			return resp, nil
 		}
-		return resp, nil
+	} else if len(contactResponse.Data) > 1 {
+		err = errors.New("too many contacts found")
+		bb.log.Err(err).Int("contactCount", len(contactResponse.Data)).Msg("Expected only a single contact to match, aborting contact retrieval")
+		return nil, err
+	} else {
+		err = errors.New("no contacts found for address")
+		bb.log.Err(err).Int("contactCount", len(contactResponse.Data)).Msg("Expected only a single contact to match, aborting contact retrieval")
+		return nil, err
 	}
 
-	return nil, errors.New("no contacts found for address")
+	return nil, errors.New("if you see this message, then math no longer makes sense")
 }
 
 func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
@@ -928,6 +943,8 @@ func (bb *blueBubbles) apiPostWithFile(path string, params map[string]interface{
 		return err
 	}
 
+	bb.log.Trace()
+
 	return nil
 }
 
@@ -962,13 +979,13 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 
 	message.Service = bbMessage.Handle.Service
 	message.IsFromMe = bbMessage.IsFromMe
-	message.IsRead = false
+	message.IsRead = bbMessage.DateRead != 0
 	if message.IsRead {
 		message.ReadAt = time.Unix(0, bbMessage.DateRead*int64(time.Millisecond))
 	}
-	message.IsDelivered = true // TODO this may need to be based on the bbMessage.DateDelivered != 0
-	message.IsSent = true      // assume yes because we made it to this part of the code
-	message.IsEmote = false    // emojis seem to send either way, and BB doesn't say whether there is one or not
+	message.IsDelivered = bbMessage.DateDelivered != 0 // TODO this may need to be based on the bbMessage.DateDelivered != 0
+	message.IsSent = true                              // assume yes because we made it to this part of the code
+	message.IsEmote = false                            // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
 
 	message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
@@ -1004,8 +1021,15 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 		message.Attachments[i] = attachment
 	}
 
+	// TODO Not sure what the itemtype is
+	// message.ItemType =
+
 	message.GroupActionType = imessage.GroupActionType(bbMessage.GroupActionType)
 	message.NewGroupName = bbMessage.GroupTitle
+
+	// TODO Richlinks
+	// message.RichLink =
+
 	message.ThreadID = bbMessage.ThreadOriginatorGuid
 
 	return &message, nil

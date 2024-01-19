@@ -55,6 +55,10 @@ type Participant struct {
 	Address string `json:"address"`
 }
 
+type ContactQueryRequest struct {
+	Addresses []string `json:"addresses"`
+}
+
 type ContactResponse struct {
 	Status  int64     `json:"status"`
 	Message string    `json:"message"`
