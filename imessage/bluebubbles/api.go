@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -664,41 +663,44 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("filename", filename).Str("pathOnDisk", pathOnDisk).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Str("mimeType", mimeType).Bool("voiceMemo", voiceMemo).Interface("metadata", metadata).Msg("SendFile")
 
-	// Prepare the payload for the POST request
-	payload := map[string]interface{}{
-		"chatGuid":            chatID,
-		"name":                filename,
-		"method":              "private-api",
-		"selectedMessageGuid": replyTo,
-		"partIndex":           fmt.Sprint(replyToPart),
-	}
-
-	// Define the API endpoint path
-	path := "/api/v1/message/attachment"
-
-	// Make the API POST request with file
-	var response SendTextResponse
-	if err := bb.apiPostWithFile(path, payload, pathOnDisk, &response); err != nil {
+	attachment, err := os.ReadFile(pathOnDisk)
+	if err != nil {
 		return nil, err
 	}
 
-	if response.Status == 200 {
-		bb.log.Debug().Msg("Sent a file!")
+	bb.log.Info().Int("attachmentSize", len(attachment)).Msg("Read attachment from disk")
 
-		bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
-
-		var imessageSendResponse = imessage.SendResponse{
-			GUID:    response.Data.GUID,
-			Service: response.Data.Handle.Service,
-			Time:    time.Unix(0, response.Data.DateCreated*int64(time.Millisecond)),
-		}
-
-		return &imessageSendResponse, nil
-	} else {
-		bb.log.Error().Any("response", response).Msg("Failure when sending message to BlueBubbles")
-
-		return nil, errors.New("could not send message")
+	formData := map[string]interface{}{
+		"chatGuid": chatID,
+		"tempGuid": fmt.Sprintf("temp-%s", RandString(8)),
+		"name":     filename,
+		// TODO: check blueblubbles (/api/v1/server/info) if private-api is enabled
+		//       if it is, use private-api and keep "text" as subject
+		//       if it is not, use apple-script and send "text" using SendMessage
+		"method":              "private-api",
+		"attachment":          attachment,
+		"isAudioMessage":      voiceMemo,
+		"subject":             text,
+		"selectedMessageGuid": replyTo,
+		"partIndex":           replyToPart,
 	}
+
+	path := "/api/v1/message/attachment"
+
+	var response SendTextResponse
+	if err := bb.apiPostAsFormData(path, formData, &response); err != nil {
+		return nil, err
+	}
+
+	// bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
+
+	var imessageSendResponse = imessage.SendResponse{
+		GUID:    response.Data.GUID,
+		Service: response.Data.Handle.Service,
+		Time:    time.Unix(0, response.Data.DateCreated*int64(time.Millisecond)),
+	}
+
+	return &imessageSendResponse, nil
 }
 
 func (bb *blueBubbles) SendFileCleanup(sendFileDir string) {
@@ -920,36 +922,33 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 	return nil
 }
 
-func (bb *blueBubbles) apiPostWithFile(path string, params map[string]interface{}, filePath string, target interface{}) error {
+func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interface{}, target interface{}) error {
 	url := bb.apiUrl(path, map[string]string{})
 
 	// Create a new buffer to store the file content
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
-	// Add the file to the request
-	fileWriter, err := writer.CreateFormFile("attachment", filepath.Base(filePath))
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error creating form file")
-		return err
-	}
-
-	file, err := os.Open(filePath)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error opening file")
-		return err
-	}
-	defer file.Close()
-
-	_, err = io.Copy(fileWriter, file)
-	if err != nil {
-		bb.log.Error().Err(err).Msg("Error copying file content")
-		return err
-	}
-
-	// Add other parameters to the request
-	for key, value := range params {
-		_ = writer.WriteField(key, fmt.Sprint(value))
+	for key, value := range formData {
+		switch v := value.(type) {
+		case int, bool:
+			writer.WriteField(key, fmt.Sprint(v))
+		case string:
+			writer.WriteField(key, v)
+		case []byte:
+			part, err := writer.CreateFormFile(key, "file.bin")
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error creating form-data field")
+				return err
+			}
+			_, err = part.Write(v)
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error writing file to form-data")
+				return err
+			}
+		default:
+			return fmt.Errorf("unable to serialze %s (type %T) into form-data", key, v)
+		}
 	}
 
 	// Close the multipart writer
