@@ -43,12 +43,17 @@ type ChatResponse struct {
 
 type Chat struct {
 	// TODO How to get timestamp
-	GUID           string        `json:"guid"`
-	ChatIdentifier string        `json:"chatIdentifier"`
-	GroupID        string        `json:"groupId,omitempty"`
-	DisplayName    string        `json:"displayName"`
-	Partipants     []Participant `json:"participants"`
-	LastMessage    *Message      `json:"lastMessage,omitempty"`
+	GUID           string           `json:"guid"`
+	ChatIdentifier string           `json:"chatIdentifier"`
+	GroupID        string           `json:"groupId,omitempty"`
+	DisplayName    string           `json:"displayName"`
+	Partipants     []Participant    `json:"participants"`
+	LastMessage    *Message         `json:"lastMessage,omitempty"`
+	Properties     []ChatProperties `json:"properties,omitempty"`
+}
+
+type ChatProperties struct {
+	GroupPhotoGuid *string `json:"groupPhotoGuid,omitempty"`
 }
 
 type Participant struct {
@@ -158,6 +163,12 @@ type Attachment struct {
 	Height         int64       `json:"height,omitempty"`
 	Width          int64       `json:"width,omitempty"`
 	Metadata       interface{} `json:"metadata,omitempty"`
+}
+
+type AttachmentResponse struct {
+	Status  int64      `json:"status"`
+	Message string     `json:"message"`
+	Data    Attachment `json:"data"`
 }
 
 type GetMessagesResponse struct {

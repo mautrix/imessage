@@ -595,7 +595,29 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 
 func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, error) {
 	bb.log.Trace().Str("chatID", chatID).Msg("GetGroupAvatar")
-	return nil, ErrNotImplemented
+
+	chatResponse, err := bb.getChatInfo(chatID)
+	if err != nil {
+		return nil, err
+	}
+
+	if chatResponse.Data.Properties == nil {
+		return nil, nil
+	}
+
+	if len(chatResponse.Data.Properties) < 1 {
+		return nil, nil
+	}
+
+	properties := chatResponse.Data.Properties[0]
+
+	attachment, err := bb.downloadAttachment(*properties.GroupPhotoGuid)
+	if err != nil {
+		bb.log.Err(err).Str("chatID", chatID).Msg("Failed to download group avatar")
+		return nil, err
+	}
+
+	return attachment, nil
 }
 
 // These functions all provide "channels" to allow concurrent processing in the bridge
@@ -1068,12 +1090,13 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	}
 
 	message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
-	for i, blueBubblesAttachment := range bbMessage.Attachments {
-		attachment, err := bb.convertAttachment(blueBubblesAttachment)
+	for i, attachment := range bbMessage.Attachments {
+		attachment, err := bb.downloadAttachment(attachment.GUID)
 		if err != nil {
-			bb.log.Warn().Err(err).Msg("Error converting attachment")
+			bb.log.Err(err).Str("attachmentGUID", attachment.GUID).Msg("Failed to download attachment")
 			continue
 		}
+
 		message.Attachments[i] = attachment
 	}
 
@@ -1091,8 +1114,17 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	return &message, nil
 }
 
-func (bb *blueBubbles) convertAttachment(attachment Attachment) (*imessage.Attachment, error) {
-	url := bb.apiUrl(fmt.Sprintf("/api/v1/attachment/%s/download", attachment.GUID), map[string]string{})
+func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Attachment, err error) {
+	bb.log.Trace().Str("guid", guid).Msg("downloadAttachment")
+
+	var attachmentResponse AttachmentResponse
+	err = bb.apiGet(fmt.Sprintf("/api/v1/attachment/%s", guid), map[string]string{}, &attachmentResponse)
+	if err != nil {
+		bb.log.Err(err).Str("guid", guid).Msg("Failed to get attachment from BlueBubbles")
+		return nil, err
+	}
+
+	url := bb.apiUrl(fmt.Sprintf("/api/v1/attachment/%s/download", guid), map[string]string{})
 
 	response, err := http.Get(url)
 	if err != nil {
@@ -1101,8 +1133,7 @@ func (bb *blueBubbles) convertAttachment(attachment Attachment) (*imessage.Attac
 	}
 	defer response.Body.Close()
 
-	// Create a temp file and read the response body into it
-	tempFile, err := os.CreateTemp(os.TempDir(), attachment.GUID)
+	tempFile, err := os.CreateTemp(os.TempDir(), guid)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error creating temp file")
 		return nil, err
@@ -1116,10 +1147,10 @@ func (bb *blueBubbles) convertAttachment(attachment Attachment) (*imessage.Attac
 	}
 
 	return &imessage.Attachment{
-		GUID:       attachment.GUID,
+		GUID:       guid,
 		PathOnDisk: tempFile.Name(),
-		FileName:   attachment.TransferName,
-		MimeType:   attachment.MimeType,
+		FileName:   attachmentResponse.Data.TransferName,
+		MimeType:   attachmentResponse.Data.MimeType,
 	}, nil
 }
 
