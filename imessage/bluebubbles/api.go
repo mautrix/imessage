@@ -660,8 +660,23 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	}, nil
 }
 
+func (bb *blueBubbles) isPrivateApi() bool {
+	var serverInfo ServerInfoResponse
+	err := bb.apiGet("/api/v1/server/info", nil, &serverInfo)
+	if err != nil {
+		bb.log.Err(err).Msg("Failed to get server info from BlueBubbles")
+		return false
+	}
+
+	privateApi := serverInfo.Data.PrivateApi
+
+	return privateApi
+}
+
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("filename", filename).Str("pathOnDisk", pathOnDisk).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Str("mimeType", mimeType).Bool("voiceMemo", voiceMemo).Interface("metadata", metadata).Msg("SendFile")
+
+	privateApi := bb.isPrivateApi()
 
 	attachment, err := os.ReadFile(pathOnDisk)
 	if err != nil {
@@ -670,19 +685,28 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 
 	bb.log.Info().Int("attachmentSize", len(attachment)).Msg("Read attachment from disk")
 
+	var method string
+	if privateApi {
+		// we're private-api, so we can send "subject" along with the attachment
+		method = "private-api"
+	} else {
+		// we have to use apple-script and send a second message
+		method = "apple-script"
+	}
+
 	formData := map[string]interface{}{
-		"chatGuid": chatID,
-		"tempGuid": fmt.Sprintf("temp-%s", RandString(8)),
-		"name":     filename,
-		// TODO: check blueblubbles (/api/v1/server/info) if private-api is enabled
-		//       if it is, use private-api and keep "text" as subject
-		//       if it is not, use apple-script and send "text" using SendMessage
-		"method":              "private-api",
+		"chatGuid":            chatID,
+		"tempGuid":            fmt.Sprintf("temp-%s", RandString(8)),
+		"name":                filename,
+		"method":              method,
 		"attachment":          attachment,
 		"isAudioMessage":      voiceMemo,
-		"subject":             text,
 		"selectedMessageGuid": replyTo,
 		"partIndex":           replyToPart,
+	}
+
+	if privateApi {
+		formData["subject"] = text
 	}
 
 	path := "/api/v1/message/attachment"
@@ -692,7 +716,9 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 		return nil, err
 	}
 
-	// bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
+	if !privateApi {
+		bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
+	}
 
 	var imessageSendResponse = imessage.SendResponse{
 		GUID:    response.Data.GUID,

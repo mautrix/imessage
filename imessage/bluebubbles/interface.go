@@ -228,3 +228,13 @@ type MessageReadResponse struct {
 	ChatGUID string `json:"chatGuid"`
 	Read     bool   `json:"read"`
 }
+
+type ServerInfo struct {
+	PrivateApi bool `json:"private_api"`
+}
+
+type ServerInfoResponse struct {
+	Status  int64      `json:"status"`
+	Message string     `json:"message"`
+	Data    ServerInfo `json:"data"`
+}
