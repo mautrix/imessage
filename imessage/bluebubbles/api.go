@@ -611,6 +611,10 @@ func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, erro
 
 	properties := chatResponse.Data.Properties[0]
 
+	if properties.GroupPhotoGuid == nil {
+		return nil, nil
+	}
+
 	attachment, err := bb.downloadAttachment(*properties.GroupPhotoGuid)
 	if err != nil {
 		bb.log.Err(err).Str("chatID", chatID).Msg("Failed to download group avatar")
