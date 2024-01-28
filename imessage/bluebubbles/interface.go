@@ -199,7 +199,7 @@ type SendTextRequest struct {
 	Message             string `json:"message"`
 	TempGuid            string `json:"tempGuid"`
 	SelectedMessageGuid string `json:"selectedMessageGuid,omitempty"`
-	PartIndex           *int   `json:"partIndex,omitempty"`
+	PartIndex           int    `json:"partIndex,omitempty"`
 }
 
 type SendTextResponse struct {

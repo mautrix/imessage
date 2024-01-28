@@ -662,7 +662,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 		Message:             text,
 		TempGuid:            fmt.Sprintf("temp-%s", RandString(8)),
 		SelectedMessageGuid: replyTo,
-		PartIndex:           &replyToPart,
+		PartIndex:           replyToPart,
 	}
 
 	var res SendTextResponse
