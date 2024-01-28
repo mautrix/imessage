@@ -85,6 +85,8 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 
 	go bb.PollForWebsocketMessages()
 
+	readyCallback()
+
 	return nil
 }
 
@@ -1442,7 +1444,9 @@ func (bb *blueBubbles) SendChatBridgeResult(guid string, mxid id.RoomID) {
 func (bb *blueBubbles) NotifyUpcomingMessage(eventID id.EventID) {
 }
 func (bb *blueBubbles) PreStartupSyncHook() (resp imessage.StartupSyncHookResponse, err error) {
-	return
+	return imessage.StartupSyncHookResponse{
+		SkipSync: false,
+	}, nil
 }
 func (bb *blueBubbles) PostStartupSyncHook() {
 }
