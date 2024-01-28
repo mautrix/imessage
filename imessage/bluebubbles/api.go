@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
@@ -622,60 +623,80 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 	return resp, nil
 }
 
+func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
+
+	var contact *Contact
+
+	bb.getContactList()
+
+	numericAddress := numericOnly(address)
+
+	for _, c := range contacts {
+		// extract only the numbers of every phone (removes `-` and `+`)
+		var numericPhones []string
+		for _, e := range c.PhoneNumbers {
+			numericPhones = append(numericPhones, numericOnly(e.Address))
+		}
+
+		var emailStrings = convertEmails(c.Emails)
+
+		var phoneStrings = convertPhones(c.PhoneNumbers)
+
+		// check for exact matches for either an email or phone
+		if strings.Contains(address, "@") && containsString(emailStrings, address) {
+			contact = &c
+			break
+		} else if containsString(phoneStrings, numericAddress) {
+			contact = &c
+			break
+		}
+
+		for _, p := range numericPhones {
+			matchLengths := []int{15, 14, 13, 12, 11, 10, 9, 8, 7}
+			if containsInt(matchLengths, len(p)) && strings.HasSuffix(numericAddress, p) {
+				contact = &c
+				break
+			}
+		}
+
+		if contact != nil {
+			break
+		}
+	}
+
+	return contact
+}
+
 func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact, err error) {
 	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
 
-	request := ContactQueryRequest{
-		Addresses: []string{
-			identifier,
-		},
-	}
-
-	var contactResponse ContactResponse
-
-	err = bb.apiPost("/api/v1/contact/query", request, &contactResponse)
-	if err != nil {
-		return nil, err
-	}
+	contact := bb.matchHandleToContact(identifier)
 
 	// Convert to imessage.Contact type
-	if len(contactResponse.Data) == 1 {
-		for _, contact := range contactResponse.Data {
-			resp = &imessage.Contact{
-				FirstName: contact.FirstName,
-				LastName:  contact.LastName,
-				Nickname:  contact.Nickname,
-				Phones:    convertPhones(contact.PhoneNumbers),
-				Emails:    convertEmails(contact.Emails),
-				UserGUID:  contact.ID,
-			}
-			return resp, nil
+	if contact != nil {
+		resp = &imessage.Contact{
+			FirstName: contact.FirstName,
+			LastName:  contact.LastName,
+			Nickname:  contact.Nickname,
+			Phones:    convertPhones(contact.PhoneNumbers),
+			Emails:    convertEmails(contact.Emails),
+			UserGUID:  contact.ID,
 		}
-	} else if len(contactResponse.Data) > 1 {
-		err = errors.New("too many contacts found")
-		bb.log.Err(err).Int("contactCount", len(contactResponse.Data)).Msg("Expected only a single contact to match, aborting contact retrieval")
-		return nil, err
-	} else {
-		err = errors.New("no contacts found for address")
-		bb.log.Err(err).Int("contactCount", len(contactResponse.Data)).Msg("Expected only a single contact to match, aborting contact retrieval")
-		return nil, err
-	}
+		return resp, nil
 
-	return nil, errors.New("if you see this message, then math no longer makes sense")
+	}
+	err = errors.New("no contacts found for address")
+	bb.log.Err(err).Str("identifier", identifier).Msg("No contacts matched address, aborting contact retrieval")
+	return nil, err
 }
 
 func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	bb.log.Trace().Msg("GetContactList")
 
-	var contactResponse ContactResponse
-
-	err = bb.apiGet("/api/v1/contact", nil, &contactResponse)
-	if err != nil {
-		return nil, err
-	}
+	contactResponse := bb.getContactList()
 
 	// Convert to imessage.Contact type
-	for _, contact := range contactResponse.Data {
+	for _, contact := range contactResponse {
 		imessageContact := &imessage.Contact{
 			FirstName: contact.FirstName,
 			LastName:  contact.LastName,
@@ -688,6 +709,37 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	}
 
 	return resp, nil
+}
+
+var contactsLastRefresh time.Time
+var contacts []Contact
+
+// Updates the cache if necessary, and returns the list
+func (bb *blueBubbles) getContactList() (contacts []Contact) {
+
+	if contacts == nil {
+		bb.refreshContactsList()
+	} else if contactsLastRefresh.Add(1*time.Hour).Compare(time.Now()) < 0 { // if the last refresh was > 1 hour ago
+		bb.refreshContactsList()
+	}
+
+	return contacts
+
+}
+
+func (bb *blueBubbles) refreshContactsList() error {
+	var contactResponse ContactResponse
+
+	err := bb.apiGet("/api/v1/contact", nil, &contactResponse)
+	if err != nil {
+		return err
+	}
+
+	// save contacts for later
+	contacts = contactResponse.Data
+	contactsLastRefresh = time.Now()
+
+	return nil
 }
 
 func (bb *blueBubbles) getChatInfo(chatID string) (*ChatResponse, error) {
@@ -1310,7 +1362,6 @@ func convertPhones(phoneNumbers []PhoneNumber) []string {
 	return phones
 }
 
-// Helper function to convert email addresses
 func convertEmails(emails []Email) []string {
 	var emailAddresses []string
 	for _, email := range emails {
@@ -1350,6 +1401,34 @@ func reverseList(input []*imessage.Message) []*imessage.Message {
 	}
 
 	return reversed
+}
+
+func containsString(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
+}
+
+func containsInt(slice []int, num int) bool {
+	for _, n := range slice {
+		if n == num {
+			return true
+		}
+	}
+	return false
+}
+
+func numericOnly(s string) string {
+	var result strings.Builder
+	for _, char := range s {
+		if unicode.IsDigit(char) {
+			result.WriteRune(char)
+		}
+	}
+	return result.String()
 }
 
 // These functions are probably not necessary
