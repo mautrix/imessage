@@ -64,7 +64,12 @@ var cmdStartDm = &commands.FullHandler{
 func fnStartDm(ce *WrappedCommandEvent) {
 	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnStartDm")
 
-	_, err := ce.Bridge.WebsocketHandler.StartChat(*&StartDMRequest{
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `start-dm <international phone number>` OR `start-dm <apple id email address>`")
+		return
+	}
+
+	startedDm, err := ce.Bridge.WebsocketHandler.StartChat(*&StartDMRequest{
 		Identifier:    ce.RawArgs,
 		Force:         false,
 		ActuallyStart: true,
@@ -73,7 +78,7 @@ func fnStartDm(ce *WrappedCommandEvent) {
 	if err != nil {
 		ce.Reply("Failed to start DM: %s", err)
 	} else {
-		ce.Reply("Created!")
+		ce.Reply("Created portal room [%s](%s) and invited you to it.", startedDm.RoomID, startedDm.RoomID.URI(ce.Bridge.Config.Homeserver.Domain).MatrixToURL())
 	}
 }
 
