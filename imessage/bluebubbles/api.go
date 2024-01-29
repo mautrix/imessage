@@ -1037,12 +1037,18 @@ func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error 
 
 func (bb *blueBubbles) ResolveIdentifier(identifier string) (string, error) {
 	bb.log.Trace().Str("identifier", identifier).Msg("ResolveIdentifier")
-	return "", ErrNotImplemented
+
+	// if the identifier is a phone number, remove dashes and prepend the +
+	if !strings.Contains(identifier, "@") {
+		identifier = "+" + numericOnly(identifier)
+	}
+
+	return "iMessage;-;" + identifier, nil
 }
 
 func (bb *blueBubbles) PrepareDM(guid string) error {
 	bb.log.Trace().Str("guid", guid).Msg("PrepareDM")
-	return ErrNotImplemented
+	return nil
 }
 
 func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupResponse, error) {

@@ -229,6 +229,9 @@ func (br *IMBridge) Init() {
 	br.IMHandler = NewiMessageHandler(br)
 	br.WebsocketHandler = NewWebsocketCommandHandler(br)
 	br.wsOnConnectWait.Add(1)
+
+	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
+	br.RegisterCommands()
 }
 
 type PingResponse struct {
