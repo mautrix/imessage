@@ -34,7 +34,7 @@ type WrappedCommandEvent struct {
 func (br *IMBridge) RegisterCommands() {
 	proc := br.CommandProcessor.(*commands.Processor)
 	proc.AddHandlers(
-		cmdStartDm,
+		cmdPM,
 	)
 }
 
@@ -50,22 +50,22 @@ func wrapCommand(handler func(*WrappedCommandEvent)) func(*commands.Event) {
 	}
 }
 
-var cmdStartDm = &commands.FullHandler{
-	Func: wrapCommand(fnStartDm),
-	Name: "start-dm",
+var cmdPM = &commands.FullHandler{
+	Func: wrapCommand(fnPM),
+	Name: "pm",
 	Help: commands.HelpMeta{
 		Section:     HelpSectionChatManagement,
-		Description: "Creates a new DM with the specified number.",
+		Description: "Creates a new PM with the specified number or address.",
 	},
 	RequiresPortal: false,
 	RequiresLogin:  false,
 }
 
-func fnStartDm(ce *WrappedCommandEvent) {
-	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnStartDm")
+func fnPM(ce *WrappedCommandEvent) {
+	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnPM")
 
 	if len(ce.Args) == 0 {
-		ce.Reply("**Usage:** `start-dm <international phone number>` OR `start-dm <apple id email address>`")
+		ce.Reply("**Usage:** `pm <international phone number>` OR `pm <apple id email address>`")
 		return
 	}
 
@@ -76,7 +76,7 @@ func fnStartDm(ce *WrappedCommandEvent) {
 	})
 
 	if err != nil {
-		ce.Reply("Failed to start DM: %s", err)
+		ce.Reply("Failed to start PM: %s", err)
 	} else {
 		ce.Reply("Created portal room [%s](%s) and invited you to it.", startedDm.RoomID, startedDm.RoomID.URI(ce.Bridge.Config.Homeserver.Domain).MatrixToURL())
 	}
