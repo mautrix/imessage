@@ -106,6 +106,7 @@ func fnSearchContacts(ce *WrappedCommandEvent) {
 		return
 	}
 
+	// TODO trim whitespace from args first
 	contacts, err := ce.Bridge.IM.SearchContactList(ce.RawArgs)
 	if err != nil {
 		ce.Reply("Failed to search contacts: %s", err)
