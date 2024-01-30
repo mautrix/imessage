@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
@@ -84,6 +84,8 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 	bb.ws = ws
 
 	go bb.PollForWebsocketMessages()
+
+	readyCallback()
 
 	return nil
 }
@@ -358,54 +360,176 @@ func (bb *blueBubbles) handleIMessageAliasRemoved(data json.RawMessage) (err err
 
 var ErrNotImplemented = errors.New("not implemented")
 
-func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*imessage.Message, error) {
-	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Str("backfillID", backfillID).Msg("GetMessagesSinceDate")
-	return nil, ErrNotImplemented
-}
+func (bb *blueBubbles) queryChatMessages(query MessageQueryRequest, allResults []Message, paginate bool) ([]Message, error) {
+	bb.log.Info().Interface("query", query).Msg("queryChatMessages")
 
-func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.Time) ([]*imessage.Message, error) {
-	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Time("maxDate", maxDate).Msg("GetMessagesBetween")
-	return nil, ErrNotImplemented
-}
-
-func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) ([]*imessage.Message, error) {
-	bb.log.Trace().Str("chatID", chatID).Time("before", before).Int("limit", limit).Msg("GetMessagesBeforeWithLimit")
-	return nil, ErrNotImplemented
-}
-
-func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID string) ([]*imessage.Message, error) {
-	bb.log.Trace().Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("GetMessagesWithLimit")
-
-	var messageResponse GetMessagesResponse
-
-	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s/message", chatID), map[string]string{
-		"limit": strconv.Itoa(limit),
-		"sort":  "DESC",
-	}, &messageResponse)
+	var resp MessageQueryResponse
+	err := bb.apiPost("/api/v1/message/query", query, &resp)
 	if err != nil {
-		bb.log.Err(err).Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("Failed to get messages from BlueBubbles")
 		return nil, err
 	}
 
-	var imessages []*imessage.Message
+	allResults = append(allResults, resp.Data...)
 
-	for _, bbMessage := range messageResponse.Data {
-		imessage, err := bb.convertBBMessageToiMessage(bbMessage)
-
-		if err != nil {
-			bb.log.Err(err).Str("chatID", chatID).Msg("Failed to convert message from BlueBubbles format to Matrix format")
-			return nil, err
-		}
-
-		imessages = append(imessages, imessage)
+	nextPageOffset := resp.Metadata.Offset + resp.Metadata.Limit
+	if paginate && (nextPageOffset < resp.Metadata.Total) {
+		query.Offset = nextPageOffset
+		return bb.queryChatMessages(query, allResults, paginate)
 	}
 
-	// Beeper's client will display the messages in the order of this list, even though it has the timestamps
-	// to get the most recent `limit` of messages, BB has to return in DESC order,
-	// but we need to reverse that so beeper shows them correctly
-	imessages = reverseList(imessages)
+	return allResults, nil
+}
 
-	return imessages, nil
+func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) (resp []*imessage.Message, err error) {
+	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Str("backfillID", backfillID).Msg("GetMessagesSinceDate")
+
+	after := minDate.Unix()
+	request := MessageQueryRequest{
+		ChatGUID: chatID,
+		Limit:    100,
+		Offset:   0,
+		With: []MessageQueryWith{
+			MessageQueryWith(MessageQueryWithChat),
+			MessageQueryWith(MessageQueryWithChatParticipants),
+			MessageQueryWith(MessageQueryWithAttachment),
+			MessageQueryWith(MessageQueryWithHandle),
+			MessageQueryWith(MessageQueryWithSms),
+		},
+		After: &after,
+		Sort:  MessageQuerySortDesc,
+	}
+
+	messages, err := bb.queryChatMessages(request, []Message{}, true)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, messsage := range messages {
+		imessage, err := bb.convertBBMessageToiMessage(messsage)
+		if err != nil {
+			bb.log.Warn().Err(err).Msg("Failed to convert message from BlueBubbles format to Matrix format")
+			continue
+		}
+		resp = append(resp, imessage)
+	}
+
+	resp = reverseList(resp)
+
+	return resp, nil
+}
+
+func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.Time) (resp []*imessage.Message, err error) {
+	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Time("maxDate", maxDate).Msg("GetMessagesBetween")
+
+	after := minDate.Unix()
+	before := maxDate.Unix()
+	request := MessageQueryRequest{
+		ChatGUID: chatID,
+		Limit:    100,
+		Offset:   0,
+		With: []MessageQueryWith{
+			MessageQueryWith(MessageQueryWithChat),
+			MessageQueryWith(MessageQueryWithChatParticipants),
+			MessageQueryWith(MessageQueryWithAttachment),
+			MessageQueryWith(MessageQueryWithHandle),
+			MessageQueryWith(MessageQueryWithSms),
+		},
+		After:  &after,
+		Before: &before,
+		Sort:   MessageQuerySortDesc,
+	}
+
+	messages, err := bb.queryChatMessages(request, []Message{}, true)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, messsage := range messages {
+		imessage, err := bb.convertBBMessageToiMessage(messsage)
+		if err != nil {
+			bb.log.Warn().Err(err).Msg("Failed to convert message from BlueBubbles format to Matrix format")
+			continue
+		}
+		resp = append(resp, imessage)
+	}
+
+	resp = reverseList(resp)
+
+	return resp, nil
+}
+
+func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) (resp []*imessage.Message, err error) {
+	bb.log.Trace().Str("chatID", chatID).Time("before", before).Int("limit", limit).Msg("GetMessagesBeforeWithLimit")
+
+	_before := before.Unix()
+	request := MessageQueryRequest{
+		ChatGUID: chatID,
+		Limit:    int64(limit),
+		Offset:   0,
+		With: []MessageQueryWith{
+			MessageQueryWith(MessageQueryWithChat),
+			MessageQueryWith(MessageQueryWithChatParticipants),
+			MessageQueryWith(MessageQueryWithAttachment),
+			MessageQueryWith(MessageQueryWithHandle),
+			MessageQueryWith(MessageQueryWithSms),
+		},
+		Before: &_before,
+		Sort:   MessageQuerySortDesc,
+	}
+
+	messages, err := bb.queryChatMessages(request, []Message{}, false)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, messsage := range messages {
+		imessage, err := bb.convertBBMessageToiMessage(messsage)
+		if err != nil {
+			bb.log.Warn().Err(err).Msg("Failed to convert message from BlueBubbles format to Matrix format")
+			continue
+		}
+		resp = append(resp, imessage)
+	}
+
+	resp = reverseList(resp)
+
+	return resp, nil
+}
+
+func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID string) (resp []*imessage.Message, err error) {
+	bb.log.Trace().Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("GetMessagesWithLimit")
+
+	request := MessageQueryRequest{
+		ChatGUID: chatID,
+		Limit:    int64(limit),
+		Offset:   0,
+		With: []MessageQueryWith{
+			MessageQueryWith(MessageQueryWithChat),
+			MessageQueryWith(MessageQueryWithChatParticipants),
+			MessageQueryWith(MessageQueryWithAttachment),
+			MessageQueryWith(MessageQueryWithHandle),
+			MessageQueryWith(MessageQueryWithSms),
+		},
+		Sort: MessageQuerySortDesc,
+	}
+
+	messages, err := bb.queryChatMessages(request, []Message{}, false)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, messsage := range messages {
+		imessage, err := bb.convertBBMessageToiMessage(messsage)
+		if err != nil {
+			bb.log.Warn().Err(err).Msg("Failed to convert message from BlueBubbles format to Matrix format")
+			continue
+		}
+		resp = append(resp, imessage)
+	}
+
+	resp = reverseList(resp)
+
+	return resp, nil
 }
 
 func (bb *blueBubbles) getMessage(guid string) (*Message, error) {
@@ -446,30 +570,52 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 
 }
 
+func (bb *blueBubbles) queryChats(query ChatQueryRequest, allResults []Chat) ([]Chat, error) {
+	bb.log.Info().Interface("query", query).Msg("queryChatMessages")
+
+	var resp ChatQueryResponse
+	err := bb.apiPost("/api/v1/chat/query", query, &resp)
+	if err != nil {
+		return nil, err
+	}
+
+	allResults = append(allResults, resp.Data...)
+
+	nextPageOffset := resp.Metadata.Offset + resp.Metadata.Limit
+	if nextPageOffset < resp.Metadata.Total {
+		query.Offset = nextPageOffset
+		query.Limit = resp.Metadata.Limit
+		return bb.queryChats(query, allResults)
+	}
+
+	return allResults, nil
+}
+
 func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imessage.ChatIdentifier, err error) {
 	bb.log.Trace().Time("minDate", minDate).Msg("GetChatsWithMessagesAfter")
-	// TODO: find out how to make queries based on minDate and the bluebubbles API
-	// TODO: pagination
-	limit := int64(5)
-	offset := int64(0)
 
 	request := ChatQueryRequest{
-		Limit:  limit,
-		Offset: offset,
+		Limit:  1000,
+		Offset: 0,
 		With: []ChatQueryWith{
 			ChatQueryWithLastMessage,
 			ChatQueryWithSMS,
 		},
 		Sort: QuerySortLastMessage,
 	}
-	var response ChatQueryResponse
 
-	err = bb.apiPost("/api/v1/chat/query", request, &response)
+	chats, err := bb.queryChats(request, []Chat{})
 	if err != nil {
 		return nil, err
 	}
 
-	for _, chat := range response.Data {
+	for _, chat := range chats {
+		if chat.LastMessage == nil {
+			continue
+		}
+		if (chat.LastMessage.DateCreated / 1000) < minDate.Unix() {
+			continue
+		}
 		resp = append(resp, imessage.ChatIdentifier{
 			ChatGUID: chat.GUID,
 			ThreadID: chat.GroupID,
@@ -479,60 +625,80 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 	return resp, nil
 }
 
+func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
+
+	var contact *Contact
+
+	bb.getContactList()
+
+	numericAddress := numericOnly(address)
+
+	for _, c := range contacts {
+		// extract only the numbers of every phone (removes `-` and `+`)
+		var numericPhones []string
+		for _, e := range c.PhoneNumbers {
+			numericPhones = append(numericPhones, numericOnly(e.Address))
+		}
+
+		var emailStrings = convertEmails(c.Emails)
+
+		var phoneStrings = convertPhones(c.PhoneNumbers)
+
+		// check for exact matches for either an email or phone
+		if strings.Contains(address, "@") && containsString(emailStrings, address) {
+			contact = &c
+			break
+		} else if containsString(phoneStrings, numericAddress) {
+			contact = &c
+			break
+		}
+
+		for _, p := range numericPhones {
+			matchLengths := []int{15, 14, 13, 12, 11, 10, 9, 8, 7}
+			if containsInt(matchLengths, len(p)) && strings.HasSuffix(numericAddress, p) {
+				contact = &c
+				break
+			}
+		}
+
+		if contact != nil {
+			break
+		}
+	}
+
+	return contact
+}
+
 func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact, err error) {
 	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
 
-	request := ContactQueryRequest{
-		Addresses: []string{
-			identifier,
-		},
-	}
-
-	var contactResponse ContactResponse
-
-	err = bb.apiPost("/api/v1/contact/query", request, &contactResponse)
-	if err != nil {
-		return nil, err
-	}
+	contact := bb.matchHandleToContact(identifier)
 
 	// Convert to imessage.Contact type
-	if len(contactResponse.Data) == 1 {
-		for _, contact := range contactResponse.Data {
-			resp = &imessage.Contact{
-				FirstName: contact.FirstName,
-				LastName:  contact.LastName,
-				Nickname:  contact.Nickname,
-				Phones:    convertPhones(contact.PhoneNumbers),
-				Emails:    convertEmails(contact.Emails),
-				UserGUID:  contact.ID,
-			}
-			return resp, nil
+	if contact != nil {
+		resp = &imessage.Contact{
+			FirstName: contact.FirstName,
+			LastName:  contact.LastName,
+			Nickname:  contact.Nickname,
+			Phones:    convertPhones(contact.PhoneNumbers),
+			Emails:    convertEmails(contact.Emails),
+			UserGUID:  contact.ID,
 		}
-	} else if len(contactResponse.Data) > 1 {
-		err = errors.New("too many contacts found")
-		bb.log.Err(err).Int("contactCount", len(contactResponse.Data)).Msg("Expected only a single contact to match, aborting contact retrieval")
-		return nil, err
-	} else {
-		err = errors.New("no contacts found for address")
-		bb.log.Err(err).Int("contactCount", len(contactResponse.Data)).Msg("Expected only a single contact to match, aborting contact retrieval")
-		return nil, err
-	}
+		return resp, nil
 
-	return nil, errors.New("if you see this message, then math no longer makes sense")
+	}
+	err = errors.New("no contacts found for address")
+	bb.log.Err(err).Str("identifier", identifier).Msg("No contacts matched address, aborting contact retrieval")
+	return nil, err
 }
 
 func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	bb.log.Trace().Msg("GetContactList")
 
-	var contactResponse ContactResponse
-
-	err = bb.apiGet("/api/v1/contact", nil, &contactResponse)
-	if err != nil {
-		return nil, err
-	}
+	contactResponse := bb.getContactList()
 
 	// Convert to imessage.Contact type
-	for _, contact := range contactResponse.Data {
+	for _, contact := range contactResponse {
 		imessageContact := &imessage.Contact{
 			FirstName: contact.FirstName,
 			LastName:  contact.LastName,
@@ -545,6 +711,37 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	}
 
 	return resp, nil
+}
+
+var contactsLastRefresh time.Time
+var contacts []Contact
+
+// Updates the cache if necessary, and returns the list
+func (bb *blueBubbles) getContactList() (contacts []Contact) {
+
+	if contacts == nil {
+		bb.refreshContactsList()
+	} else if contactsLastRefresh.Add(1*time.Hour).Compare(time.Now()) < 0 { // if the last refresh was > 1 hour ago
+		bb.refreshContactsList()
+	}
+
+	return contacts
+
+}
+
+func (bb *blueBubbles) refreshContactsList() error {
+	var contactResponse ContactResponse
+
+	err := bb.apiGet("/api/v1/contact", nil, &contactResponse)
+	if err != nil {
+		return err
+	}
+
+	// save contacts for later
+	contacts = contactResponse.Data
+	contactsLastRefresh = time.Now()
+
+	return nil
 }
 
 func (bb *blueBubbles) getChatInfo(chatID string) (*ChatResponse, error) {
@@ -1167,7 +1364,6 @@ func convertPhones(phoneNumbers []PhoneNumber) []string {
 	return phones
 }
 
-// Helper function to convert email addresses
 func convertEmails(emails []Email) []string {
 	var emailAddresses []string
 	for _, email := range emails {
@@ -1209,6 +1405,34 @@ func reverseList(input []*imessage.Message) []*imessage.Message {
 	return reversed
 }
 
+func containsString(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
+}
+
+func containsInt(slice []int, num int) bool {
+	for _, n := range slice {
+		if n == num {
+			return true
+		}
+	}
+	return false
+}
+
+func numericOnly(s string) string {
+	var result strings.Builder
+	for _, char := range s {
+		if unicode.IsDigit(char) {
+			result.WriteRune(char)
+		}
+	}
+	return result.String()
+}
+
 // These functions are probably not necessary
 
 func (bb *blueBubbles) SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool) {
@@ -1220,7 +1444,9 @@ func (bb *blueBubbles) SendChatBridgeResult(guid string, mxid id.RoomID) {
 func (bb *blueBubbles) NotifyUpcomingMessage(eventID id.EventID) {
 }
 func (bb *blueBubbles) PreStartupSyncHook() (resp imessage.StartupSyncHookResponse, err error) {
-	return
+	return imessage.StartupSyncHookResponse{
+		SkipSync: false,
+	}, nil
 }
 func (bb *blueBubbles) PostStartupSyncHook() {
 }

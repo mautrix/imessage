@@ -7,10 +7,45 @@ type PageMetadata struct {
 	Limit  int64 `json:"limit"`
 }
 
-type QuerySort string
+type MessageQuerySort string
 
 const (
-	QuerySortLastMessage QuerySort = "lastmessage"
+	MessageQuerySortAsc  MessageQuerySort = "ASC"
+	MessageQuerySortDesc MessageQuerySort = "DESC"
+)
+
+type MessageQueryRequest struct {
+	// TODO Other Fields
+	ChatGUID string             `json:"chatGuid"`
+	Limit    int64              `json:"limit"`
+	Offset   int64              `json:"offset"`
+	With     []MessageQueryWith `json:"with"`
+	Sort     MessageQuerySort   `json:"sort"`
+	Before   *int64             `json:"before,omitempty"`
+	After    *int64             `json:"after,omitempty"`
+}
+
+type MessageQueryWith string
+
+const (
+	MessageQueryWithChat             ChatQueryWith = "chat"
+	MessageQueryWithChatParticipants ChatQueryWith = "chat.participants"
+	MessageQueryWithAttachment       ChatQueryWith = "attachment"
+	MessageQueryWithHandle           ChatQueryWith = "handle"
+	MessageQueryWithSms              ChatQueryWith = "sms"
+)
+
+type MessageQueryResponse struct {
+	Status   int64        `json:"status"`
+	Message  string       `json:"message"`
+	Data     []Message    `json:"data"`
+	Metadata PageMetadata `json:"metadata"`
+}
+
+type ChatQuerySort string
+
+const (
+	QuerySortLastMessage ChatQuerySort = "lastmessage"
 )
 
 type ChatQueryRequest struct {
@@ -18,7 +53,7 @@ type ChatQueryRequest struct {
 	Limit  int64           `json:"limit"`
 	Offset int64           `json:"offset"`
 	With   []ChatQueryWith `json:"with"`
-	Sort   QuerySort       `json:"sort"`
+	Sort   ChatQuerySort   `json:"sort"`
 }
 
 type ChatQueryWith string
