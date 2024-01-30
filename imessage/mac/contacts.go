@@ -22,6 +22,7 @@ package mac
 //#include "meowMemory.h"
 import "C"
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -157,4 +158,8 @@ func (cs *ContactStore) GetContactList() ([]*imessage.Contact, error) {
 	runtime.UnlockOSThread()
 
 	return contacts, nil
+}
+
+func (cs ContactStore) SearchContactList(searchTerms string) ([]*imessage.Contact, error) {
+	return nil, errors.New("not implemented")
 }

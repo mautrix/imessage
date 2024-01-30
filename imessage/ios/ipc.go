@@ -19,6 +19,7 @@ package ios
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"strings"
@@ -474,6 +475,10 @@ func (ios *iOSConnector) GetContactList() ([]*imessage.Contact, error) {
 	var resp GetContactListResponse
 	err := ios.IPC.Request(context.Background(), ReqGetContactList, nil, &resp)
 	return resp.Contacts, err
+}
+
+func (ios *iOSConnector) SearchContactList(searchTerms string) ([]*imessage.Contact, error) {
+	return nil, errors.New("not implemented")
 }
 
 func (ios *iOSConnector) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
