@@ -38,6 +38,7 @@ var (
 type ContactAPI interface {
 	GetContactInfo(identifier string) (*Contact, error)
 	GetContactList() ([]*Contact, error)
+	SearchContactList(searchTerms string) ([]*Contact, error)
 }
 
 type ChatInfoAPI interface {

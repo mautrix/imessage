@@ -17,6 +17,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
+	"github.com/sahilm/fuzzy"
 	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/imessage"
@@ -49,6 +50,9 @@ type blueBubbles struct {
 	contactChan       chan *imessage.Contact
 	messageStatusChan chan *imessage.SendMessageStatus
 	backfillTaskChan  chan *imessage.BackfillTask
+
+	contactsLastRefresh time.Time
+	contacts            []Contact
 }
 
 func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -629,7 +633,7 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 
 	var contact *Contact
 
-	bb.getContactList()
+	contacts := bb.getContactList()
 
 	numericAddress := numericOnly(address)
 
@@ -669,21 +673,52 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 	return contact
 }
 
+func (bb *blueBubbles) SearchContactList(input string) ([]*imessage.Contact, error) {
+	bb.log.Trace().Str("input", input).Msg("SearchContactList")
+
+	var matchedContacts []*imessage.Contact
+
+	contacts := bb.getContactList()
+
+	for _, contact := range contacts {
+
+		contactFields := []string{
+			strings.ToLower(contact.FirstName + " " + contact.LastName),
+			strings.ToLower(contact.DisplayName),
+			strings.ToLower(contact.Nickname),
+			strings.ToLower(contact.Nickname),
+			strings.ToLower(contact.Nickname),
+		}
+
+		for _, phoneNumber := range contact.PhoneNumbers {
+			contactFields = append(contactFields, phoneNumber.Address)
+		}
+
+		for _, email := range contact.Emails {
+			contactFields = append(contactFields, email.Address)
+		}
+
+		matches := fuzzy.Find(strings.ToLower(input), contactFields)
+
+		bb.log.Trace().Interface("matches", matches).Str("input", input).Str("name", contact.FirstName+" "+contact.LastName).Msg("Fuzzy Match test")
+
+		if len(matches) > 0 { //&& matches[0].Score >= 0
+			imessageContact, _ := bb.convertBBContactToiMessageContact(contact)
+			matchedContacts = append(matchedContacts, imessageContact)
+			continue
+		}
+	}
+
+	return matchedContacts, nil
+}
+
 func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact, err error) {
 	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
 
 	contact := bb.matchHandleToContact(identifier)
 
-	// Convert to imessage.Contact type
 	if contact != nil {
-		resp = &imessage.Contact{
-			FirstName: contact.FirstName,
-			LastName:  contact.LastName,
-			Nickname:  contact.Nickname,
-			Phones:    convertPhones(contact.PhoneNumbers),
-			Emails:    convertEmails(contact.Emails),
-			UserGUID:  contact.ID,
-		}
+		resp, _ = bb.convertBBContactToiMessageContact(*contact)
 		return resp, nil
 
 	}
@@ -697,39 +732,28 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 
 	contactResponse := bb.getContactList()
 
-	// Convert to imessage.Contact type
 	for _, contact := range contactResponse {
-		imessageContact := &imessage.Contact{
-			FirstName: contact.FirstName,
-			LastName:  contact.LastName,
-			Nickname:  contact.Nickname,
-			Phones:    convertPhones(contact.PhoneNumbers),
-			Emails:    convertEmails(contact.Emails),
-			UserGUID:  contact.ID,
-		}
+		imessageContact, _ := bb.convertBBContactToiMessageContact(contact)
 		resp = append(resp, imessageContact)
 	}
 
 	return resp, nil
 }
 
-var contactsLastRefresh time.Time
-var contacts []Contact
-
 // Updates the cache if necessary, and returns the list
-func (bb *blueBubbles) getContactList() (contacts []Contact) {
+func (bb *blueBubbles) getContactList() []Contact {
 
-	if contacts == nil {
-		bb.refreshContactsList()
-	} else if contactsLastRefresh.Add(1*time.Hour).Compare(time.Now()) < 0 { // if the last refresh was > 1 hour ago
+	if bb.contacts == nil ||
+		bb.contactsLastRefresh.Add(1*time.Hour).Compare(time.Now()) < 0 {
 		bb.refreshContactsList()
 	}
 
-	return contacts
-
+	return bb.contacts
 }
 
 func (bb *blueBubbles) refreshContactsList() error {
+	bb.log.Trace().Msg("refreshContactsList")
+
 	var contactResponse ContactResponse
 
 	err := bb.apiGet("/api/v1/contact", nil, &contactResponse)
@@ -737,9 +761,11 @@ func (bb *blueBubbles) refreshContactsList() error {
 		return err
 	}
 
+	bb.log.Trace().Int("bbContactCount", len(contactResponse.Data)).Msg("refreshContactsList")
+
 	// save contacts for later
-	contacts = contactResponse.Data
-	contactsLastRefresh = time.Now()
+	bb.contacts = contactResponse.Data
+	bb.contactsLastRefresh = time.Now()
 
 	return nil
 }
@@ -1231,6 +1257,18 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 	bb.log.Trace()
 
 	return nil
+}
+
+func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact Contact) (*imessage.Contact, error) {
+	return &imessage.Contact{
+		FirstName: bbContact.FirstName,
+		LastName:  bbContact.LastName,
+		Nickname:  bbContact.Nickname,
+		Phones:    convertPhones(bbContact.PhoneNumbers),
+		Emails:    convertEmails(bbContact.Emails),
+		UserGUID:  bbContact.ID,
+		// TODO Avatar: ,
+	}, nil
 }
 
 func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.Message, error) {

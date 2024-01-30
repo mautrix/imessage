@@ -17,11 +17,15 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
+	"go.mau.fi/mautrix-imessage/imessage"
 	"maunium.net/go/mautrix/bridge/commands"
 )
 
 var (
-	HelpSectionChatManagement = commands.HelpSection{Name: "Chat management", Order: 11}
+	HelpSectionCreatingPortals = commands.HelpSection{Name: "Creating portals", Order: 15}
 )
 
 type WrappedCommandEvent struct {
@@ -35,6 +39,7 @@ func (br *IMBridge) RegisterCommands() {
 	proc := br.CommandProcessor.(*commands.Processor)
 	proc.AddHandlers(
 		cmdPM,
+		cmdSearchContacts,
 	)
 }
 
@@ -54,7 +59,7 @@ var cmdPM = &commands.FullHandler{
 	Func: wrapCommand(fnPM),
 	Name: "pm",
 	Help: commands.HelpMeta{
-		Section:     HelpSectionChatManagement,
+		Section:     HelpSectionCreatingPortals,
 		Description: "Creates a new PM with the specified number or address.",
 	},
 	RequiresPortal: false,
@@ -82,6 +87,69 @@ func fnPM(ce *WrappedCommandEvent) {
 	}
 }
 
+var cmdSearchContacts = &commands.FullHandler{
+	Func: wrapCommand(fnSearchContacts),
+	Name: "search-contacts",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionCreatingPortals,
+		Description: "Searches contacts based on name, phone, and email.",
+	},
+	RequiresPortal: false,
+	RequiresLogin:  false,
+}
+
+func fnSearchContacts(ce *WrappedCommandEvent) {
+	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnSearchContacts")
+
+	if len(ce.Args) == 0 {
+		ce.Reply("**Usage:** `search-contacts <search terms>`")
+		return
+	}
+
+	contacts, err := ce.Bridge.IM.SearchContactList(ce.RawArgs)
+	if err != nil {
+		ce.Reply("Failed to search contacts: %s", err)
+	} else {
+		if contacts == nil || len(contacts) == 0 {
+			ce.Reply("No contacts found for search `%s`", ce.RawArgs)
+		} else {
+			replyMessage := fmt.Sprintf("Found %d contacts:\n", len(contacts))
+
+			for _, contact := range contacts {
+				markdownString := buildContactString(contact)
+				replyMessage += markdownString
+				replyMessage += strings.Repeat("-", 40) + "\n"
+			}
+
+			ce.Reply(replyMessage)
+		}
+	}
+}
+
+func buildContactString(contact *imessage.Contact) string {
+	name := contact.Nickname
+	if name == "" {
+		name = fmt.Sprintf("%s %s", contact.FirstName, contact.LastName)
+	}
+
+	contactInfo := fmt.Sprintf("**%s**\n", name)
+
+	if len(contact.Phones) > 0 {
+		contactInfo += "- **Phones:**\n"
+		for _, phone := range contact.Phones {
+			contactInfo += fmt.Sprintf("  - %s\n", phone)
+		}
+	}
+
+	if len(contact.Emails) > 0 {
+		contactInfo += "- **Emails:**\n"
+		for _, email := range contact.Emails {
+			contactInfo += fmt.Sprintf("  - %s\n", email)
+		}
+	}
+
+	return contactInfo
+}
+
 // TODO: potentially add the following commands
-// contact-search (search contact for addresses so they can be used to start a dm)
 // start-group-chat
