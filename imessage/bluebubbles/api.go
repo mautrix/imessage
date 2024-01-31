@@ -878,7 +878,6 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 
 	request := SendTextRequest{
 		ChatGUID:            chatID,
-		Method:              "apple-script",
 		Message:             text,
 		TempGuid:            fmt.Sprintf("temp-%s", RandString(8)),
 		SelectedMessageGuid: replyTo,

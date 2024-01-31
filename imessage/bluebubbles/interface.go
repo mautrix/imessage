@@ -232,7 +232,6 @@ type Handle struct {
 
 type SendTextRequest struct {
 	ChatGUID            string `json:"chatGuid"`
-	Method              string `json:"method"`
 	Message             string `json:"message"`
 	TempGuid            string `json:"tempGuid"`
 	SelectedMessageGuid string `json:"selectedMessageGuid,omitempty"`
