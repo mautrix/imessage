@@ -701,9 +701,6 @@ func (bb *blueBubbles) SearchContactList(input string) ([]*imessage.Contact, err
 
 		matches := fuzzy.Find(strings.ToLower(input), contactFields)
 
-		// TODO remove
-		bb.log.Trace().Interface("matches", matches).Str("input", input).Str("name", contact.FirstName+" "+contact.LastName).Msg("Fuzzy Match test")
-
 		if len(matches) > 0 { //&& matches[0].Score >= 0
 			imessageContact, _ := bb.convertBBContactToiMessageContact(contact)
 			matchedContacts = append(matchedContacts, imessageContact)
@@ -762,9 +759,6 @@ func (bb *blueBubbles) refreshContactsList() error {
 	if err != nil {
 		return err
 	}
-
-	// TODO remove
-	bb.log.Trace().Int("bbContactCount", len(contactResponse.Data)).Msg("refreshContactsList")
 
 	// save contacts for later
 	bb.contacts = contactResponse.Data
