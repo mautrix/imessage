@@ -2,6 +2,7 @@ package bluebubbles
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -755,7 +756,9 @@ func (bb *blueBubbles) refreshContactsList() error {
 
 	var contactResponse ContactResponse
 
-	err := bb.apiGet("/api/v1/contact", nil, &contactResponse)
+	err := bb.apiGet("/api/v1/contact", map[string]string{
+		"extraProperties": "avatar",
+	}, &contactResponse)
 	if err != nil {
 		return err
 	}
@@ -888,11 +891,12 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 
 	err := bb.apiPost("/api/v1/message/text", request, &res)
 	if err != nil {
+		bb.log.Error().Any("response", res).Msg("Failure when sending message to BlueBubbles")
 		return nil, err
 	}
 
 	if res.Status != 200 {
-		bb.log.Error().Any("response", res).Msg("Failure when sending message to BlueBubbles")
+		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when sending message to BlueBubbles")
 
 		return nil, errors.New("could not send message")
 
@@ -1257,6 +1261,9 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 
 func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact Contact) (*imessage.Contact, error) {
 	var convertedId string
+	var imageData []byte
+	var err error
+
 	switch id := bbContact.ID.(type) {
 	case string:
 		// ID is already a string, use it as is
@@ -1268,6 +1275,13 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact Contact) (*im
 		convertedId = ""
 	}
 
+	if bbContact.Avatar != "" {
+		imageData, err = base64.StdEncoding.DecodeString(bbContact.Avatar)
+		if err != nil {
+			bb.log.Error().Err(err).Str("DisplayName", bbContact.DisplayName).Msg("Error decoding contact avatar")
+		}
+	}
+
 	return &imessage.Contact{
 		FirstName: bbContact.FirstName,
 		LastName:  bbContact.LastName,
@@ -1275,7 +1289,7 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact Contact) (*im
 		Phones:    convertPhones(bbContact.PhoneNumbers),
 		Emails:    convertEmails(bbContact.Emails),
 		UserGUID:  convertedId,
-		// TODO Avatar: ,
+		Avatar:    imageData,
 	}, nil
 }
 
