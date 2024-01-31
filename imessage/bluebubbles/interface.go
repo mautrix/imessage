@@ -115,7 +115,9 @@ type Contact struct {
 	Birthday     string        `json:"birthday,omitempty"`
 	Avatar       string        `json:"avatar,omitempty"`
 	SourceType   string        `json:"sourceType,omitempty"`
-	ID           string        `json:"id,omitempty"`
+	// DEVNOTE: This field is almost always a string,
+	// but at least one user was getting an error because this was a number for them
+	ID interface{} `json:"id,omitempty"`
 }
 
 type PhoneNumber struct {

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -700,8 +701,6 @@ func (bb *blueBubbles) SearchContactList(input string) ([]*imessage.Contact, err
 
 		matches := fuzzy.Find(strings.ToLower(input), contactFields)
 
-		bb.log.Trace().Interface("matches", matches).Str("input", input).Str("name", contact.FirstName+" "+contact.LastName).Msg("Fuzzy Match test")
-
 		if len(matches) > 0 { //&& matches[0].Score >= 0
 			imessageContact, _ := bb.convertBBContactToiMessageContact(contact)
 			matchedContacts = append(matchedContacts, imessageContact)
@@ -760,8 +759,6 @@ func (bb *blueBubbles) refreshContactsList() error {
 	if err != nil {
 		return err
 	}
-
-	bb.log.Trace().Int("bbContactCount", len(contactResponse.Data)).Msg("refreshContactsList")
 
 	// save contacts for later
 	bb.contacts = contactResponse.Data
@@ -1260,13 +1257,25 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 }
 
 func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact Contact) (*imessage.Contact, error) {
+	var convertedId string
+	switch id := bbContact.ID.(type) {
+	case string:
+		// ID is already a string, use it as is
+		convertedId = id
+	case int:
+		// ID is an integer, convert it to a string
+		convertedId = strconv.Itoa(id)
+	default:
+		convertedId = ""
+	}
+
 	return &imessage.Contact{
 		FirstName: bbContact.FirstName,
 		LastName:  bbContact.LastName,
 		Nickname:  bbContact.Nickname,
 		Phones:    convertPhones(bbContact.PhoneNumbers),
 		Emails:    convertEmails(bbContact.Emails),
-		UserGUID:  bbContact.ID,
+		UserGUID:  convertedId,
 		// TODO Avatar: ,
 	}, nil
 }
