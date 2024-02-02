@@ -32,7 +32,7 @@ Note that Barcelona, which the mac-nosip connector uses, is no longer maintained
 | User metadata        | ✔️  | ✔️        | ✔️          |
 | Group metadata       | ✔️  | ✔️        | ✔️          |
 | Group Participants Added/Removed       | ❔  | ❔        | ❌          |
-| Backfilling history  | ✔️  | ✔️        | ✔️          |
+| Backfilling history  | ✔️  | ✔️        | ✔️ (Except Tapbacks)      |
 
 ## Android SMS
 The android-sms connector is deprecated in favor of [mautrix-gmessages](https://github.com/mautrix/gmessages).
