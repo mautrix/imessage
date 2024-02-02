@@ -9,29 +9,30 @@ Note that Barcelona, which the mac-nosip connector uses, is no longer maintained
 | Feature              | mac | mac-nosip | bluebubbles |
 |----------------------|-----|-----------|-------------|
 | Plain text           | ✔️  | ✔️        | ✔️          |
-| Media/files          | ✔️  | ✔️        | ❌          |
+| Media/files          | ✔️  | ✔️        | ✔️          |
 | Replies              | 🛑  | ✔️        | ❌          |
-| Reactions            | 🛑  | ❌        | ❌          |
+| Reactions            | 🛑  | ❌        | ✔️          |
 | Edits                | 🛑  | ❌        | ❌          |
-| Redactions           | 🛑  | ✔️        | ❌          |
-| Read receipts        | 🛑  | ✔️        | ❌          |
-| Typing notifications | 🛑  | ✔️        | ❌          |
+| Redactions           | 🛑  | ✔️        | ✔️          |
+| Read receipts        | 🛑  | ✔️        | ✔️          |
+| Typing notifications | 🛑  | ✔️        | ✔️          |
 
 ## iMessage → Matrix
 | Feature              | mac | mac-nosip | bluebubbles |
 |----------------------|-----|-----------|-------------|
 | Plain text           | ✔️  | ✔️        | ✔️          |
-| Media/files          | ✔️  | ✔️        | ❌          |
-| Replies              | ✔️  | ✔️        | ❌          |
-| Tapbacks             | ✔️  | ✔️        | ❌          |
+| Media/files          | ✔️  | ✔️        | ✔️          |
+| Replies              | ✔️  | ✔️        | ✔️          |
+| Tapbacks             | ✔️  | ✔️        | ✔️          |
 | Edits                | ❌  | ❌        | ❌          |
 | Unsends              | ❌  | ❌        | ❌          |
-| Own read receipts    | ✔️  | ✔️        | ❌          |
-| Other read receipts  | ✔️  | ✔️        | ❌          |
-| Typing notifications | 🛑  | ✔️        | ❌          |
-| User metadata        | ✔️  | ✔️        | ❌          |
-| Group metadata       | ✔️  | ✔️        | ❌          |
-| Backfilling history  | ✔️  | ✔️        | ❌          |
+| Own read receipts    | ✔️  | ✔️        | ✔️          |
+| Other read receipts  | ✔️  | ✔️        | ✔️          |
+| Typing notifications | 🛑  | ✔️        | ✔️          |
+| User metadata        | ✔️  | ✔️        | ✔️          |
+| Group metadata       | ✔️  | ✔️        | ✔️          |
+| Group Participants Added/Removed       | ❔  | ❔        | ❌          |
+| Backfilling history  | ✔️  | ✔️        | ✔️          |
 
 ## Android SMS
 The android-sms connector is deprecated in favor of [mautrix-gmessages](https://github.com/mautrix/gmessages).
