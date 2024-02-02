@@ -113,7 +113,7 @@ type Contact struct {
 	DisplayName  string        `json:"displayName,omitempty"`
 	Nickname     string        `json:"nickname,omitempty"`
 	Birthday     string        `json:"birthday,omitempty"`
-	Avatar       string        `json:"avatar,omitempty"`
+	Avatar       *string       `json:"avatar,omitempty"`
 	SourceType   string        `json:"sourceType,omitempty"`
 	// DEVNOTE: This field is almost always a string,
 	// but at least one user was getting an error because this was a number for them

@@ -703,7 +703,7 @@ func (bb *blueBubbles) SearchContactList(input string) ([]*imessage.Contact, err
 		matches := fuzzy.Find(strings.ToLower(input), contactFields)
 
 		if len(matches) > 0 { //&& matches[0].Score >= 0
-			imessageContact, _ := bb.convertBBContactToiMessageContact(contact)
+			imessageContact, _ := bb.convertBBContactToiMessageContact(&contact)
 			matchedContacts = append(matchedContacts, imessageContact)
 			continue
 		}
@@ -718,7 +718,7 @@ func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact
 	contact := bb.matchHandleToContact(identifier)
 
 	if contact != nil {
-		resp, _ = bb.convertBBContactToiMessageContact(*contact)
+		resp, _ = bb.convertBBContactToiMessageContact(contact)
 		return resp, nil
 
 	}
@@ -733,7 +733,7 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	contactResponse := bb.getContactList()
 
 	for _, contact := range contactResponse {
-		imessageContact, _ := bb.convertBBContactToiMessageContact(contact)
+		imessageContact, _ := bb.convertBBContactToiMessageContact(&contact)
 		resp = append(resp, imessageContact)
 	}
 
@@ -1259,7 +1259,7 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 	return nil
 }
 
-func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact Contact) (*imessage.Contact, error) {
+func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*imessage.Contact, error) {
 	var convertedId string
 	var imageData []byte
 	var err error
@@ -1275,8 +1275,8 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact Contact) (*im
 		convertedId = ""
 	}
 
-	if bbContact.Avatar != "" {
-		imageData, err = base64.StdEncoding.DecodeString(bbContact.Avatar)
+	if *bbContact.Avatar != "" {
+		imageData, err = base64.StdEncoding.DecodeString(*bbContact.Avatar)
 		if err != nil {
 			bb.log.Error().Err(err).Str("DisplayName", bbContact.DisplayName).Msg("Error decoding contact avatar")
 		}
