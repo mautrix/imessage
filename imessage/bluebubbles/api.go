@@ -55,6 +55,8 @@ type blueBubbles struct {
 
 	contactsLastRefresh time.Time
 	contacts            []Contact
+
+	usingPrivateApi bool
 }
 
 func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -90,6 +92,8 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 	bb.ws = ws
 
 	go bb.PollForWebsocketMessages()
+
+	bb.usingPrivateApi = bb.isPrivateApi()
 
 	readyCallback()
 
@@ -210,12 +214,14 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 	var data Message
 	err = json.Unmarshal(rawMessage, &data)
 	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleNewMessage").Msg("Failed to parse event data")
 		return err
 	}
 
 	message, err := bb.convertBBMessageToiMessage(data)
 
 	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleNewMessage").Msg("Failed to convert message data")
 		return err
 	}
 
@@ -228,25 +234,25 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 	return nil
 }
 
-func (bb *blueBubbles) handleMessageSendError(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleMessageSendError")
+func (bb *blueBubbles) handleMessageSendError(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleMessageSendError")
 	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleMessageUpdated")
 
-	//TODO: This code words just fine, unless you send a caption with a picture. then it duplicates your message in the matrix client (not visible to the other imessage user though)
-	// 		Let's get the multipart message working before we worry about this function
 	var data Message
 	err = json.Unmarshal(rawMessage, &data)
 	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleMessageUpdated").Msg("Failed to parse event data")
 		return err
 	}
 
 	message, err := bb.convertBBMessageToiMessage(data)
 
 	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleMessageUpdated").Msg("Failed to convert message data")
 		return err
 	}
 
@@ -259,28 +265,91 @@ func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err err
 	return nil
 }
 
-func (bb *blueBubbles) handleParticipantRemoved(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleParticipantRemoved")
+func (bb *blueBubbles) handleParticipantRemoved(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleParticipantRemoved")
+
+	var data Message
+	err = json.Unmarshal(rawMessage, &data)
+	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantRemoved").Msg("Failed to parse event data")
+		return err
+	}
+
+	chat, err := bb.convertBBChatToiMessageChat(data.Chats[0])
+
+	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantRemoved").Msg("Failed to convert chat data")
+		return err
+	}
+
+	select {
+	case bb.chatChan <- chat:
+	default:
+		bb.log.Warn().Msg("Incoming chat buffer is full")
+	}
+
+	return nil
+}
+
+func (bb *blueBubbles) handleParticipantAdded(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleParticipantAdded")
+
+	var data Message
+	err = json.Unmarshal(rawMessage, &data)
+	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantAdded").Msg("Failed to parse event data")
+		return err
+	}
+
+	chat, err := bb.convertBBChatToiMessageChat(data.Chats[0])
+
+	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantAdded").Msg("Failed to convert chat data")
+		return err
+	}
+
+	select {
+	case bb.chatChan <- chat:
+	default:
+		bb.log.Warn().Msg("Incoming chat buffer is full")
+	}
+
+	return nil
+}
+
+func (bb *blueBubbles) handleParticipantLeft(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleParticipantLeft")
+
+	var data Message
+	err = json.Unmarshal(rawMessage, &data)
+	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantLeft").Msg("Failed to parse event data")
+		return err
+	}
+
+	chat, err := bb.convertBBChatToiMessageChat(data.Chats[0])
+
+	if err != nil {
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantLeft").Msg("Failed to convert chat data")
+		return err
+	}
+
+	select {
+	case bb.chatChan <- chat:
+	default:
+		bb.log.Warn().Msg("Incoming chat buffer is full")
+	}
+
+	return nil
+}
+
+func (bb *blueBubbles) handleGroupIconChanged(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleGroupIconChanged")
 	return ErrNotImplemented
 }
 
-func (bb *blueBubbles) handleParticipantAdded(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleParticipantAdded")
-	return ErrNotImplemented
-}
-
-func (bb *blueBubbles) handleParticipantLeft(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleParticipantLeft")
-	return ErrNotImplemented
-}
-
-func (bb *blueBubbles) handleGroupIconChanged(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleGroupIconChanged")
-	return ErrNotImplemented
-}
-
-func (bb *blueBubbles) handleGroupIconRemoved(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleGroupIconRemoved")
+func (bb *blueBubbles) handleGroupIconRemoved(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleGroupIconRemoved")
 	return ErrNotImplemented
 }
 
@@ -296,7 +365,7 @@ func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err er
 
 	chatInfo, err := bb.getChatInfo(rec.ChatGUID)
 	if err != nil {
-		bb.log.Warn().Err(err).Msg("Failed to get chat info")
+		bb.log.Warn().Err(err).Str("chatID", rec.ChatGUID).Str("event", "handleChatReadStatusChanged").Msg("Failed to fetch chat info")
 		return nil
 	}
 
@@ -315,7 +384,7 @@ func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err er
 
 	var receipt = imessage.ReadReceipt{
 		SenderGUID:     lastMessage.Handle.Address, // TODO: Make sure this is the right field?
-		IsFromMe:       false,                      // changing this to false as I believe read reciepts will always be from others
+		IsFromMe:       false,                      // changing this to false as I believe read receipts will always be from others
 		ChatGUID:       rec.ChatGUID,
 		ReadUpTo:       chatInfo.Data.LastMessage.GUID,
 		ReadAt:         now,
@@ -407,6 +476,7 @@ func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, ba
 
 	messages, err := bb.queryChatMessages(request, []Message{}, true)
 	if err != nil {
+		bb.log.Error().Err(err).Interface("request", request).Str("chatID", chatID).Time("minDate", minDate).Str("backfillID", backfillID).Str("search", "GetMessagesSinceDate").Msg("Failed to query chat Messages")
 		return nil, err
 	}
 
@@ -447,6 +517,7 @@ func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.T
 
 	messages, err := bb.queryChatMessages(request, []Message{}, true)
 	if err != nil {
+		bb.log.Error().Err(err).Interface("request", request).Str("chatID", chatID).Time("minDate", minDate).Time("maxDate", maxDate).Str("search", "GetMessagesBetween").Msg("Failed to query chat Messages")
 		return nil, err
 	}
 
@@ -485,6 +556,7 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 
 	messages, err := bb.queryChatMessages(request, []Message{}, false)
 	if err != nil {
+		bb.log.Error().Err(err).Interface("request", request).Str("chatID", chatID).Time("before", before).Int("limit", limit).Str("search", "GetMessagesBeforeWithLimit").Msg("Failed to query chat Messages")
 		return nil, err
 	}
 
@@ -521,6 +593,7 @@ func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID
 
 	messages, err := bb.queryChatMessages(request, []Message{}, false)
 	if err != nil {
+		bb.log.Error().Err(err).Interface("request", request).Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Str("search", "GetMessagesWithLimit").Msg("Failed to query chat Messages")
 		return nil, err
 	}
 
@@ -612,6 +685,7 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 
 	chats, err := bb.queryChats(request, []Chat{})
 	if err != nil {
+		bb.log.Error().Err(err).Time("minDate", minDate).Str("search", "GetChatsWithMessagesAfter").Msg("Failed to search for chats")
 		return nil, err
 	}
 
@@ -796,21 +870,14 @@ func (bb *blueBubbles) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo,
 
 	chatResponse, err := bb.getChatInfo(chatID)
 	if err != nil {
+		bb.log.Error().Err(err).Str("chatID", chatID).Str("threadID", threadID).Msg("Failed to fetch chat info")
 		return nil, err
 	}
 
-	members := make([]string, len(chatResponse.Data.Partipants))
-
-	for i, participant := range chatResponse.Data.Partipants {
-		members[i] = participant.Address
-	}
-
-	chatInfo := &imessage.ChatInfo{
-		JSONChatGUID: chatResponse.Data.GUID,
-		Identifier:   imessage.ParseIdentifier(chatResponse.Data.GUID),
-		DisplayName:  chatResponse.Data.DisplayName,
-		Members:      members,
-		ThreadID:     chatResponse.Data.GroupID,
+	chatInfo, err := bb.convertBBChatToiMessageChat(*chatResponse.Data)
+	if err != nil {
+		bb.log.Error().Err(err).Str("chatID", chatID).Str("threadID", threadID).Msg("Failed to convert chat info")
+		return nil, err
 	}
 
 	return chatInfo, nil
@@ -821,14 +888,12 @@ func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, erro
 
 	chatResponse, err := bb.getChatInfo(chatID)
 	if err != nil {
+		bb.log.Error().Err(err).Str("chatID", chatID).Msg("Failed to fetch chat info")
 		return nil, err
 	}
 
-	if chatResponse.Data.Properties == nil {
-		return nil, nil
-	}
-
-	if len(chatResponse.Data.Properties) < 1 {
+	if chatResponse.Data.Properties == nil ||
+		len(chatResponse.Data.Properties) < 1 {
 		return nil, nil
 	}
 
@@ -840,7 +905,7 @@ func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, erro
 
 	attachment, err := bb.downloadAttachment(*properties.GroupPhotoGuid)
 	if err != nil {
-		bb.log.Err(err).Str("chatID", chatID).Msg("Failed to download group avatar")
+		bb.log.Error().Err(err).Str("chatID", chatID).Msg("Failed to download group avatar")
 		return nil, err
 	}
 
@@ -879,10 +944,22 @@ func (bb *blueBubbles) BackfillTaskChan() <-chan *imessage.BackfillTask {
 func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToPart int, richLink *imessage.RichLink, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
+	var method string
+	var tempGuid string
+	if replyTo != "" || bb.usingPrivateApi {
+		method = "private-api"
+		tempGuid = ""
+	} else {
+		// we have to use apple-script and send a second message
+		method = "apple-script"
+		tempGuid = fmt.Sprintf("temp-%s", RandString(8))
+	}
+
 	request := SendTextRequest{
 		ChatGUID:            chatID,
+		Method:              method,
 		Message:             text,
-		TempGuid:            fmt.Sprintf("temp-%s", RandString(8)),
+		TempGuid:            tempGuid,
 		SelectedMessageGuid: replyTo,
 		PartIndex:           replyToPart,
 	}
@@ -925,8 +1002,6 @@ func (bb *blueBubbles) isPrivateApi() bool {
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("filename", filename).Str("pathOnDisk", pathOnDisk).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Str("mimeType", mimeType).Bool("voiceMemo", voiceMemo).Interface("metadata", metadata).Msg("SendFile")
 
-	privateApi := bb.isPrivateApi()
-
 	attachment, err := os.ReadFile(pathOnDisk)
 	if err != nil {
 		return nil, err
@@ -935,8 +1010,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 	bb.log.Info().Int("attachmentSize", len(attachment)).Msg("Read attachment from disk")
 
 	var method string
-	if privateApi {
-		// we're private-api, so we can send "subject" along with the attachment
+	if bb.usingPrivateApi {
 		method = "private-api"
 	} else {
 		// we have to use apple-script and send a second message
@@ -954,7 +1028,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 		"partIndex":           replyToPart,
 	}
 
-	if privateApi {
+	if bb.usingPrivateApi {
 		formData["subject"] = text
 	}
 
@@ -965,7 +1039,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 		return nil, err
 	}
 
-	if !privateApi {
+	if !bb.usingPrivateApi {
 		bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
 	}
 
@@ -1387,6 +1461,24 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.ThreadID = bbMessage.ThreadOriginatorGuid
 
 	return &message, nil
+}
+
+func (bb *blueBubbles) convertBBChatToiMessageChat(bbChat Chat) (*imessage.ChatInfo, error) {
+	members := make([]string, len(bbChat.Partipants))
+
+	for i, participant := range bbChat.Partipants {
+		members[i] = participant.Address
+	}
+
+	chatInfo := &imessage.ChatInfo{
+		JSONChatGUID: bbChat.GUID,
+		Identifier:   imessage.ParseIdentifier(bbChat.GUID),
+		DisplayName:  bbChat.DisplayName,
+		Members:      members,
+		ThreadID:     bbChat.GroupID,
+	}
+
+	return chatInfo, nil
 }
 
 func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Attachment, err error) {
