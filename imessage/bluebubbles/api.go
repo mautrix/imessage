@@ -985,11 +985,17 @@ func (bb *blueBubbles) SendFileCleanup(sendFileDir string) {
 func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Interface("tapback", tapback).Bool("remove", remove).Msg("SendTapback")
 
+	var tapbackName = tapback.Name()
+
+	if remove {
+		tapbackName = "-" + tapbackName
+	}
+
 	request := SendReactionRequest{
 		ChatGUID:            chatID,
 		SelectedMessageGuid: targetGUID,
 		PartIndex:           targetPart,
-		Reaction:            tapback.Name(),
+		Reaction:            tapbackName,
 	}
 
 	var res SendReactionResponse
