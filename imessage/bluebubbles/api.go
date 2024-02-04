@@ -1253,8 +1253,6 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 		}
 	}
 
-	bb.log.Trace().Str("method", method).Str("url", url).Bytes("payload", payloadJSON).Msg("apiRequest")
-
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(payloadJSON))
 	if err != nil {
 		bb.log.Error().Err(err).Str("method", method).Msg("Error creating request")
