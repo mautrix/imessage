@@ -93,8 +93,11 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 
 	go bb.PollForWebsocketMessages()
 
+	// Preload some caches
 	bb.usingPrivateApi = bb.isPrivateApi()
+	bb.RefreshContactList()
 
+	// Notify main this API is fully loaded
 	readyCallback()
 
 	return nil
@@ -709,11 +712,9 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 
 	var contact *Contact
 
-	contacts := bb.getContactList()
-
 	numericAddress := numericOnly(address)
 
-	for _, c := range contacts {
+	for _, c := range bb.contacts {
 		// extract only the numbers of every phone (removes `-` and `+`)
 		var numericPhones []string
 		for _, e := range c.PhoneNumbers {
@@ -754,9 +755,7 @@ func (bb *blueBubbles) SearchContactList(input string) ([]*imessage.Contact, err
 
 	var matchedContacts []*imessage.Contact
 
-	contacts := bb.getContactList()
-
-	for _, contact := range contacts {
+	for _, contact := range bb.contacts {
 
 		contactFields := []string{
 			strings.ToLower(contact.FirstName + " " + contact.LastName),
@@ -804,9 +803,7 @@ func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact
 func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	bb.log.Trace().Msg("GetContactList")
 
-	contactResponse := bb.getContactList()
-
-	for _, contact := range contactResponse {
+	for _, contact := range bb.contacts {
 		imessageContact, _ := bb.convertBBContactToiMessageContact(&contact)
 		resp = append(resp, imessageContact)
 	}
@@ -814,18 +811,7 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 	return resp, nil
 }
 
-// Updates the cache if necessary, and returns the list
-func (bb *blueBubbles) getContactList() []Contact {
-
-	if bb.contacts == nil ||
-		bb.contactsLastRefresh.Add(1*time.Hour).Compare(time.Now()) < 0 {
-		bb.refreshContactsList()
-	}
-
-	return bb.contacts
-}
-
-func (bb *blueBubbles) refreshContactsList() error {
+func (bb *blueBubbles) RefreshContactList() error {
 	bb.log.Trace().Msg("refreshContactsList")
 
 	var contactResponse ContactResponse
@@ -945,7 +931,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
 	var method string
-	if replyTo != "" || bb.usingPrivateApi {
+	if replyTo != "" {
 		method = "private-api"
 	} else {
 		// we have to use apple-script and send a second message

@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	HelpSectionCreatingPortals = commands.HelpSection{Name: "Creating portals", Order: 15}
+	HelpSectionManagingPortals = commands.HelpSection{Name: "Managing portals", Order: 15}
 )
 
 type WrappedCommandEvent struct {
@@ -40,6 +40,7 @@ func (br *IMBridge) RegisterCommands() {
 	proc.AddHandlers(
 		cmdPM,
 		cmdSearchContacts,
+		cmdRefreshContacts,
 	)
 }
 
@@ -59,7 +60,7 @@ var cmdPM = &commands.FullHandler{
 	Func: wrapCommand(fnPM),
 	Name: "pm",
 	Help: commands.HelpMeta{
-		Section:     HelpSectionCreatingPortals,
+		Section:     HelpSectionManagingPortals,
 		Description: "Creates a new PM with the specified number or address.",
 	},
 	RequiresPortal: false,
@@ -91,8 +92,8 @@ var cmdSearchContacts = &commands.FullHandler{
 	Func: wrapCommand(fnSearchContacts),
 	Name: "search-contacts",
 	Help: commands.HelpMeta{
-		Section:     HelpSectionCreatingPortals,
-		Description: "Searches contacts based on name, phone, and email.",
+		Section:     HelpSectionManagingPortals,
+		Description: "Searches contacts based on name, phone, and email (only for BlueBubbles mode).",
 	},
 	RequiresPortal: false,
 	RequiresLogin:  false,
@@ -152,5 +153,24 @@ func buildContactString(contact *imessage.Contact) string {
 	return contactInfo
 }
 
-// TODO: potentially add the following commands
-// start-group-chat
+var cmdRefreshContacts = &commands.FullHandler{
+	Func: wrapCommand(fnRefreshContacts),
+	Name: "refresh-contacts",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionManagingPortals,
+		Description: "Request that the bridge reload cached contacts (only for BlueBubbles mode).",
+	},
+	RequiresPortal: false,
+	RequiresLogin:  false,
+}
+
+func fnRefreshContacts(ce *WrappedCommandEvent) {
+	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnSearchContacts")
+
+	err := ce.Bridge.IM.RefreshContactList()
+	if err != nil {
+		ce.Reply("Failed to search contacts: %s", err)
+	} else {
+		ce.Reply("Contacts List updated!")
+	}
+}

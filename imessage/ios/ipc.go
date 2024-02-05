@@ -481,6 +481,10 @@ func (ios *iOSConnector) SearchContactList(searchTerms string) ([]*imessage.Cont
 	return nil, errors.New("not implemented")
 }
 
+func (ios *iOSConnector) RefreshContactList() error {
+	return errors.New("not implemented")
+}
+
 func (ios *iOSConnector) GetChatInfo(chatID, threadID string) (*imessage.ChatInfo, error) {
 	var resp imessage.ChatInfo
 	err := ios.IPC.Request(context.Background(), ReqGetChat, &GetChatRequest{ChatGUID: chatID, ThreadID: threadID}, &resp)

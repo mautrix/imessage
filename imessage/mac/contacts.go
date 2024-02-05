@@ -163,3 +163,7 @@ func (cs *ContactStore) GetContactList() ([]*imessage.Contact, error) {
 func (cs ContactStore) SearchContactList(searchTerms string) ([]*imessage.Contact, error) {
 	return nil, errors.New("not implemented")
 }
+
+func (cs ContactStore) RefreshContactList() error {
+	return errors.New("not implemented")
+}

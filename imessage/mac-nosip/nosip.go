@@ -71,6 +71,10 @@ func (n NoopContacts) SearchContactList(searchTerms string) ([]*imessage.Contact
 	return nil, errors.New("not implemented")
 }
 
+func (n NoopContacts) RefreshContactList() error {
+	return errors.New("not implemented")
+}
+
 func NewMacNoSIPConnector(bridge imessage.Bridge) (imessage.API, error) {
 	logger := bridge.GetLog().Sub("iMessage").Sub("Mac-noSIP")
 	processLogger := bridge.GetLog().Sub("iMessage").Sub("Barcelona")
