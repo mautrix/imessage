@@ -14,6 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -55,6 +56,8 @@ type blueBubbles struct {
 
 	contactsLastRefresh time.Time
 	contacts            []Contact
+
+	bbRequestLock sync.Mutex
 
 	usingPrivateApi bool
 }
@@ -239,7 +242,7 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 
 func (bb *blueBubbles) handleMessageSendError(rawMessage json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleMessageSendError")
-	return ErrNotImplemented
+	return nil // beeper should get the error back during the send response
 }
 
 func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err error) {
@@ -1217,7 +1220,9 @@ func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string
 func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
 	url := bb.apiUrl(path, queryParams)
 
+	bb.bbRequestLock.Lock()
 	response, err := http.Get(url)
+	bb.bbRequestLock.Unlock()
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making GET request")
 		return err
@@ -1267,7 +1272,9 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
+	bb.bbRequestLock.Lock()
 	response, err := client.Do(req)
+	bb.bbRequestLock.Unlock()
 	if err != nil {
 		bb.log.Error().Err(err).Str("method", method).Msg("Error making request")
 		return err
@@ -1321,7 +1328,9 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 	writer.Close()
 
 	// Make the HTTP POST request
+	bb.bbRequestLock.Lock()
 	response, err := http.Post(url, writer.FormDataContentType(), &body)
+	bb.bbRequestLock.Unlock()
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making POST request")
 		return err
