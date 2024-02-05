@@ -231,12 +231,14 @@ type Handle struct {
 }
 
 type SendTextRequest struct {
-	ChatGUID            string `json:"chatGuid"`
-	Method              string `json:"method"`
-	Message             string `json:"message"`
-	TempGuid            string `json:"tempGuid"`
-	SelectedMessageGuid string `json:"selectedMessageGuid,omitempty"`
-	PartIndex           int    `json:"partIndex,omitempty"`
+	ChatGUID            string      `json:"chatGuid"`
+	Method              string      `json:"method"`
+	Message             string      `json:"message"`
+	EffectId            interface{} `json:"effectId"`
+	Subject             string      `json:"subject"`
+	TempGuid            string      `json:"tempGuid"`
+	SelectedMessageGuid string      `json:"selectedMessageGuid"`
+	PartIndex           int         `json:"partIndex"`
 }
 
 type SendTextResponse struct {
@@ -285,4 +287,10 @@ type ServerInfoResponse struct {
 	Status  int64      `json:"status"`
 	Message string     `json:"message"`
 	Data    ServerInfo `json:"data"`
+}
+
+type ResolveIdentifierResponse struct {
+	Status  int64  `json:"status"`
+	Message string `json:"message"`
+	Data    Handle `json:"data"`
 }

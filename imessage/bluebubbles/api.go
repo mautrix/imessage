@@ -945,21 +945,18 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
 	var method string
-	var tempGuid string
 	if replyTo != "" || bb.usingPrivateApi {
 		method = "private-api"
-		tempGuid = ""
 	} else {
 		// we have to use apple-script and send a second message
 		method = "apple-script"
-		tempGuid = fmt.Sprintf("temp-%s", RandString(8))
 	}
 
 	request := SendTextRequest{
 		ChatGUID:            chatID,
 		Method:              method,
 		Message:             text,
-		TempGuid:            tempGuid,
+		TempGuid:            fmt.Sprintf("temp-%s", RandString(8)),
 		SelectedMessageGuid: replyTo,
 		PartIndex:           replyToPart,
 	}
@@ -976,7 +973,6 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when sending message to BlueBubbles")
 
 		return nil, errors.New("could not send message")
-
 	}
 
 	return &imessage.SendResponse{
@@ -990,7 +986,7 @@ func (bb *blueBubbles) isPrivateApi() bool {
 	var serverInfo ServerInfoResponse
 	err := bb.apiGet("/api/v1/server/info", nil, &serverInfo)
 	if err != nil {
-		bb.log.Err(err).Msg("Failed to get server info from BlueBubbles")
+		bb.log.Error().Err(err).Msg("Failed to get server info from BlueBubbles")
 		return false
 	}
 
@@ -1061,6 +1057,11 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 
 	var tapbackName = tapback.Name()
 
+	if !bb.usingPrivateApi {
+		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("tapbackName", tapbackName).Bool("remove", remove).Msg("The private-api isn't enabled in BlueBubbles, can't send tapback")
+		return nil, errors.ErrUnsupported
+	}
+
 	if remove {
 		tapbackName = "-" + tapbackName
 	}
@@ -1096,6 +1097,11 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
 
+	if !bb.usingPrivateApi {
+		bb.log.Warn().Str("chatID", chatID).Msg("The private-api isn't enabled in BlueBubbles, can't send read receipt")
+		return errors.ErrUnsupported
+	}
+
 	var res ReadReceiptResponse
 	err := bb.apiPost(fmt.Sprintf("/api/v1/chat/%s/read", chatID), nil, &res)
 
@@ -1116,6 +1122,11 @@ func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
 	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("SendTypingNotification")
+
+	if !bb.usingPrivateApi {
+		bb.log.Warn().Str("chatID", chatID).Bool("typing", typing).Msg("The private-api isn't enabled in BlueBubbles, can't send typing notification")
+		return errors.ErrUnsupported
+	}
 
 	var res TypingResponse
 	var err error
@@ -1141,15 +1152,23 @@ func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error 
 	return nil
 }
 
-func (bb *blueBubbles) ResolveIdentifier(identifier string) (string, error) {
-	bb.log.Trace().Str("identifier", identifier).Msg("ResolveIdentifier")
+func (bb *blueBubbles) ResolveIdentifier(address string) (string, error) {
+	bb.log.Trace().Str("address", address).Msg("ResolveIdentifier")
 
-	// if the identifier is a phone number, remove dashes and prepend the +
-	if !strings.Contains(identifier, "@") {
-		identifier = "+" + numericOnly(identifier)
+	var identifierResponse ResolveIdentifierResponse
+
+	var handle = address
+	if !strings.Contains(address, "@") {
+		handle = "+" + numericOnly(address)
 	}
 
-	return "iMessage;-;" + identifier, nil
+	err := bb.apiGet(fmt.Sprintf("/api/v1/handle/%s", handle), nil, &identifierResponse)
+	if err != nil {
+		bb.log.Error().Any("response", identifierResponse).Str("address", address).Str("handle", handle).Msg("Failure when Resolving Identifier")
+		return "", err
+	}
+
+	return identifierResponse.Data.Service + ";-;" + identifierResponse.Data.Address, nil
 }
 
 func (bb *blueBubbles) PrepareDM(guid string) error {
@@ -1159,7 +1178,7 @@ func (bb *blueBubbles) PrepareDM(guid string) error {
 
 func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupResponse, error) {
 	bb.log.Trace().Interface("users", users).Msg("CreateGroup")
-	return nil, ErrNotImplemented
+	return nil, errors.ErrUnsupported
 }
 
 // Helper functions
