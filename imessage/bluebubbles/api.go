@@ -436,7 +436,7 @@ func (bb *blueBubbles) queryChatMessages(query MessageQueryRequest, allResults [
 func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) (resp []*imessage.Message, err error) {
 	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Str("backfillID", backfillID).Msg("GetMessagesSinceDate")
 
-	after := minDate.Unix()
+	after := minDate.UnixNano() / int64(time.Millisecond)
 	request := MessageQueryRequest{
 		ChatGUID: chatID,
 		Limit:    100,
@@ -475,8 +475,8 @@ func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, ba
 func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.Time) (resp []*imessage.Message, err error) {
 	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Time("maxDate", maxDate).Msg("GetMessagesBetween")
 
-	after := minDate.Unix()
-	before := maxDate.Unix()
+	after := minDate.UnixNano() / int64(time.Millisecond)
+	before := maxDate.UnixNano() / int64(time.Millisecond)
 	request := MessageQueryRequest{
 		ChatGUID: chatID,
 		Limit:    100,
@@ -516,7 +516,7 @@ func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.T
 func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Time, limit int) (resp []*imessage.Message, err error) {
 	bb.log.Trace().Str("chatID", chatID).Time("before", before).Int("limit", limit).Msg("GetMessagesBeforeWithLimit")
 
-	_before := before.Unix()
+	_before := before.UnixNano() / int64(time.Millisecond)
 	request := MessageQueryRequest{
 		ChatGUID: chatID,
 		Limit:    int64(limit),
