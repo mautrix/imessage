@@ -1645,6 +1645,7 @@ func (portal *Portal) handleIMAvatarChange(msg *imessage.Message, intent *appser
 		}
 	} else if msg.GroupActionType == imessage.GroupActionRemoveAvatar {
 		// TODO
+		portal.zlog.Warn().Msg("Removing group avatars is not supported at this time")
 	} else {
 		portal.log.Warnfln("Unexpected group action type %d in avatar change item", msg.GroupActionType)
 	}

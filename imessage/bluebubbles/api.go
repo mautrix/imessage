@@ -38,7 +38,7 @@ const (
 	GroupIconRemoved      string = "group-icon-removed"
 	ChatReadStatusChanged string = "chat-read-status-changed"
 	TypingIndicator       string = "typing-indicator"
-	GroupNameChanged      string = "group-name-changed"
+	GroupNameChanged      string = "group-name-change"
 	IMessageAliasRemoved  string = "imessage-alias-removed"
 )
 
@@ -274,69 +274,56 @@ func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err err
 func (bb *blueBubbles) handleParticipantRemoved(rawMessage json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleParticipantRemoved")
 
-	var data Message
-	err = json.Unmarshal(rawMessage, &data)
-	if err != nil {
-		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantRemoved").Msg("Failed to parse event data")
-		return err
-	}
-
-	chat, err := bb.convertBBChatToiMessageChat(data.Chats[0])
-
-	if err != nil {
-		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantRemoved").Msg("Failed to convert chat data")
-		return err
-	}
-
-	select {
-	case bb.chatChan <- chat:
-	default:
-		bb.log.Warn().Msg("Incoming chat buffer is full")
-	}
-
-	return nil
+	return bb.chatRoomUpdate(rawMessage, "handleParticipantAdded")
 }
 
 func (bb *blueBubbles) handleParticipantAdded(rawMessage json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleParticipantAdded")
 
-	var data Message
-	err = json.Unmarshal(rawMessage, &data)
-	if err != nil {
-		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantAdded").Msg("Failed to parse event data")
-		return err
-	}
-
-	chat, err := bb.convertBBChatToiMessageChat(data.Chats[0])
-
-	if err != nil {
-		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantAdded").Msg("Failed to convert chat data")
-		return err
-	}
-
-	select {
-	case bb.chatChan <- chat:
-	default:
-		bb.log.Warn().Msg("Incoming chat buffer is full")
-	}
-
-	return nil
+	return bb.chatRoomUpdate(rawMessage, "handleParticipantAdded")
 }
 
 func (bb *blueBubbles) handleParticipantLeft(rawMessage json.RawMessage) (err error) {
 	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleParticipantLeft")
 
+	return bb.chatRoomUpdate(rawMessage, "handleParticipantLeft")
+}
+
+func (bb *blueBubbles) handleGroupIconChanged(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleGroupIconChanged")
+	// BB also fires the new message event where the icon gets updated, NOP here
+	return nil
+}
+
+func (bb *blueBubbles) handleGroupIconRemoved(rawMessage json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleGroupIconRemoved")
+	// BB also fires the new message event where the icon gets removed, NOP here
+	return nil
+}
+
+func (bb *blueBubbles) handleGroupNameChanged(data json.RawMessage) (err error) {
+	bb.log.Trace().RawJSON("data", data).Msg("handleGroupNameChanged")
+	// BB also fires the new message event where the name gets updated, NOP here
+	return nil
+}
+
+func (bb *blueBubbles) chatRoomUpdate(rawMessage json.RawMessage, eventName string) (err error) {
+
 	var data Message
 	err = json.Unmarshal(rawMessage, &data)
 	if err != nil {
-		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantLeft").Msg("Failed to parse event data")
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", eventName).Msg("Failed to parse event data")
 		return err
+	}
+
+	if len(data.Chats) != 1 {
+		bb.log.Error().Interface("rawMessage", rawMessage).Str("event", eventName).Msg("Received chat update event without a chat to update")
 	}
 
 	chat, err := bb.convertBBChatToiMessageChat(data.Chats[0])
 
 	if err != nil {
-		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", "handleParticipantLeft").Msg("Failed to convert chat data")
+		bb.log.Warn().Err(err).RawJSON("rawMessage", rawMessage).Str("event", eventName).Msg("Failed to convert chat data")
 		return err
 	}
 
@@ -347,16 +334,6 @@ func (bb *blueBubbles) handleParticipantLeft(rawMessage json.RawMessage) (err er
 	}
 
 	return nil
-}
-
-func (bb *blueBubbles) handleGroupIconChanged(rawMessage json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleGroupIconChanged")
-	return ErrNotImplemented
-}
-
-func (bb *blueBubbles) handleGroupIconRemoved(rawMessage json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("rawMessage", rawMessage).Msg("handleGroupIconRemoved")
-	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) handleChatReadStatusChanged(data json.RawMessage) (err error) {
@@ -425,11 +402,6 @@ func (bb *blueBubbles) handleTypingIndicator(data json.RawMessage) (err error) {
 		bb.log.Warn().Msg("Incoming typing notification buffer is full")
 	}
 	return nil
-}
-
-func (bb *blueBubbles) handleGroupNameChanged(data json.RawMessage) (err error) {
-	bb.log.Trace().RawJSON("data", data).Msg("handleGroupNameChanged")
-	return ErrNotImplemented
 }
 
 func (bb *blueBubbles) handleIMessageAliasRemoved(data json.RawMessage) (err error) {
@@ -731,21 +703,27 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 		// check for exact matches for either an email or phone
 		if strings.Contains(address, "@") && containsString(emailStrings, address) {
 			contact = &c
-			break
+			if c.SourceType == "api" {
+				break
+			}
 		} else if containsString(phoneStrings, numericAddress) {
 			contact = &c
-			break
+			if c.SourceType == "api" {
+				break
+			}
 		}
 
 		for _, p := range numericPhones {
 			matchLengths := []int{15, 14, 13, 12, 11, 10, 9, 8, 7}
 			if containsInt(matchLengths, len(p)) && strings.HasSuffix(numericAddress, p) {
 				contact = &c
-				break
+				if c.SourceType == "api" {
+					break
+				}
 			}
 		}
 
-		if contact != nil {
+		if contact != nil && c.SourceType == "api" {
 			break
 		}
 	}
@@ -1379,7 +1357,7 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*i
 	return &imessage.Contact{
 		FirstName: bbContact.FirstName,
 		LastName:  bbContact.LastName,
-		Nickname:  bbContact.Nickname,
+		Nickname:  bbContact.DisplayName,
 		Phones:    convertPhones(bbContact.PhoneNumbers),
 		Emails:    convertEmails(bbContact.Emails),
 		UserGUID:  convertedId,
@@ -1422,9 +1400,9 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	if message.IsRead {
 		message.ReadAt = time.Unix(0, bbMessage.DateRead*int64(time.Millisecond))
 	}
-	message.IsDelivered = bbMessage.DateDelivered != 0 // TODO this may need to be based on the bbMessage.DateDelivered != 0
-	message.IsSent = true                              // assume yes because we made it to this part of the code
-	message.IsEmote = false                            // emojis seem to send either way, and BB doesn't say whether there is one or not
+	message.IsDelivered = bbMessage.DateDelivered != 0
+	message.IsSent = true   // assume yes because we made it to this part of the code
+	message.IsEmote = false // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
 
 	message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
@@ -1450,6 +1428,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 		message.Tapback = nil
 	}
 
+	// Attachments
 	message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
 	for i, attachment := range bbMessage.Attachments {
 		attachment, err := bb.downloadAttachment(attachment.GUID)
@@ -1461,9 +1440,11 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 		message.Attachments[i] = attachment
 	}
 
-	// TODO Not sure what the itemtype is
-	// message.ItemType =
+	// Group name, member, and avatar changes all come through as messages
+	// with a special ItemType to denote it isn't a regular message
+	message.ItemType = imessage.ItemType(bbMessage.ItemType)
 
+	// Changes based on the ItemType, but denotes user or icon add vs remove actions
 	message.GroupActionType = imessage.GroupActionType(bbMessage.GroupActionType)
 	message.NewGroupName = bbMessage.GroupTitle
 
