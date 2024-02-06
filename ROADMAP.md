@@ -31,7 +31,7 @@ Note that Barcelona, which the mac-nosip connector uses, is no longer maintained
 | Typing notifications | 🛑  | ✔️        | ✔️          |
 | User metadata        | ✔️  | ✔️        | ✔️          |
 | Group metadata       | ✔️  | ✔️        | ✔️          |
-| Group Participants Added/Removed       | ❔  | ❔        | ❌          |
+| Group Participants Added/Removed       | ❔  | ✔️        | ✔️          |
 | Backfilling history  | ✔️  | ✔️        | ✔️ (Except Tapbacks)      |
 
 ## Android SMS
