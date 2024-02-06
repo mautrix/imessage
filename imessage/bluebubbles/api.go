@@ -685,11 +685,13 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 
 func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 
-	var contact *Contact
+	var matchedContact *Contact
 
 	numericAddress := numericOnly(address)
 
 	for _, c := range bb.contacts {
+		var contact *Contact
+
 		// extract only the numbers of every phone (removes `-` and `+`)
 		var numericPhones []string
 		for _, e := range c.PhoneNumbers {
@@ -701,34 +703,33 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 		var phoneStrings = convertPhones(c.PhoneNumbers)
 
 		// check for exact matches for either an email or phone
-		if strings.Contains(address, "@") && containsString(emailStrings, address) {
-			contact = &c
-			if c.SourceType == "api" {
-				break
+		if strings.Contains(address, "@") {
+			if containsString(emailStrings, address) {
+				contact = &c
 			}
 		} else if containsString(phoneStrings, numericAddress) {
 			contact = &c
-			if c.SourceType == "api" {
-				break
-			}
 		}
 
 		for _, p := range numericPhones {
 			matchLengths := []int{15, 14, 13, 12, 11, 10, 9, 8, 7}
 			if containsInt(matchLengths, len(p)) && strings.HasSuffix(numericAddress, p) {
 				contact = &c
-				if c.SourceType == "api" {
-					break
-				}
 			}
 		}
 
-		if contact != nil && c.SourceType == "api" {
-			break
+		// Contacts with a source type of "api" were imported into BB and preferable
+		if contact != nil && contact.SourceType == "api" {
+			return contact
+		}
+
+		// Contacts with a source type of "db" are stored on the mac and can be used as fallback in case an imported one isn't found
+		if contact != nil && matchedContact == nil {
+			matchedContact = contact
 		}
 	}
 
-	return contact
+	return matchedContact
 }
 
 func (bb *blueBubbles) SearchContactList(input string) ([]*imessage.Contact, error) {
@@ -770,6 +771,8 @@ func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact
 	bb.log.Trace().Str("identifier", identifier).Msg("GetContactInfo")
 
 	contact := bb.matchHandleToContact(identifier)
+
+	bb.log.Trace().Str("identifier", identifier).Interface("contact", contact).Msg("GetContactInfo: found a contact")
 
 	if contact != nil {
 		resp, _ = bb.convertBBContactToiMessageContact(contact)
