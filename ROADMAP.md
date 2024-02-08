@@ -8,14 +8,15 @@ Note that Barcelona, which the mac-nosip connector uses, is no longer maintained
 ## Matrix → iMessage
 | Feature              | mac | mac-nosip | bluebubbles |
 |----------------------|-----|-----------|-------------|
-| Plain text           | ✔️  | ✔️        | ✔️          |
-| Media/files          | ✔️  | ✔️        | ✔️          |
-| Replies              | 🛑  | ✔️        | ✔️ (Req BlueBubbles >1.9.4, not inclusive)          |
-| Reactions            | 🛑  | ❌        | ✔️          |
-| Edits                | 🛑  | ❌        | ❌          |
-| Redactions           | 🛑  | ✔️        | ✔️          |
-| Read receipts        | 🛑  | ✔️        | ✔️          |
-| Typing notifications | 🛑  | ✔️        | ✔️          |
+| Plain text           | ✔️   | ✔️         | ✔️           |
+| Media/files          | ✔️   | ✔️         | ✔️           |
+| Replies              | 🛑  | ✔️         | ✔️  (Req BlueBubbles >=1.9.5)          |
+| Reactions            | 🛑  | ❌        | ✔️            |
+| Edits                | 🛑  | ❌        | ❌           |
+| Unsends              | ❌  | ❌        | ❌           |
+| Redactions           | 🛑  | ✔️         | ✔️           |
+| Read receipts        | 🛑  | ✔️         | ✔️           |
+| Typing notifications | 🛑  | ✔️         | ✔️           |
 
 ## iMessage → Matrix
 | Feature                                | mac | mac-nosip | bluebubbles |
