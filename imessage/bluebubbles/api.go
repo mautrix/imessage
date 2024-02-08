@@ -684,7 +684,6 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 }
 
 func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
-
 	var matchedContact *Contact
 
 	numericAddress := numericOnly(address)
@@ -703,18 +702,19 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 		var phoneStrings = convertPhones(c.PhoneNumbers)
 
 		// check for exact matches for either an email or phone
-		if strings.Contains(address, "@") {
-			if containsString(emailStrings, address) {
-				contact = &c
-			}
+		if strings.Contains(address, "@") && containsString(emailStrings, address) {
+			contact = &Contact{} // Create a new instance
+			*contact = c
 		} else if containsString(phoneStrings, numericAddress) {
-			contact = &c
+			contact = &Contact{} // Create a new instance
+			*contact = c
 		}
 
 		for _, p := range numericPhones {
 			matchLengths := []int{15, 14, 13, 12, 11, 10, 9, 8, 7}
 			if containsInt(matchLengths, len(p)) && strings.HasSuffix(numericAddress, p) {
-				contact = &c
+				contact = &Contact{} // Create a new instance
+				*contact = c
 			}
 		}
 
@@ -725,7 +725,8 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 
 		// Contacts with a source type of "api" are stored on the mac and can be used as fallback in case an imported one isn't found
 		if contact != nil && matchedContact == nil {
-			matchedContact = contact
+			matchedContact = &Contact{} // Create a new instance
+			*matchedContact = *contact
 		}
 	}
 
