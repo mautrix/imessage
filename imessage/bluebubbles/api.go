@@ -718,12 +718,12 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 			}
 		}
 
-		// Contacts with a source type of "api" were imported into BB and preferable
-		if contact != nil && contact.SourceType == "api" {
+		// Contacts with a source type of "db" were imported into BB and preferable
+		if contact != nil && contact.SourceType == "db" {
 			return contact
 		}
 
-		// Contacts with a source type of "db" are stored on the mac and can be used as fallback in case an imported one isn't found
+		// Contacts with a source type of "api" are stored on the mac and can be used as fallback in case an imported one isn't found
 		if contact != nil && matchedContact == nil {
 			matchedContact = contact
 		}
