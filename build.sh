@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 build_tags=""
 
 if [[ $(arch) == "arm64" && -z "$LIBRARY_PATH" && -d /opt/homebrew ]]; then
@@ -11,10 +11,7 @@ else
 fi
 
 if [[ -f "$HEIF_PATH/libheif.1.dylib" ]]; then
-	echo "libheif found in $HEIF_PATH, compiling with heif support"
 	build_tags="libheif"
-else
-	echo "libheif not found in $HEIF_PATH, compiling without heif support"
 fi
 
-go build -tags "$build_tags" -ldflags "-X main.Tag=$(git describe --exact-match --tags 2>/dev/null) -X main.Commit=$(git rev-parse HEAD) -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'"
+go build -tags "$build_tags" -ldflags "-X main.Tag=$(git describe --exact-match --tags 2>/dev/null) -X main.Commit=$(git rev-parse HEAD) -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'" "$@"
