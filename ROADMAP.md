@@ -1,33 +1,43 @@
 # Features & roadmap
 ✔️ = feature is supported  
-❌ = feature is planned, but not yet supported  
+❌ = feature is not yet supported  
 🛑 = feature is not possible
 
+Note that Barcelona, which the mac-nosip connector uses, is no longer maintained.
+
 ## Matrix → iMessage
-| Feature              | macOS | iOS | macOS (no SIP) |
-|----------------------|-------|-----|----------------|
-| Plain text           | ✔️    | ✔️  | ✔️             |
-| Media/files          | ✔️    | ✔️  | ✔️             |
-| Replies              | 🛑    | ?   | ✔️             |
-| Reactions            | 🛑    | ?   | ✔️             |
-| Read receipts        | 🛑    | ?   | ✔️             |
-| Typing notifications | 🛑    | ?   | ✔️             |
+| Feature              | mac | mac-nosip | bluebubbles |
+|----------------------|-----|-----------|-------------|
+| Plain text           | ✔️   | ✔️         | ✔️           |
+| Media/files          | ✔️   | ✔️         | ✔️           |
+| Replies              | 🛑  | ✔️         | ✔️  (Req BlueBubbles >=1.9.5)          |
+| Reactions            | 🛑  | ❌        | ✔️            |
+| Edits                | 🛑  | ❌        | ❌           |
+| Unsends              | ❌  | ❌        | ❌           |
+| Redactions           | 🛑  | ✔️         | ✔️           |
+| Read receipts        | 🛑  | ✔️         | ✔️           |
+| Typing notifications | 🛑  | ✔️         | ✔️           |
 
 ## iMessage → Matrix
-| Feature              | macOS | iOS | macOS (no SIP) |
-|----------------------|-------|-----|----------------|
-| Plain text           | ✔️    | ✔️  | ✔️             |
-| Media/files          | ✔️    | ✔️  | ✔️             |
-| Replies              | ✔️    | ❌  | ✔️             |
-| Tapbacks             | ✔️    | ❌  | ✔️             |
-| Own read receipts    | ✔️    | ❌  | ✔️             |
-| Other read receipts  | ✔️    | ❌  | ✔️             |
-| Typing notifications | 🛑    | ✔️  | ✔️             |
-| User metadata        | ✔️    | ✔️  | ✔️             |
-| Group metadata       | ✔️    | ✔️  | ✔️             |
-| Backfilling history  | ✔️    | ✔️  | ✔️             |
+| Feature                                | mac | mac-nosip | bluebubbles |
+|----------------------------------------|-----|-----------|-------------|
+| Plain text                             | ✔️  | ✔️        | ✔️          |
+| Media/files                            | ✔️  | ✔️        | ✔️          |
+| Replies                                | ✔️  | ✔️        | ✔️          |
+| Tapbacks                               | ✔️  | ✔️        | ✔️          |
+| Edits                                  | ❌  | ❌       | ❌         |
+| Unsends                                | ❌  | ❌       | ❌         |
+| Own read receipts                      | ✔️  | ✔️        | ✔️          |
+| Other read receipts                    | ✔️  | ✔️        | ✔️          |
+| Typing notifications                   | 🛑 | ✔️        | ✔️          |
+| User metadata                          | ✔️  | ✔️        | ✔️          |
+| Group metadata                         | ✔️  | ✔️        | ✔️          |
+| Group Participants Added/Removed       | ❔ | ✔️        | ✔️          |
+| Backfilling history                    | ✔️  | ✔️        | ✔️ (Except Tapbacks)      |
 
 ## Android SMS
+The android-sms connector is deprecated in favor of [mautrix-gmessages](https://github.com/mautrix/gmessages).
+
 #### Supported
 * Plain text (SMS)
 * Media (MMS)

@@ -27,6 +27,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	flag "maunium.net/go/mauflag"
 	"maunium.net/go/maulogger/v2"
 
@@ -44,6 +45,7 @@ import (
 	"go.mau.fi/mautrix-imessage/config"
 	"go.mau.fi/mautrix-imessage/database"
 	"go.mau.fi/mautrix-imessage/imessage"
+	_ "go.mau.fi/mautrix-imessage/imessage/bluebubbles"
 	_ "go.mau.fi/mautrix-imessage/imessage/ios"
 	_ "go.mau.fi/mautrix-imessage/imessage/mac-nosip"
 	"go.mau.fi/mautrix-imessage/ipc"
@@ -227,6 +229,9 @@ func (br *IMBridge) Init() {
 	br.IMHandler = NewiMessageHandler(br)
 	br.WebsocketHandler = NewWebsocketCommandHandler(br)
 	br.wsOnConnectWait.Add(1)
+
+	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
+	br.RegisterCommands()
 }
 
 type PingResponse struct {
@@ -239,6 +244,10 @@ func (br *IMBridge) GetIPC() *ipc.Processor {
 
 func (br *IMBridge) GetLog() maulogger.Logger {
 	return br.Log
+}
+
+func (br *IMBridge) GetZLog() *zerolog.Logger {
+	return br.ZLog
 }
 
 func (br *IMBridge) GetConnectorConfig() *imessage.PlatformConfig {
@@ -470,7 +479,7 @@ func (br *IMBridge) isWarmingUp() bool {
 }
 
 func (br *IMBridge) Start() {
-	br.Log.Debugln("Finding bridge user")
+	br.ZLog.Debug().Msg("Finding bridge user")
 	br.user = br.loadDBUser()
 	br.user.initDoublePuppet()
 
@@ -535,7 +544,7 @@ func (br *IMBridge) Start() {
 	go br.IPC.Loop()
 
 	go br.StartupSync()
-	br.Log.Infoln("Initialization complete")
+	br.ZLog.Info().Msg("Initialization complete")
 	go br.PeriodicSync()
 }
 
@@ -582,7 +591,7 @@ func (br *IMBridge) StartupSync() {
 	syncChatMaxAge := time.Duration(br.Config.Bridge.Backfill.InitialSyncMaxAge*24*60) * time.Minute
 	chats, err := br.IM.GetChatsWithMessagesAfter(time.Now().Add(-syncChatMaxAge))
 	if err != nil {
-		br.Log.Errorln("Failed to get chat list to backfill:", err)
+		br.ZLog.Error().Err(err).Msg("Failed to get chat list to backfill")
 		return
 	}
 	for _, chat := range chats {
@@ -596,7 +605,7 @@ func (br *IMBridge) StartupSync() {
 			portal.Sync(true)
 		}
 	}
-	br.Log.Infoln("Startup sync complete")
+	br.ZLog.Info().Msg("Startup sync complete")
 	br.IM.PostStartupSyncHook()
 }
 
