@@ -8,32 +8,36 @@ Note that Barcelona, which the mac-nosip connector uses, is no longer maintained
 ## Matrix → iMessage
 | Feature              | mac | mac-nosip | bluebubbles |
 |----------------------|-----|-----------|-------------|
-| Plain text           | ✔️   | ✔️         | ✔️           |
-| Media/files          | ✔️   | ✔️         | ✔️           |
-| Replies              | 🛑  | ✔️         | ✔️  (Req BlueBubbles >=1.9.5)          |
-| Reactions            | 🛑  | ❌        | ✔️            |
-| Edits                | 🛑  | ❌        | ❌           |
-| Unsends              | ❌  | ❌        | ❌           |
-| Redactions           | 🛑  | ✔️         | ✔️           |
-| Read receipts        | 🛑  | ✔️         | ✔️           |
-| Typing notifications | 🛑  | ✔️         | ✔️           |
+| Plain text           | ✔️  | ✔️        | ✔️          |
+| Media/files          | ✔️  | ✔️        | ✔️          |
+| Replies              | 🛑  | ✔️        | ✔️†         |
+| Reactions            | 🛑  | ✔️        | ✔️          |
+| Edits                | 🛑  | ❌         | ❌           |
+| Unsends              | 🛑  | ❌         | ❌           |
+| Redactions           | 🛑  | ✔️        | ✔️          |
+| Read receipts        | 🛑  | ✔️        | ✔️          |
+| Typing notifications | 🛑  | ✔️        | ✔️          |
+
+† BlueBubbles had bugs with replies until v1.9.5
 
 ## iMessage → Matrix
-| Feature                                | mac | mac-nosip | bluebubbles |
-|----------------------------------------|-----|-----------|-------------|
-| Plain text                             | ✔️  | ✔️        | ✔️          |
-| Media/files                            | ✔️  | ✔️        | ✔️          |
-| Replies                                | ✔️  | ✔️        | ✔️          |
-| Tapbacks                               | ✔️  | ✔️        | ✔️          |
-| Edits                                  | ❌  | ❌       | ❌         |
-| Unsends                                | ❌  | ❌       | ❌         |
-| Own read receipts                      | ✔️  | ✔️        | ✔️          |
-| Other read receipts                    | ✔️  | ✔️        | ✔️          |
-| Typing notifications                   | 🛑 | ✔️        | ✔️          |
-| User metadata                          | ✔️  | ✔️        | ✔️          |
-| Group metadata                         | ✔️  | ✔️        | ✔️          |
-| Group Participants Added/Removed       | ❔ | ✔️        | ✔️          |
-| Backfilling history                    | ✔️  | ✔️        | ✔️ (Except Tapbacks)      |
+| Feature                          | mac | mac-nosip | bluebubbles |
+|----------------------------------|-----|-----------|-------------|
+| Plain text                       | ✔️  | ✔️        | ✔️          |
+| Media/files                      | ✔️  | ✔️        | ✔️          |
+| Replies                          | ✔️  | ✔️        | ✔️          |
+| Tapbacks                         | ✔️  | ✔️        | ✔️          |
+| Edits                            | ❌   | ❌         | ❌           |
+| Unsends                          | ❌   | ❌         | ❌           |
+| Own read receipts                | ✔️  | ✔️        | ✔️          |
+| Other read receipts              | ✔️  | ✔️        | ✔️          |
+| Typing notifications             | 🛑  | ✔️        | ✔️          |
+| User metadata                    | ✔️  | ✔️        | ✔️          |
+| Group metadata                   | ✔️  | ✔️        | ✔️          |
+| Group Participants Added/Removed | ✔️  | ✔️        | ✔️          |
+| Backfilling history              | ✔️  | ✔️        | ✔️‡         |
+
+‡The BlueBubbles connector doesn't support backfilling tapbacks yet
 
 ## Android SMS
 The android-sms connector is deprecated in favor of [mautrix-gmessages](https://github.com/mautrix/gmessages).
