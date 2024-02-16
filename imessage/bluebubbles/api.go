@@ -122,7 +122,13 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				bb.log.Error().Err(err).Msg("Error reading message from BlueBubbles websocket")
 			}
+			bb.log.Info().Msg("Attempting to reconnect to BlueBubbles websocket...")
+            err = bb.retryConnect()
+            if err != nil {
+                bb.log.Error().Err(err).Msg("Failed to reconnect to BlueBubbles websocket")
 			break
+			}
+			continue
 		}
 
 		if bytes.Equal(payload, []byte("2")) {
