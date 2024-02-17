@@ -147,7 +147,7 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 					bb.ws, err = bb.connectToWebSocket()
 					if err != nil {
 						if retryCount >= maxRetryCount {
-							bb.log.Error().Err(err).Msg("Maximum retry attempts reached, stopping reconnection attempts. Inner loop.")
+							bb.log.Error().Msg("Maximum retry attempts reached, stopping reconnection attempts. Inner loop.")
 							break
 						}
 						retryCount++
