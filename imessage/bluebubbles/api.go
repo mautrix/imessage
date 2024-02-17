@@ -111,6 +111,7 @@ func (bb *blueBubbles) Stop() {
 	bb.log.Trace().Msg("Stop")
 	bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
 }
+
 func (bb *blueBubbles) connectToWebSocket() (*websocket.Conn, error) {
 	ws, _, err := websocket.DefaultDialer.Dial(bb.wsUrl(), nil)
 	if err != nil {
@@ -145,8 +146,8 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 				for {
 					bb.ws, err = bb.connectToWebSocket()
 					if err != nil {
-						if retryCount > maxRetryCount {
-							bb.log.Error().Msg("Maximum retry attempts reached, stopping reconnection attempts")
+						if retryCount >= maxRetryCount {
+							bb.log.Error().Msg("Maximum retry attempts reached, stopping reconnection attempts. Inner loop.")
 							break
 						}
 						retryCount++
@@ -160,8 +161,14 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 						break
 					}
 				}
+				if retryCount >= maxRetryCount {
+					bb.log.Error().Msg("Maximum retry attempts reached, stopping reconnection attempts. Outer loop.")
+					break
+				}
+				bb.log.Error().Msg("Not reached part 1.")
 				continue
 			}
+			bb.log.Error().Msg("Not reached part 2.")
 			break
 		}
 
