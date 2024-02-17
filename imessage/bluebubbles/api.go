@@ -135,7 +135,8 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 	}
 	// Initialize retry count
 	retryCount := 0
-
+	// Maximum retry count
+	const maxRetryCount = 5
 	for {
 		_, payload, err := bb.ws.ReadMessage()
 		if err != nil {
@@ -144,12 +145,15 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 				for {
 					bb.ws, err = bb.connectToWebSocket()
 					if err != nil {
+						if retryCount > maxRetryCount {
+							bb.log.Error().Msg("Maximum retry attempts reached, stopping reconnection attempts")
+							break
+						}
 						retryCount++
-						bb.log.Error().Err(err).Msg("Error re-establishing WebSocket connection, retrying...")
 						// Exponential backoff: 2^retryCount * 100ms
 						sleepTime := time.Duration(math.Pow(2, float64(retryCount))) * 100 * time.Millisecond
 						time.Sleep(time.Duration(sleepTime))
-						bb.log.Error().Err(err).Msg("Sleeping for " + sleepTime.String() + " before retrying...")
+						bb.log.Error().Err(err).Msg("Error re-establishing WebSocket conection...Sleeping for " + sleepTime.String() + " before retrying...")
 					} else {
 						// Reset retry count after successful reconnection
 						retryCount = 0
