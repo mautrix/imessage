@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"mime/multipart"
 	"net/http"
@@ -110,17 +111,52 @@ func (bb *blueBubbles) Stop() {
 	bb.log.Trace().Msg("Stop")
 	bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
 }
+func (bb *blueBubbles) connectToWebSocket() (*websocket.Conn, error) {
+	ws, _, err := websocket.DefaultDialer.Dial(bb.wsUrl(), nil)
+	if err != nil {
+		return nil, err
+	}
+	err = ws.WriteMessage(websocket.TextMessage, []byte("40"))
+	if err != nil {
+		return nil, err
+	}
+	return ws, nil
+}
 
 func (bb *blueBubbles) PollForWebsocketMessages() {
 	defer func() {
 		bb.ws.Close()
 	}()
+	var err error
+	bb.ws, err = bb.connectToWebSocket()
+	if err != nil {
+		bb.log.Error().Err(err).Msg("Error establishing WebSocket connection")
+		return
+	}
+	// Initialize retry count
+	retryCount := 0
 
 	for {
 		_, payload, err := bb.ws.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				bb.log.Error().Err(err).Msg("Error reading message from BlueBubbles websocket")
+				for {
+					bb.ws, err = bb.connectToWebSocket()
+					if err != nil {
+						retryCount++
+						bb.log.Error().Err(err).Msg("Error re-establishing WebSocket connection, retrying...")
+						// Exponential backoff: 2^retryCount * 100ms
+						sleepTime := time.Duration(math.Pow(2, float64(retryCount))) * 100 * time.Millisecond
+						time.Sleep(time.Duration(sleepTime))
+						bb.log.Error().Err(err).Msg("Sleeping for " + sleepTime.String() + " before retrying...")
+					} else {
+						// Reset retry count after successful reconnection
+						retryCount = 0
+						break
+					}
+				}
+				continue
 			}
 			break
 		}
