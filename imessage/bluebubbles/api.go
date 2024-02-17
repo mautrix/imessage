@@ -137,7 +137,7 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 	// Initialize retry count
 	retryCount := 0
 	// Maximum retry count
-	const maxRetryCount = 5
+	const maxRetryCount = 2
 	for {
 		_, payload, err := bb.ws.ReadMessage()
 		if err != nil {
@@ -165,10 +165,8 @@ func (bb *blueBubbles) PollForWebsocketMessages() {
 					bb.log.Error().Msg("Maximum retry attempts reached, stopping reconnection attempts. Outer loop.")
 					break
 				}
-				bb.log.Error().Msg("Not reached part 1.")
 				continue
 			}
-			bb.log.Error().Msg("Not reached part 2.")
 			break
 		}
 
