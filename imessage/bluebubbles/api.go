@@ -116,7 +116,7 @@ func (bb *blueBubbles) connectAndListen() error {
 }
 
 func (bb *blueBubbles) connectToWebSocket() (*websocket.Conn, error) {
-	ws, _, err := websocket.DefaultDialer.Dial(bb.wsURL(), nil)
+	ws, _, err := websocket.DefaultDialer.Dial(bb.wsUrl(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1211,7 +1211,7 @@ func (bb *blueBubbles) CreateGroup(users []string) (*imessage.CreateGroupRespons
 
 // Helper functions
 
-func (bb *blueBubbles) wsURL() string {
+func (bb *blueBubbles) wsUrl() string {
 	u, err := url.Parse(strings.Replace(bb.bridge.GetConnectorConfig().BlueBubblesURL, "http", "ws", 1))
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
@@ -1232,7 +1232,7 @@ func (bb *blueBubbles) wsURL() string {
 	return url
 }
 
-func (bb *blueBubbles) APIURL(path string, queryParams map[string]string) string {
+func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
 	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
@@ -1257,7 +1257,7 @@ func (bb *blueBubbles) APIURL(path string, queryParams map[string]string) string
 }
 
 func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
-	url := bb.APIURL(path, queryParams)
+	url := bb.apiUrl(path, queryParams)
 
 	bb.bbRequestLock.Lock()
 	response, err := http.Get(url)
@@ -1291,7 +1291,7 @@ func (bb *blueBubbles) apiDelete(path string, payload interface{}, target interf
 }
 
 func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, target interface{}) (err error) {
-	url := bb.APIURL(path, map[string]string{})
+	url := bb.apiUrl(path, map[string]string{})
 
 	var payloadJSON []byte
 	if payload != nil {
@@ -1335,7 +1335,7 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 }
 
 func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interface{}, target interface{}) error {
-	url := bb.APIURL(path, map[string]string{})
+	url := bb.apiUrl(path, map[string]string{})
 
 	// Create a new buffer to store the file content
 	var body bytes.Buffer
@@ -1545,7 +1545,7 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 		return nil, err
 	}
 
-	url := bb.APIURL(fmt.Sprintf("/api/v1/attachment/%s/download", guid), map[string]string{})
+	url := bb.apiUrl(fmt.Sprintf("/api/v1/attachment/%s/download", guid), map[string]string{})
 
 	response, err := http.Get(url)
 	if err != nil {
