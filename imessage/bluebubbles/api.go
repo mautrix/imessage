@@ -1227,12 +1227,12 @@ func (bb *blueBubbles) wsUrl() string {
 	q.Add("transport", "websocket")
 	u.RawQuery = q.Encode()
 
-	url := u.String()
+	URL := u.String()
 
-	return url
+	return URL
 }
 
-func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
+func (bb *blueBubbles) apiURL(path string, queryParams map[string]string) string {
 	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
@@ -1251,16 +1251,16 @@ func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string
 
 	u.RawQuery = q.Encode()
 
-	url := u.String()
+	URL := u.String()
 
-	return url
+	return URL
 }
 
 func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
-	url := bb.apiUrl(path, queryParams)
+	URL := bb.apiURL(path, queryParams)
 
 	bb.bbRequestLock.Lock()
-	response, err := http.Get(url)
+	response, err := http.Get(URL)
 	bb.bbRequestLock.Unlock()
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making GET request")
@@ -1291,7 +1291,7 @@ func (bb *blueBubbles) apiDelete(path string, payload interface{}, target interf
 }
 
 func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, target interface{}) (err error) {
-	url := bb.apiUrl(path, map[string]string{})
+	URL := bb.apiURL(path, map[string]string{})
 
 	var payloadJSON []byte
 	if payload != nil {
@@ -1302,7 +1302,7 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 		}
 	}
 
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(payloadJSON))
+	req, err := http.NewRequest(method, URL, bytes.NewBuffer(payloadJSON))
 	if err != nil {
 		bb.log.Error().Err(err).Str("method", method).Msg("Error creating request")
 		return err
@@ -1335,7 +1335,7 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 }
 
 func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interface{}, target interface{}) error {
-	url := bb.apiUrl(path, map[string]string{})
+	URL := bb.apiURL(path, map[string]string{})
 
 	// Create a new buffer to store the file content
 	var body bytes.Buffer
@@ -1368,7 +1368,7 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 
 	// Make the HTTP POST request
 	bb.bbRequestLock.Lock()
-	response, err := http.Post(url, writer.FormDataContentType(), &body)
+	response, err := http.Post(URL, writer.FormDataContentType(), &body)
 	bb.bbRequestLock.Unlock()
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making POST request")
@@ -1397,13 +1397,13 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*i
 	var imageData []byte
 	var err error
 
-	switch id := bbContact.ID.(type) {
+	switch ID := bbContact.ID.(type) {
 	case string:
 		// ID is already a string, use it as is
-		convertedID = id
+		convertedID = ID
 	case int:
 		// ID is an integer, convert it to a string
-		convertedID = strconv.Itoa(id)
+		convertedID = strconv.Itoa(ID)
 	default:
 		convertedID = ""
 	}
@@ -1545,9 +1545,9 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 		return nil, err
 	}
 
-	url := bb.apiUrl(fmt.Sprintf("/api/v1/attachment/%s/download", guid), map[string]string{})
+	URL := bb.apiURL(fmt.Sprintf("/api/v1/attachment/%s/download", guid), map[string]string{})
 
-	response, err := http.Get(url)
+	response, err := http.Get(URL)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making GET request")
 		return nil, err
@@ -1568,7 +1568,7 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 	}
 
 	return &imessage.Attachment{
-		GUID:       guid,
+		GUID:       guid, // had trouble renaming this one (guid)
 		PathOnDisk: tempFile.Name(),
 		FileName:   attachmentResponse.Data.TransferName,
 		MimeType:   attachmentResponse.Data.MimeType,
