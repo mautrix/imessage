@@ -1006,7 +1006,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	return &imessage.SendResponse{
 		GUID:    res.Data.GUID,
 		Service: res.Data.Handle.Service,
-		Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
+		Time:    time.UnixMilli(res.Data.DateCreated),
 	}, nil
 }
 
@@ -1070,7 +1070,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 	var imessageSendResponse = imessage.SendResponse{
 		GUID:    response.Data.GUID,
 		Service: response.Data.Handle.Service,
-		Time:    time.Unix(0, response.Data.DateCreated*int64(time.Millisecond)),
+		Time:    time.UnixMilli(response.Data.DateCreated),
 	}
 
 	return &imessageSendResponse, nil
@@ -1118,7 +1118,7 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 	return &imessage.SendResponse{
 		GUID:    res.Data.GUID,
 		Service: res.Data.Handle.Service,
-		Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
+		Time:    time.UnixMilli(res.Data.DateCreated),
 	}, nil
 }
 
@@ -1432,7 +1432,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 
 	// Convert bluebubbles.Message to imessage.Message
 	message.GUID = bbMessage.GUID
-	message.Time = time.Unix(0, bbMessage.DateCreated*int64(time.Millisecond))
+	message.Time = time.UnixMilli(bbMessage.DateCreated)
 	message.Subject = bbMessage.Subject
 	message.Text = bbMessage.Text
 	message.ChatGUID = bbMessage.Chats[0].GUID
@@ -1459,7 +1459,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.IsFromMe = bbMessage.IsFromMe
 	message.IsRead = bbMessage.DateRead != 0
 	if message.IsRead {
-		message.ReadAt = time.Unix(0, bbMessage.DateRead*int64(time.Millisecond))
+		message.ReadAt = time.UnixMilli(bbMessage.DateRead)
 	}
 	message.IsDelivered = bbMessage.DateDelivered != 0
 	message.IsSent = true   // assume yes because we made it to this part of the code
