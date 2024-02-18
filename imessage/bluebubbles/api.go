@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"mime/multipart"
 	"net/http"
@@ -80,21 +81,12 @@ func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
 func init() {
 	imessage.Implementations["bluebubbles"] = NewBlueBubblesConnector
 }
-
 func (bb *blueBubbles) Start(readyCallback func()) error {
 	bb.log.Trace().Msg("Start")
 
-	ws, _, err := websocket.DefaultDialer.Dial(bb.wsUrl(), nil)
-	if err != nil {
+	if err := bb.connectAndListen(); err != nil {
 		return err
 	}
-	err = ws.WriteMessage(websocket.TextMessage, []byte("40"))
-	if err != nil {
-		return err
-	}
-	bb.ws = ws
-
-	go bb.PollForWebsocketMessages()
 
 	// Preload some caches
 	bb.usingPrivateApi = bb.isPrivateApi()
@@ -108,109 +100,174 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 
 func (bb *blueBubbles) Stop() {
 	bb.log.Trace().Msg("Stop")
-	bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
+	bb.stopListening()
 }
 
-func (bb *blueBubbles) PollForWebsocketMessages() {
+func (bb *blueBubbles) connectAndListen() error {
+	ws, err := bb.connectToWebSocket()
+	if err != nil {
+		return err
+	}
+
+	bb.ws = ws
+	go bb.listenWebSocket()
+
+	return nil
+}
+
+func (bb *blueBubbles) connectToWebSocket() (*websocket.Conn, error) {
+	ws, _, err := websocket.DefaultDialer.Dial(bb.wsUrl(), nil)
+	if err != nil {
+		return nil, err
+	}
+	err = ws.WriteMessage(websocket.TextMessage, []byte("40"))
+	if err != nil {
+		ws.Close() // Close the connection if write fails
+		return nil, err
+	}
+	return ws, nil
+}
+
+func (bb *blueBubbles) listenWebSocket() {
 	defer func() {
-		bb.ws.Close()
+		if bb.ws != nil {
+			bb.ws.Close()
+		}
 	}()
-
 	for {
-		_, payload, err := bb.ws.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				bb.log.Error().Err(err).Msg("Error reading message from BlueBubbles websocket")
-			}
-			break
-		}
-
-		if bytes.Equal(payload, []byte("2")) {
-			bb.log.Debug().Msg("Received ping from BlueBubbles websocket")
-			bb.ws.WriteMessage(websocket.TextMessage, []byte("3"))
-			continue
-		}
-
-		if bytes.HasPrefix(payload, []byte("42")) {
-			payload = bytes.TrimPrefix(payload, []byte("42"))
-
-			var incomingWebsocketMessage []json.RawMessage
-			if err := json.Unmarshal(payload, &incomingWebsocketMessage); err != nil {
-				bb.log.Error().Err(err).Msg("Error parsing message from BlueBubbles websocket")
-				continue
-			}
-
-			var websocketMessageType string
-			if err := json.Unmarshal(incomingWebsocketMessage[0], &websocketMessageType); err != nil {
-				bb.log.Error().Err(err).Msg("Error parsing message type from BlueBubbles websocket")
-				continue
-			}
-
-			switch websocketMessageType {
-			case NewMessage:
-				err = bb.handleNewMessage(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling new message")
-				}
-			case MessageSendError:
-				err = bb.handleMessageSendError(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling message send error")
-				}
-			case MessageUpdated:
-				err = bb.handleMessageUpdated(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling message updated")
-				}
-			case ParticipantRemoved:
-				err = bb.handleParticipantRemoved(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling participant removed")
-				}
-			case ParticipantAdded:
-				err = bb.handleParticipantAdded(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling participant added")
-				}
-			case ParticipantLeft:
-				err = bb.handleParticipantLeft(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling participant left")
-				}
-			case GroupIconChanged:
-				err = bb.handleGroupIconChanged(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling group icon changed")
-				}
-			case GroupIconRemoved:
-				err = bb.handleGroupIconRemoved(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling group icon removed")
-				}
-			case ChatReadStatusChanged:
-				err = bb.handleChatReadStatusChanged(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling chat read status changed")
-				}
-			case TypingIndicator:
-				err = bb.handleTypingIndicator(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling typing indicator")
-				}
-			case GroupNameChanged:
-				err = bb.handleGroupNameChanged(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling group name changed")
-				}
-			case IMessageAliasRemoved:
-				err = bb.handleIMessageAliasRemoved(incomingWebsocketMessage[1])
-				if err != nil {
-					bb.log.Error().Err(err).Msg("Error handling iMessage alias removed")
-				}
-			default:
-				bb.log.Warn().Any("WebsocketMessageType", incomingWebsocketMessage[0]).Msg("Unknown websocket message type")
+		if err := bb.pollMessages(); err != nil {
+			bb.log.Error().Err(err).Msg("Error polling messages from WebSocket")
+			// Reconnect logic here
+			if err := bb.reconnect(); err != nil {
+				bb.log.Error().Err(err).Msg("Failed to reconnect to WebSocket")
+				return
 			}
 		}
+	}
+}
+
+func (bb *blueBubbles) pollMessages() error {
+	_, payload, err := bb.ws.ReadMessage()
+	if err != nil {
+		return err
+	}
+
+	if bytes.Equal(payload, []byte("2")) {
+		bb.log.Debug().Msg("Received ping from BlueBubbles websocket")
+		bb.ws.WriteMessage(websocket.TextMessage, []byte("3"))
+		return nil
+	}
+
+	if bytes.HasPrefix(payload, []byte("42")) {
+		payload = bytes.TrimPrefix(payload, []byte("42"))
+
+		var incomingWebsocketMessage []json.RawMessage
+		if err := json.Unmarshal(payload, &incomingWebsocketMessage); err != nil {
+			bb.log.Error().Err(err).Msg("Error parsing message from BlueBubbles websocket")
+			return err
+		}
+
+		var websocketMessageType string
+		if err := json.Unmarshal(incomingWebsocketMessage[0], &websocketMessageType); err != nil {
+			bb.log.Error().Err(err).Msg("Error parsing message type from BlueBubbles websocket")
+			return err
+		}
+
+		switch websocketMessageType {
+		case NewMessage:
+			err = bb.handleNewMessage(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling new message")
+			}
+		case MessageSendError:
+			err = bb.handleMessageSendError(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling message send error")
+			}
+		case MessageUpdated:
+			err = bb.handleMessageUpdated(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling message updated")
+			}
+		case ParticipantRemoved:
+			err = bb.handleParticipantRemoved(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling participant removed")
+			}
+		case ParticipantAdded:
+			err = bb.handleParticipantAdded(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling participant added")
+			}
+		case ParticipantLeft:
+			err = bb.handleParticipantLeft(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling participant left")
+			}
+		case GroupIconChanged:
+			err = bb.handleGroupIconChanged(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling group icon changed")
+			}
+		case GroupIconRemoved:
+			err = bb.handleGroupIconRemoved(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling group icon removed")
+			}
+		case ChatReadStatusChanged:
+			err = bb.handleChatReadStatusChanged(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling chat read status changed")
+			}
+		case TypingIndicator:
+			err = bb.handleTypingIndicator(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling typing indicator")
+			}
+		case GroupNameChanged:
+			err = bb.handleGroupNameChanged(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling group name changed")
+			}
+		case IMessageAliasRemoved:
+			err = bb.handleIMessageAliasRemoved(incomingWebsocketMessage[1])
+			if err != nil {
+				bb.log.Error().Err(err).Msg("Error handling iMessage alias removed")
+			}
+		default:
+			bb.log.Warn().Any("WebsocketMessageType", incomingWebsocketMessage[0]).Msg("Unknown websocket message type")
+		}
+	}
+	return nil
+}
+
+func (bb *blueBubbles) reconnect() error {
+	const maxRetryCount = 12
+	retryCount := 0
+	for {
+		bb.log.Info().Msg("Attempting to reconnect to BlueBubbles WebSocket...")
+		if retryCount >= maxRetryCount {
+			err := errors.New("maximum retry attempts reached")
+			bb.log.Error().Err(err).Msg("Maximum retry attempts reached, stopping reconnection attempts to BlueBubbles.")
+			return err
+		}
+		retryCount++
+		// Exponential backoff: 2^retryCount * 100ms
+		sleepTime := time.Duration(math.Pow(2, float64(retryCount))) * 100 * time.Millisecond
+		bb.log.Info().Dur("sleepTime", sleepTime).Msg("Sleeping specified duration before retrying...")
+		time.Sleep(sleepTime)
+		if err := bb.connectAndListen(); err != nil {
+			bb.log.Error().Err(err).Msg("Error reconnecting to WebSocket")
+		} else {
+			bb.log.Info().Msg("Successfully reconnected to BlueBubbles websocket.")
+			return nil
+		}
+	}
+}
+
+func (bb *blueBubbles) stopListening() {
+	if bb.ws != nil {
+		bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
 	}
 }
 
