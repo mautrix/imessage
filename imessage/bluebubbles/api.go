@@ -60,7 +60,7 @@ type blueBubbles struct {
 
 	bbRequestLock sync.Mutex
 
-	usingPrivateApi bool
+	usingPrivateAPI bool
 }
 
 func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -89,7 +89,7 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 	}
 
 	// Preload some caches
-	bb.usingPrivateApi = bb.isPrivateApi()
+	bb.usingPrivateAPI = bb.isPrivateApi()
 	bb.RefreshContactList()
 
 	// Notify main this API is fully loaded
@@ -1034,7 +1034,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 	bb.log.Info().Int("attachmentSize", len(attachment)).Msg("Read attachment from disk")
 
 	var method string
-	if bb.usingPrivateApi {
+	if bb.usingPrivateAPI {
 		method = "private-api"
 	} else {
 		// we have to use apple-script and send a second message
@@ -1052,7 +1052,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 		"partIndex":           replyToPart,
 	}
 
-	if bb.usingPrivateApi {
+	if bb.usingPrivateAPI {
 		formData["subject"] = text
 	}
 
@@ -1063,7 +1063,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 		return nil, err
 	}
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
 	}
 
@@ -1085,7 +1085,7 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 
 	var tapbackName = tapback.Name()
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("tapbackName", tapbackName).Bool("remove", remove).Msg("The private-api isn't enabled in BlueBubbles, can't send tapback")
 		return nil, errors.ErrUnsupported
 	}
@@ -1125,7 +1125,7 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.log.Warn().Str("chatID", chatID).Msg("The private-api isn't enabled in BlueBubbles, can't send read receipt")
 		return errors.ErrUnsupported
 	}
@@ -1151,7 +1151,7 @@ func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
 	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("SendTypingNotification")
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.log.Warn().Str("chatID", chatID).Bool("typing", typing).Msg("The private-api isn't enabled in BlueBubbles, can't send typing notification")
 		return errors.ErrUnsupported
 	}
