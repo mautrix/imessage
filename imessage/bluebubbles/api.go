@@ -503,7 +503,7 @@ func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, ba
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		After: &after,
 		Sort:  MessageQuerySortDesc,
@@ -543,7 +543,7 @@ func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.T
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		After:  &after,
 		Before: &before,
@@ -583,7 +583,7 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		Before: &_before,
 		Sort:   MessageQuerySortDesc,
@@ -621,7 +621,7 @@ func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		Sort: MessageQuerySortDesc,
 	}
@@ -927,11 +927,11 @@ func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, erro
 
 	properties := chatResponse.Data.Properties[0]
 
-	if properties.GroupPhotoGuid == nil {
+	if properties.GroupPhotoGUID == nil {
 		return nil, nil
 	}
 
-	attachment, err := bb.downloadAttachment(*properties.GroupPhotoGuid)
+	attachment, err := bb.downloadAttachment(*properties.GroupPhotoGUID)
 	if err != nil {
 		bb.log.Error().Err(err).Str("chatID", chatID).Msg("Failed to download group avatar")
 		return nil, err
@@ -984,8 +984,8 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 		ChatGUID:            chatID,
 		Method:              method,
 		Message:             text,
-		TempGuid:            fmt.Sprintf("temp-%s", RandString(8)),
-		SelectedMessageGuid: replyTo,
+		TempGUID:            fmt.Sprintf("temp-%s", RandString(8)),
+		SelectedMessageGUID: replyTo,
 		PartIndex:           replyToPart,
 	}
 
@@ -1096,7 +1096,7 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 
 	request := SendReactionRequest{
 		ChatGUID:            chatID,
-		SelectedMessageGuid: targetGUID,
+		SelectedMessageGUID: targetGUID,
 		PartIndex:           targetPart,
 		Reaction:            tapbackName,
 	}
@@ -1466,7 +1466,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.IsEmote = false // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
 
-	message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
+	message.ReplyToGUID = bbMessage.ThreadOriginatorGUID
 
 	// TODO: ReplyToPart from bluebubbles looks like "0:0:17" in one test I did
 	// 		I don't know what the value means, or how to parse it
@@ -1478,10 +1478,10 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// }
 
 	// Tapbacks
-	if bbMessage.AssociatedMessageGuid != "" &&
+	if bbMessage.AssociatedMessageGUID != "" &&
 		bbMessage.AssociatedMessageType != "" {
 		message.Tapback = &imessage.Tapback{
-			TargetGUID: bbMessage.AssociatedMessageGuid,
+			TargetGUID: bbMessage.AssociatedMessageGUID,
 			Type:       imessage.TapbackFromName(bbMessage.AssociatedMessageType),
 		}
 		message.Tapback.Parse()
@@ -1512,15 +1512,15 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// TODO Richlinks
 	// message.RichLink =
 
-	message.ThreadID = bbMessage.ThreadOriginatorGuid
+	message.ThreadID = bbMessage.ThreadOriginatorGUID
 
 	return &message, nil
 }
 
 func (bb *blueBubbles) convertBBChatToiMessageChat(bbChat Chat) (*imessage.ChatInfo, error) {
-	members := make([]string, len(bbChat.Partipants))
+	members := make([]string, len(bbChat.Participants))
 
-	for i, participant := range bbChat.Partipants {
+	for i, participant := range bbChat.Participants {
 		members[i] = participant.Address
 	}
 

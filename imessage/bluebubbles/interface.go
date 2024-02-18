@@ -32,7 +32,7 @@ const (
 	MessageQueryWithChatParticipants ChatQueryWith = "chat.participants"
 	MessageQueryWithAttachment       ChatQueryWith = "attachment"
 	MessageQueryWithHandle           ChatQueryWith = "handle"
-	MessageQueryWithSms              ChatQueryWith = "sms"
+	MessageQueryWithSMS              ChatQueryWith = "sms"
 )
 
 type MessageQueryResponse struct {
@@ -82,13 +82,13 @@ type Chat struct {
 	ChatIdentifier string           `json:"chatIdentifier"`
 	GroupID        string           `json:"groupId,omitempty"`
 	DisplayName    string           `json:"displayName"`
-	Partipants     []Participant    `json:"participants"`
+	Participants   []Participant    `json:"participants"`
 	LastMessage    *Message         `json:"lastMessage,omitempty"`
 	Properties     []ChatProperties `json:"properties,omitempty"`
 }
 
 type ChatProperties struct {
-	GroupPhotoGuid *string `json:"groupPhotoGuid,omitempty"`
+	GroupPhotoGUID *string `json:"groupPhotoGuid,omitempty"`
 }
 
 type Participant struct {
@@ -136,11 +136,11 @@ type TypingNotification struct {
 }
 
 type Message struct {
-	AssociatedMessageGuid     string       `json:"associatedMessageGuid,omitempty"`
+	AssociatedMessageGUID     string       `json:"associatedMessageGuid,omitempty"`
 	AssociatedMessageType     string       `json:"associatedMessageType,omitempty"`
 	Attachments               []Attachment `json:"attachments,omitempty"`
 	AttributedBody            []any        `json:"attributedBody,omitempty"`
-	BalloonBundleId           any          `json:"balloonBundleId,omitempty"`
+	BalloonBundleID           any          `json:"balloonBundleId,omitempty"`
 	Chats                     []Chat       `json:"chats,omitempty"`
 	DateCreated               int64        `json:"dateCreated,omitempty"`
 	DateDelivered             int64        `json:"dateDelivered,omitempty"`
@@ -148,13 +148,13 @@ type Message struct {
 	DateRead                  int64        `json:"dateRead,omitempty"`
 	DateRetracted             int64        `json:"dateRetracted,omitempty"`
 	Error                     int          `json:"error,omitempty"`
-	ExpressiveSendStyleId     any          `json:"expressiveSendStyleId,omitempty"`
+	ExpressiveSendStyleID     any          `json:"expressiveSendStyleId,omitempty"`
 	GroupActionType           int          `json:"groupActionType,omitempty"`
 	GroupTitle                string       `json:"groupTitle,omitempty"`
 	GUID                      string       `json:"guid,omitempty"`
 	Handle                    Handle       `json:"handle,omitempty"`
-	HandleId                  int          `json:"handleId,omitempty"`
-	HasDdResults              bool         `json:"hasDdResults,omitempty"`
+	HandleID                  int          `json:"handleId,omitempty"`
+	HasDDResults              bool         `json:"hasDdResults,omitempty"`
 	HasPayloadData            bool         `json:"hasPayloadData,omitempty"`
 	IsArchived                bool         `json:"isArchived,omitempty"`
 	IsAudioMessage            bool         `json:"isAudioMessage,omitempty"`
@@ -173,14 +173,14 @@ type Message struct {
 	OtherHandle               int          `json:"otherHandle,omitempty"`
 	PartCount                 int          `json:"partCount,omitempty"`
 	PayloadData               any          `json:"payloadData,omitempty"`
-	ReplyToGuid               string       `json:"replyToGuid,omitempty"`
+	ReplyToGUID               string       `json:"replyToGuid,omitempty"`
 	ShareDirection            int          `json:"shareDirection,omitempty"`
 	ShareStatus               int          `json:"shareStatus,omitempty"`
 	Subject                   string       `json:"subject,omitempty"`
 	Text                      string       `json:"text,omitempty"`
-	ThreadOriginatorGuid      string       `json:"threadOriginatorGuid,omitempty"`
+	ThreadOriginatorGUID      string       `json:"threadOriginatorGuid,omitempty"`
 	ThreadOriginatorPart      string       `json:"threadOriginatorPart,omitempty"`
-	TimeExpressiveSendStyleId any          `json:"timeExpressiveSendStyleId,omitempty"`
+	TimeExpressiveSendStyleID any          `json:"timeExpressiveSendStyleId,omitempty"`
 	WasDeliveredQuietly       bool         `json:"wasDeliveredQuietly,omitempty"`
 }
 
@@ -227,17 +227,17 @@ type Handle struct {
 	Country           string `json:"country,omitempty"`
 	OriginalROWID     int    `json:"originalROWID,omitempty"`
 	Service           string `json:"service,omitempty"`
-	UncanonicalizedId any    `json:"uncanonicalizedId,omitempty"`
+	UncanonicalizedID any    `json:"uncanonicalizedId,omitempty"`
 }
 
 type SendTextRequest struct {
 	ChatGUID            string `json:"chatGuid"`
-	TempGuid            string `json:"tempGuid"`
+	TempGUID            string `json:"tempGuid"`
 	Method              string `json:"method"`
 	Message             string `json:"message"`
-	EffectId            string `json:"effectId,omitempty"`
+	EffectID            string `json:"effectId,omitempty"`
 	Subject             string `json:"subject,omitempty"`
-	SelectedMessageGuid string `json:"selectedMessageGuid,omitempty"`
+	SelectedMessageGUID string `json:"selectedMessageGuid,omitempty"`
 	PartIndex           int    `json:"partIndex,omitempty"`
 }
 
@@ -251,7 +251,7 @@ type SendTextResponse struct {
 type SendReactionRequest struct {
 	ChatGUID            string `json:"chatGuid"`
 	Reaction            string `json:"reaction"`
-	SelectedMessageGuid string `json:"selectedMessageGuid"`
+	SelectedMessageGUID string `json:"selectedMessageGuid"`
 	PartIndex           int    `json:"partIndex"`
 }
 
