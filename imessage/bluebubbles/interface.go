@@ -117,17 +117,17 @@ type Contact struct {
 	SourceType   string        `json:"sourceType,omitempty"`
 	// DEVNOTE: This field is almost always a string,
 	// but at least one user was getting an error because this was a number for them
-	ID interface{} `json:"id,omitempty"`
+	ID any `json:"id,omitempty"`
 }
 
 type PhoneNumber struct {
-	Address string      `json:"address,omitempty"`
-	ID      interface{} `json:"id,omitempty"`
+	Address string `json:"address,omitempty"`
+	ID      any    `json:"id,omitempty"`
 }
 
 type Email struct {
-	Address string      `json:"address,omitempty"`
-	ID      interface{} `json:"id,omitempty"`
+	Address string `json:"address,omitempty"`
+	ID      any    `json:"id,omitempty"`
 }
 
 type TypingNotification struct {
@@ -136,70 +136,70 @@ type TypingNotification struct {
 }
 
 type Message struct {
-	AssociatedMessageGuid     string        `json:"associatedMessageGuid,omitempty"`
-	AssociatedMessageType     string        `json:"associatedMessageType,omitempty"`
-	Attachments               []Attachment  `json:"attachments,omitempty"`
-	AttributedBody            []interface{} `json:"attributedBody,omitempty"`
-	BalloonBundleId           interface{}   `json:"balloonBundleId,omitempty"`
-	Chats                     []Chat        `json:"chats,omitempty"`
-	DateCreated               int64         `json:"dateCreated,omitempty"`
-	DateDelivered             int64         `json:"dateDelivered,omitempty"`
-	DateEdited                int64         `json:"dateEdited,omitempty"`
-	DateRead                  int64         `json:"dateRead,omitempty"`
-	DateRetracted             int64         `json:"dateRetracted,omitempty"`
-	Error                     int           `json:"error,omitempty"`
-	ExpressiveSendStyleId     interface{}   `json:"expressiveSendStyleId,omitempty"`
-	GroupActionType           int           `json:"groupActionType,omitempty"`
-	GroupTitle                string        `json:"groupTitle,omitempty"`
-	GUID                      string        `json:"guid,omitempty"`
-	Handle                    Handle        `json:"handle,omitempty"`
-	HandleId                  int           `json:"handleId,omitempty"`
-	HasDdResults              bool          `json:"hasDdResults,omitempty"`
-	HasPayloadData            bool          `json:"hasPayloadData,omitempty"`
-	IsArchived                bool          `json:"isArchived,omitempty"`
-	IsAudioMessage            bool          `json:"isAudioMessage,omitempty"`
-	IsAutoReply               bool          `json:"isAutoReply,omitempty"`
-	IsCorrupt                 bool          `json:"isCorrupt,omitempty"`
-	IsDelayed                 bool          `json:"isDelayed,omitempty"`
-	IsExpired                 bool          `json:"isExpired,omitempty"`
-	IsForward                 bool          `json:"isForward,omitempty"`
-	IsFromMe                  bool          `json:"isFromMe,omitempty"`
-	IsServiceMessage          bool          `json:"isServiceMessage,omitempty"`
-	IsSpam                    bool          `json:"isSpam,omitempty"`
-	IsSystemMessage           bool          `json:"isSystemMessage,omitempty"`
-	ItemType                  int           `json:"itemType,omitempty"`
-	MessageSummaryInfo        interface{}   `json:"messageSummaryInfo,omitempty"`
-	OriginalROWID             int           `json:"originalROWID,omitempty"`
-	OtherHandle               int           `json:"otherHandle,omitempty"`
-	PartCount                 int           `json:"partCount,omitempty"`
-	PayloadData               interface{}   `json:"payloadData,omitempty"`
-	ReplyToGuid               string        `json:"replyToGuid,omitempty"`
-	ShareDirection            int           `json:"shareDirection,omitempty"`
-	ShareStatus               int           `json:"shareStatus,omitempty"`
-	Subject                   string        `json:"subject,omitempty"`
-	Text                      string        `json:"text,omitempty"`
-	ThreadOriginatorGuid      string        `json:"threadOriginatorGuid,omitempty"`
-	ThreadOriginatorPart      string        `json:"threadOriginatorPart,omitempty"`
-	TimeExpressiveSendStyleId interface{}   `json:"timeExpressiveSendStyleId,omitempty"`
-	WasDeliveredQuietly       bool          `json:"wasDeliveredQuietly,omitempty"`
+	AssociatedMessageGuid     string       `json:"associatedMessageGuid,omitempty"`
+	AssociatedMessageType     string       `json:"associatedMessageType,omitempty"`
+	Attachments               []Attachment `json:"attachments,omitempty"`
+	AttributedBody            []any        `json:"attributedBody,omitempty"`
+	BalloonBundleId           any          `json:"balloonBundleId,omitempty"`
+	Chats                     []Chat       `json:"chats,omitempty"`
+	DateCreated               int64        `json:"dateCreated,omitempty"`
+	DateDelivered             int64        `json:"dateDelivered,omitempty"`
+	DateEdited                int64        `json:"dateEdited,omitempty"`
+	DateRead                  int64        `json:"dateRead,omitempty"`
+	DateRetracted             int64        `json:"dateRetracted,omitempty"`
+	Error                     int          `json:"error,omitempty"`
+	ExpressiveSendStyleId     any          `json:"expressiveSendStyleId,omitempty"`
+	GroupActionType           int          `json:"groupActionType,omitempty"`
+	GroupTitle                string       `json:"groupTitle,omitempty"`
+	GUID                      string       `json:"guid,omitempty"`
+	Handle                    Handle       `json:"handle,omitempty"`
+	HandleId                  int          `json:"handleId,omitempty"`
+	HasDdResults              bool         `json:"hasDdResults,omitempty"`
+	HasPayloadData            bool         `json:"hasPayloadData,omitempty"`
+	IsArchived                bool         `json:"isArchived,omitempty"`
+	IsAudioMessage            bool         `json:"isAudioMessage,omitempty"`
+	IsAutoReply               bool         `json:"isAutoReply,omitempty"`
+	IsCorrupt                 bool         `json:"isCorrupt,omitempty"`
+	IsDelayed                 bool         `json:"isDelayed,omitempty"`
+	IsExpired                 bool         `json:"isExpired,omitempty"`
+	IsForward                 bool         `json:"isForward,omitempty"`
+	IsFromMe                  bool         `json:"isFromMe,omitempty"`
+	IsServiceMessage          bool         `json:"isServiceMessage,omitempty"`
+	IsSpam                    bool         `json:"isSpam,omitempty"`
+	IsSystemMessage           bool         `json:"isSystemMessage,omitempty"`
+	ItemType                  int          `json:"itemType,omitempty"`
+	MessageSummaryInfo        any          `json:"messageSummaryInfo,omitempty"`
+	OriginalROWID             int          `json:"originalROWID,omitempty"`
+	OtherHandle               int          `json:"otherHandle,omitempty"`
+	PartCount                 int          `json:"partCount,omitempty"`
+	PayloadData               any          `json:"payloadData,omitempty"`
+	ReplyToGuid               string       `json:"replyToGuid,omitempty"`
+	ShareDirection            int          `json:"shareDirection,omitempty"`
+	ShareStatus               int          `json:"shareStatus,omitempty"`
+	Subject                   string       `json:"subject,omitempty"`
+	Text                      string       `json:"text,omitempty"`
+	ThreadOriginatorGuid      string       `json:"threadOriginatorGuid,omitempty"`
+	ThreadOriginatorPart      string       `json:"threadOriginatorPart,omitempty"`
+	TimeExpressiveSendStyleId any          `json:"timeExpressiveSendStyleId,omitempty"`
+	WasDeliveredQuietly       bool         `json:"wasDeliveredQuietly,omitempty"`
 }
 
 type Attachment struct {
-	OriginalRowID  int         `json:"originalROWID,omitempty"`
-	GUID           string      `json:"guid,omitempty"`
-	UTI            string      `json:"uti,omitempty"`
-	MimeType       string      `json:"mimeType,omitempty"`
-	TransferName   string      `json:"transferName,omitempty"`
-	TotalBytes     int64       `json:"totalBytes,omitempty"`
-	TransferState  int         `json:"transferState,omitempty"`
-	IsOutgoing     bool        `json:"isOutgoing,omitempty"`
-	HideAttachment bool        `json:"hideAttachment,omitempty"`
-	IsSticker      bool        `json:"isSticker,omitempty"`
-	OriginalGUID   string      `json:"originalGuid,omitempty"`
-	HasLivePhoto   bool        `json:"hasLivePhoto,omitempty"`
-	Height         int64       `json:"height,omitempty"`
-	Width          int64       `json:"width,omitempty"`
-	Metadata       interface{} `json:"metadata,omitempty"`
+	OriginalRowID  int    `json:"originalROWID,omitempty"`
+	GUID           string `json:"guid,omitempty"`
+	UTI            string `json:"uti,omitempty"`
+	MimeType       string `json:"mimeType,omitempty"`
+	TransferName   string `json:"transferName,omitempty"`
+	TotalBytes     int64  `json:"totalBytes,omitempty"`
+	TransferState  int    `json:"transferState,omitempty"`
+	IsOutgoing     bool   `json:"isOutgoing,omitempty"`
+	HideAttachment bool   `json:"hideAttachment,omitempty"`
+	IsSticker      bool   `json:"isSticker,omitempty"`
+	OriginalGUID   string `json:"originalGuid,omitempty"`
+	HasLivePhoto   bool   `json:"hasLivePhoto,omitempty"`
+	Height         int64  `json:"height,omitempty"`
+	Width          int64  `json:"width,omitempty"`
+	Metadata       any    `json:"metadata,omitempty"`
 }
 
 type AttachmentResponse struct {
@@ -209,25 +209,25 @@ type AttachmentResponse struct {
 }
 
 type GetMessagesResponse struct {
-	Status  int64       `json:"status"`
-	Message string      `json:"message"`
-	Data    []Message   `json:"data"`
-	Error   interface{} `json:"error,omitempty"`
+	Status  int64     `json:"status"`
+	Message string    `json:"message"`
+	Data    []Message `json:"data"`
+	Error   any       `json:"error,omitempty"`
 }
 
 type MessageResponse struct {
-	Status  int64       `json:"status"`
-	Message string      `json:"message"`
-	Data    Message     `json:"data"`
-	Error   interface{} `json:"error,omitempty"`
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data"`
+	Error   any     `json:"error,omitempty"`
 }
 
 type Handle struct {
-	Address           string      `json:"address,omitempty"`
-	Country           string      `json:"country,omitempty"`
-	OriginalROWID     int         `json:"originalROWID,omitempty"`
-	Service           string      `json:"service,omitempty"`
-	UncanonicalizedId interface{} `json:"uncanonicalizedId,omitempty"`
+	Address           string `json:"address,omitempty"`
+	Country           string `json:"country,omitempty"`
+	OriginalROWID     int    `json:"originalROWID,omitempty"`
+	Service           string `json:"service,omitempty"`
+	UncanonicalizedId any    `json:"uncanonicalizedId,omitempty"`
 }
 
 type SendTextRequest struct {
@@ -242,10 +242,10 @@ type SendTextRequest struct {
 }
 
 type SendTextResponse struct {
-	Status  int64       `json:"status"`
-	Message string      `json:"message"`
-	Data    Message     `json:"data,omitempty"`
-	Error   interface{} `json:"error,omitempty"`
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data,omitempty"`
+	Error   any     `json:"error,omitempty"`
 }
 
 type SendReactionRequest struct {
@@ -256,22 +256,22 @@ type SendReactionRequest struct {
 }
 
 type SendReactionResponse struct {
-	Status  int64       `json:"status"`
-	Message string      `json:"message"`
-	Data    Message     `json:"data,omitempty"`
-	Error   interface{} `json:"error"`
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data,omitempty"`
+	Error   any     `json:"error"`
 }
 
 type ReadReceiptResponse struct {
-	Status  int64       `json:"status"`
-	Message string      `json:"message"`
-	Error   interface{} `json:"error"`
+	Status  int64  `json:"status"`
+	Message string `json:"message"`
+	Error   any    `json:"error"`
 }
 
 type TypingResponse struct {
-	Status  int64       `json:"status"`
-	Message string      `json:"message"`
-	Error   interface{} `json:"error"`
+	Status  int64  `json:"status"`
+	Message string `json:"message"`
+	Error   any    `json:"error"`
 }
 
 type MessageReadResponse struct {
