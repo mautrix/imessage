@@ -1393,19 +1393,19 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 }
 
 func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*imessage.Contact, error) {
-	var convertedId string
+	var convertedID string
 	var imageData []byte
 	var err error
 
 	switch id := bbContact.ID.(type) {
 	case string:
 		// ID is already a string, use it as is
-		convertedId = id
+		convertedID = id
 	case int:
 		// ID is an integer, convert it to a string
-		convertedId = strconv.Itoa(id)
+		convertedID = strconv.Itoa(id)
 	default:
-		convertedId = ""
+		convertedID = ""
 	}
 
 	if *bbContact.Avatar != "" {
@@ -1421,7 +1421,7 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*i
 		Nickname:  bbContact.DisplayName,
 		Phones:    convertPhones(bbContact.PhoneNumbers),
 		Emails:    convertEmails(bbContact.Emails),
-		UserGUID:  convertedId,
+		UserGUID:  convertedID,
 		Avatar:    imageData,
 	}, nil
 }
