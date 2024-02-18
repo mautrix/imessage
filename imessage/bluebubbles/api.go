@@ -89,7 +89,7 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 	}
 
 	// Preload some caches
-	bb.usingPrivateAPI = bb.isPrivateApi()
+	bb.usingPrivateAPI = bb.isPrivateAPI()
 	bb.RefreshContactList()
 
 	// Notify main this API is fully loaded
@@ -1010,7 +1010,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	}, nil
 }
 
-func (bb *blueBubbles) isPrivateApi() bool {
+func (bb *blueBubbles) isPrivateAPI() bool {
 	var serverInfo ServerInfoResponse
 	err := bb.apiGet("/api/v1/server/info", nil, &serverInfo)
 	if err != nil {
@@ -1018,9 +1018,9 @@ func (bb *blueBubbles) isPrivateApi() bool {
 		return false
 	}
 
-	privateApi := serverInfo.Data.PrivateApi
+	privateAPI := serverInfo.Data.PrivateAPI
 
-	return privateApi
+	return privateAPI
 }
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {

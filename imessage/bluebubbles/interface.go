@@ -280,7 +280,7 @@ type MessageReadResponse struct {
 }
 
 type ServerInfo struct {
-	PrivateApi bool `json:"private_api"`
+	PrivateAPI bool `json:"private_api"`
 }
 
 type ServerInfoResponse struct {
