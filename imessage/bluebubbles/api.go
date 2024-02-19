@@ -1404,7 +1404,11 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*i
 	case int:
 		// id is an integer, convert it to a string
 		convertedID = strconv.Itoa(id)
+	case float64:
+		// id is a float, convert it to a string
+		convertedID = strconv.FormatFloat(id, 'f', -1, 64)
 	default:
+		bb.log.Error().Interface("id", id).Msg("Unknown type for contact ID")
 		convertedID = ""
 	}
 
