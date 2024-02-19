@@ -144,18 +144,18 @@ func (amt TapbackType) Name() string {
 	case 0:
 		return ""
 	case TapbackLove:
-		return "love"
+		return "love" // "❤️"
 	case TapbackLike:
-		return "like"
+		return "like" // "👍️"
 	case TapbackDislike:
-		return "dislike"
+		return "dislike" // "👎️"
 	case TapbackLaugh:
-		return "laugh"
+		return "laugh" // "😂"
 	case TapbackEmphasis:
-		return "emphasize"
+		return "emphasize" // "‼️"
 	case TapbackQuestion:
-		return "question"
+		return "question" // "❓️"
 	default:
-		return ""
+		return "" // "�"
 	}
 }
