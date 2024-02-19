@@ -973,7 +973,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
 	var method string
-	if replyTo != "" {
+	if bb.usingPrivateAPI {
 		method = "private-api"
 	} else {
 		// we have to use apple-script and send a second message
