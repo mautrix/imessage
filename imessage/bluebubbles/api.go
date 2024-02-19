@@ -60,7 +60,7 @@ type blueBubbles struct {
 
 	bbRequestLock sync.Mutex
 
-	usingPrivateApi bool
+	usingPrivateAPI bool
 }
 
 func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -89,7 +89,7 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 	}
 
 	// Preload some caches
-	bb.usingPrivateApi = bb.isPrivateApi()
+	bb.usingPrivateAPI = bb.isPrivateAPI()
 	bb.RefreshContactList()
 
 	// Notify main this API is fully loaded
@@ -503,7 +503,7 @@ func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, ba
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		After: &after,
 		Sort:  MessageQuerySortDesc,
@@ -543,7 +543,7 @@ func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.T
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		After:  &after,
 		Before: &before,
@@ -583,7 +583,7 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		Before: &_before,
 		Sort:   MessageQuerySortDesc,
@@ -621,7 +621,7 @@ func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSms),
+			MessageQueryWith(MessageQueryWithSMS),
 		},
 		Sort: MessageQuerySortDesc,
 	}
@@ -927,11 +927,11 @@ func (bb *blueBubbles) GetGroupAvatar(chatID string) (*imessage.Attachment, erro
 
 	properties := chatResponse.Data.Properties[0]
 
-	if properties.GroupPhotoGuid == nil {
+	if properties.GroupPhotoGUID == nil {
 		return nil, nil
 	}
 
-	attachment, err := bb.downloadAttachment(*properties.GroupPhotoGuid)
+	attachment, err := bb.downloadAttachment(*properties.GroupPhotoGUID)
 	if err != nil {
 		bb.log.Error().Err(err).Str("chatID", chatID).Msg("Failed to download group avatar")
 		return nil, err
@@ -973,7 +973,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	bb.log.Trace().Str("chatID", chatID).Str("text", text).Str("replyTo", replyTo).Int("replyToPart", replyToPart).Any("richLink", richLink).Interface("metadata", metadata).Msg("SendMessage")
 
 	var method string
-	if replyTo != "" {
+	if bb.usingPrivateAPI {
 		method = "private-api"
 	} else {
 		// we have to use apple-script and send a second message
@@ -984,8 +984,8 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 		ChatGUID:            chatID,
 		Method:              method,
 		Message:             text,
-		TempGuid:            fmt.Sprintf("temp-%s", RandString(8)),
-		SelectedMessageGuid: replyTo,
+		TempGUID:            fmt.Sprintf("temp-%s", RandString(8)),
+		SelectedMessageGUID: replyTo,
 		PartIndex:           replyToPart,
 	}
 
@@ -1006,11 +1006,11 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	return &imessage.SendResponse{
 		GUID:    res.Data.GUID,
 		Service: res.Data.Handle.Service,
-		Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
+		Time:    time.UnixMilli(res.Data.DateCreated),
 	}, nil
 }
 
-func (bb *blueBubbles) isPrivateApi() bool {
+func (bb *blueBubbles) isPrivateAPI() bool {
 	var serverInfo ServerInfoResponse
 	err := bb.apiGet("/api/v1/server/info", nil, &serverInfo)
 	if err != nil {
@@ -1018,9 +1018,9 @@ func (bb *blueBubbles) isPrivateApi() bool {
 		return false
 	}
 
-	privateApi := serverInfo.Data.PrivateApi
+	privateAPI := serverInfo.Data.PrivateAPI
 
-	return privateApi
+	return privateAPI
 }
 
 func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata imessage.MessageMetadata) (*imessage.SendResponse, error) {
@@ -1034,7 +1034,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 	bb.log.Info().Int("attachmentSize", len(attachment)).Msg("Read attachment from disk")
 
 	var method string
-	if bb.usingPrivateApi {
+	if bb.usingPrivateAPI {
 		method = "private-api"
 	} else {
 		// we have to use apple-script and send a second message
@@ -1052,7 +1052,7 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 		"partIndex":           replyToPart,
 	}
 
-	if bb.usingPrivateApi {
+	if bb.usingPrivateAPI {
 		formData["subject"] = text
 	}
 
@@ -1063,14 +1063,14 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 		return nil, err
 	}
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
 	}
 
 	var imessageSendResponse = imessage.SendResponse{
 		GUID:    response.Data.GUID,
 		Service: response.Data.Handle.Service,
-		Time:    time.Unix(0, response.Data.DateCreated*int64(time.Millisecond)),
+		Time:    time.UnixMilli(response.Data.DateCreated),
 	}
 
 	return &imessageSendResponse, nil
@@ -1085,7 +1085,7 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 
 	var tapbackName = tapback.Name()
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("tapbackName", tapbackName).Bool("remove", remove).Msg("The private-api isn't enabled in BlueBubbles, can't send tapback")
 		return nil, errors.ErrUnsupported
 	}
@@ -1096,7 +1096,7 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 
 	request := SendReactionRequest{
 		ChatGUID:            chatID,
-		SelectedMessageGuid: targetGUID,
+		SelectedMessageGUID: targetGUID,
 		PartIndex:           targetPart,
 		Reaction:            tapbackName,
 	}
@@ -1118,14 +1118,14 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 	return &imessage.SendResponse{
 		GUID:    res.Data.GUID,
 		Service: res.Data.Handle.Service,
-		Time:    time.Unix(0, res.Data.DateCreated*int64(time.Millisecond)),
+		Time:    time.UnixMilli(res.Data.DateCreated),
 	}, nil
 }
 
 func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.log.Warn().Str("chatID", chatID).Msg("The private-api isn't enabled in BlueBubbles, can't send read receipt")
 		return errors.ErrUnsupported
 	}
@@ -1151,7 +1151,7 @@ func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
 	bb.log.Trace().Str("chatID", chatID).Bool("typing", typing).Msg("SendTypingNotification")
 
-	if !bb.usingPrivateApi {
+	if !bb.usingPrivateAPI {
 		bb.log.Warn().Str("chatID", chatID).Bool("typing", typing).Msg("The private-api isn't enabled in BlueBubbles, can't send typing notification")
 		return errors.ErrUnsupported
 	}
@@ -1227,12 +1227,12 @@ func (bb *blueBubbles) wsUrl() string {
 	q.Add("transport", "websocket")
 	u.RawQuery = q.Encode()
 
-	url := u.String()
+	URL := u.String()
 
-	return url
+	return URL
 }
 
-func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string {
+func (bb *blueBubbles) apiURL(path string, queryParams map[string]string) string {
 	u, err := url.Parse(bb.bridge.GetConnectorConfig().BlueBubblesURL)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error parsing BlueBubbles URL")
@@ -1251,16 +1251,16 @@ func (bb *blueBubbles) apiUrl(path string, queryParams map[string]string) string
 
 	u.RawQuery = q.Encode()
 
-	url := u.String()
+	URL := u.String()
 
-	return url
+	return URL
 }
 
 func (bb *blueBubbles) apiGet(path string, queryParams map[string]string, target interface{}) (err error) {
-	url := bb.apiUrl(path, queryParams)
+	URL := bb.apiURL(path, queryParams)
 
 	bb.bbRequestLock.Lock()
-	response, err := http.Get(url)
+	response, err := http.Get(URL)
 	bb.bbRequestLock.Unlock()
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making GET request")
@@ -1291,7 +1291,7 @@ func (bb *blueBubbles) apiDelete(path string, payload interface{}, target interf
 }
 
 func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, target interface{}) (err error) {
-	url := bb.apiUrl(path, map[string]string{})
+	URL := bb.apiURL(path, map[string]string{})
 
 	var payloadJSON []byte
 	if payload != nil {
@@ -1302,7 +1302,7 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 		}
 	}
 
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(payloadJSON))
+	req, err := http.NewRequest(method, URL, bytes.NewBuffer(payloadJSON))
 	if err != nil {
 		bb.log.Error().Err(err).Str("method", method).Msg("Error creating request")
 		return err
@@ -1335,7 +1335,7 @@ func (bb *blueBubbles) apiRequest(method, path string, payload interface{}, targ
 }
 
 func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interface{}, target interface{}) error {
-	url := bb.apiUrl(path, map[string]string{})
+	URL := bb.apiURL(path, map[string]string{})
 
 	// Create a new buffer to store the file content
 	var body bytes.Buffer
@@ -1368,7 +1368,7 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 
 	// Make the HTTP POST request
 	bb.bbRequestLock.Lock()
-	response, err := http.Post(url, writer.FormDataContentType(), &body)
+	response, err := http.Post(URL, writer.FormDataContentType(), &body)
 	bb.bbRequestLock.Unlock()
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making POST request")
@@ -1393,19 +1393,19 @@ func (bb *blueBubbles) apiPostAsFormData(path string, formData map[string]interf
 }
 
 func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*imessage.Contact, error) {
-	var convertedId string
+	var convertedID string
 	var imageData []byte
 	var err error
 
-	switch id := bbContact.ID.(type) {
+	switch ID := bbContact.ID.(type) {
 	case string:
 		// ID is already a string, use it as is
-		convertedId = id
+		convertedID = ID
 	case int:
 		// ID is an integer, convert it to a string
-		convertedId = strconv.Itoa(id)
+		convertedID = strconv.Itoa(ID)
 	default:
-		convertedId = ""
+		convertedID = ""
 	}
 
 	if *bbContact.Avatar != "" {
@@ -1421,7 +1421,7 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*i
 		Nickname:  bbContact.DisplayName,
 		Phones:    convertPhones(bbContact.PhoneNumbers),
 		Emails:    convertEmails(bbContact.Emails),
-		UserGUID:  convertedId,
+		UserGUID:  convertedID,
 		Avatar:    imageData,
 	}, nil
 }
@@ -1432,7 +1432,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 
 	// Convert bluebubbles.Message to imessage.Message
 	message.GUID = bbMessage.GUID
-	message.Time = time.Unix(0, bbMessage.DateCreated*int64(time.Millisecond))
+	message.Time = time.UnixMilli(bbMessage.DateCreated)
 	message.Subject = bbMessage.Subject
 	message.Text = bbMessage.Text
 	message.ChatGUID = bbMessage.Chats[0].GUID
@@ -1459,14 +1459,14 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.IsFromMe = bbMessage.IsFromMe
 	message.IsRead = bbMessage.DateRead != 0
 	if message.IsRead {
-		message.ReadAt = time.Unix(0, bbMessage.DateRead*int64(time.Millisecond))
+		message.ReadAt = time.UnixMilli(bbMessage.DateRead)
 	}
 	message.IsDelivered = bbMessage.DateDelivered != 0
 	message.IsSent = true   // assume yes because we made it to this part of the code
 	message.IsEmote = false // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
 
-	message.ReplyToGUID = bbMessage.ThreadOriginatorGuid
+	message.ReplyToGUID = bbMessage.ThreadOriginatorGUID
 
 	// TODO: ReplyToPart from bluebubbles looks like "0:0:17" in one test I did
 	// 		I don't know what the value means, or how to parse it
@@ -1478,10 +1478,10 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// }
 
 	// Tapbacks
-	if bbMessage.AssociatedMessageGuid != "" &&
+	if bbMessage.AssociatedMessageGUID != "" &&
 		bbMessage.AssociatedMessageType != "" {
 		message.Tapback = &imessage.Tapback{
-			TargetGUID: bbMessage.AssociatedMessageGuid,
+			TargetGUID: bbMessage.AssociatedMessageGUID,
 			Type:       imessage.TapbackFromName(bbMessage.AssociatedMessageType),
 		}
 		message.Tapback.Parse()
@@ -1512,15 +1512,15 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// TODO Richlinks
 	// message.RichLink =
 
-	message.ThreadID = bbMessage.ThreadOriginatorGuid
+	message.ThreadID = bbMessage.ThreadOriginatorGUID
 
 	return &message, nil
 }
 
 func (bb *blueBubbles) convertBBChatToiMessageChat(bbChat Chat) (*imessage.ChatInfo, error) {
-	members := make([]string, len(bbChat.Partipants))
+	members := make([]string, len(bbChat.Participants))
 
-	for i, participant := range bbChat.Partipants {
+	for i, participant := range bbChat.Participants {
 		members[i] = participant.Address
 	}
 
@@ -1545,9 +1545,9 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 		return nil, err
 	}
 
-	url := bb.apiUrl(fmt.Sprintf("/api/v1/attachment/%s/download", guid), map[string]string{})
+	URL := bb.apiURL(fmt.Sprintf("/api/v1/attachment/%s/download", guid), map[string]string{})
 
-	response, err := http.Get(url)
+	response, err := http.Get(URL)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error making GET request")
 		return nil, err
@@ -1568,7 +1568,7 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 	}
 
 	return &imessage.Attachment{
-		GUID:       guid,
+		GUID:       guid, // had trouble renaming this one (guid)
 		PathOnDisk: tempFile.Name(),
 		FileName:   attachmentResponse.Data.TransferName,
 		MimeType:   attachmentResponse.Data.MimeType,
