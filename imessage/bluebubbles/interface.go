@@ -115,8 +115,7 @@ type Contact struct {
 	Birthday     string        `json:"birthday,omitempty"`
 	Avatar       *string       `json:"avatar,omitempty"`
 	SourceType   string        `json:"sourceType,omitempty"`
-	// DEVNOTE: This field is almost always a string,
-	// but at least one user was getting an error because this was a number for them
+	// DEVNOTE this field is a string unless importing from a vCard
 	ID any `json:"id,omitempty"`
 }
 
