@@ -84,13 +84,13 @@ func init() {
 func (bb *blueBubbles) Start(readyCallback func()) error {
 	bb.log.Trace().Msg("Start")
 
-	if err := bb.connectAndListen(); err != nil {
-		return err
-	}
-
 	// Preload some caches
 	bb.usingPrivateAPI = bb.isPrivateAPI()
 	bb.RefreshContactList()
+
+	if err := bb.connectAndListen(); err != nil {
+		return err
+	}
 
 	// Notify main this API is fully loaded
 	readyCallback()
@@ -1262,6 +1262,11 @@ func (bb *blueBubbles) ResolveIdentifier(address string) (string, error) {
 		return "", err
 	}
 
+	if identifierResponse.Data.Service == "" || identifierResponse.Data.Address == "" {
+		bb.log.Warn().Any("response", identifierResponse).Str("address", address).Msg("No results found for provided identifier. Assuming 'iMessage' service.")
+		return "iMessage;-;" + handle, nil
+	}
+
 	return identifierResponse.Data.Service + ";-;" + identifierResponse.Data.Address, nil
 }
 
@@ -1741,13 +1746,13 @@ func (bb *blueBubbles) PostStartupSyncHook() {
 func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:     true,
-		SendTapbacks:             true,
-		SendReadReceipts:         true,
-		SendTypingNotifications:  true,
+		SendTapbacks:             bb.usingPrivateAPI,
+		SendReadReceipts:         bb.usingPrivateAPI,
+		SendTypingNotifications:  bb.usingPrivateAPI,
 		SendCaptions:             true,
 		BridgeState:              false,
 		MessageStatusCheckpoints: false,
-		DeliveredStatus:          true,
+		DeliveredStatus:          bb.usingPrivateAPI,
 		ContactChatMerging:       false,
 		RichLinks:                false,
 		ChatBridgeResult:         false,
