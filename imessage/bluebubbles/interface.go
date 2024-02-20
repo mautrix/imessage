@@ -17,8 +17,9 @@ const (
 type MessageQueryRequest struct {
 	// TODO Other Fields
 	ChatGUID string             `json:"chatGuid"`
-	Limit    int64              `json:"limit"`
-	Offset   int64              `json:"offset"`
+	Limit    int                `json:"limit"`
+	Max      *int               `json:"max"`
+	Offset   int                `json:"offset"`
 	With     []MessageQueryWith `json:"with"`
 	Sort     MessageQuerySort   `json:"sort"`
 	Before   *int64             `json:"before,omitempty"`
@@ -33,6 +34,9 @@ const (
 	MessageQueryWithAttachment       ChatQueryWith = "attachment"
 	MessageQueryWithHandle           ChatQueryWith = "handle"
 	MessageQueryWithSMS              ChatQueryWith = "sms"
+	MessageQueryWithAttributeBody    ChatQueryWith = "message.attributedBody"
+	MessageQueryWithMessageSummary   ChatQueryWith = "message.messageSummaryInfo"
+	MessageQueryWithPayloadData      ChatQueryWith = "message.payloadData"
 )
 
 type MessageQueryResponse struct {

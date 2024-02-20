@@ -474,7 +474,7 @@ func (bb *blueBubbles) queryChatMessages(query MessageQueryRequest, allResults [
 	bb.log.Info().Interface("query", query).Msg("queryChatMessages")
 
 	var resp MessageQueryResponse
-	err := bb.apiPost("/api/v1/message/query", query, &resp)
+	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s/message", query.ChatGUID), bb.messageQueryRequestToMap(&query), &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -482,12 +482,62 @@ func (bb *blueBubbles) queryChatMessages(query MessageQueryRequest, allResults [
 	allResults = append(allResults, resp.Data...)
 
 	nextPageOffset := resp.Metadata.Offset + resp.Metadata.Limit
+
+	// Determine the limit for the next page
+	var nextLimit int
+	if query.Max != nil && *query.Max > 0 {
+		nextLimit = int(math.Min(float64(*query.Max), 1000))
+	} else {
+		nextLimit = 1000
+	}
+
+	// If there are more messages to fetch and pagination is enabled
 	if paginate && (nextPageOffset < resp.Metadata.Total) {
-		query.Offset = nextPageOffset
+		// If the next page offset exceeds the maximum limit, adjust the query
+		if nextLimit > 0 && nextPageOffset+int64(nextLimit) > resp.Metadata.Total {
+			nextLimit = int(resp.Metadata.Total - nextPageOffset)
+		}
+
+		// Update the query with the new offset and limit
+		query.Offset = int(nextPageOffset)
+		query.Limit = nextLimit
+
+		// Recursively call the function for the next page
 		return bb.queryChatMessages(query, allResults, paginate)
 	}
 
 	return allResults, nil
+}
+
+func (bb *blueBubbles) messageQueryRequestToMap(req *MessageQueryRequest) map[string]string {
+	m := make(map[string]string)
+
+	m["limit"] = fmt.Sprintf("%d", req.Limit)
+	m["offset"] = fmt.Sprintf("%d", req.Offset)
+	m["sort"] = string(req.Sort)
+
+	if req.Before != nil {
+		m["before"] = fmt.Sprintf("%d", *req.Before)
+	}
+
+	if req.After != nil {
+		m["after"] = fmt.Sprintf("%d", *req.After)
+	}
+
+	// Handling slice of MessageQueryWith
+	if len(req.With) > 0 {
+		with := ""
+		for index, withItem := range req.With {
+			if index == 0 {
+				with = string(withItem)
+			} else {
+				with = with + "," + string(withItem)
+			}
+		}
+		m["with"] = with
+	}
+
+	return m
 }
 
 func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) (resp []*imessage.Message, err error) {
@@ -499,11 +549,12 @@ func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, ba
 		Limit:    100,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		After: &after,
 		Sort:  MessageQuerySortDesc,
@@ -539,11 +590,12 @@ func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.T
 		Limit:    100,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		After:  &after,
 		Before: &before,
@@ -574,16 +626,24 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 	bb.log.Trace().Str("chatID", chatID).Time("before", before).Int("limit", limit).Msg("GetMessagesBeforeWithLimit")
 
 	_before := before.UnixNano() / int64(time.Millisecond)
+
+	queryLimit := limit
+	if queryLimit > 1000 {
+		queryLimit = 1000
+	}
+
 	request := MessageQueryRequest{
 		ChatGUID: chatID,
-		Limit:    int64(limit),
+		Limit:    queryLimit,
+		Max:      &limit,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		Before: &_before,
 		Sort:   MessageQuerySortDesc,
@@ -612,16 +672,23 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID string) (resp []*imessage.Message, err error) {
 	bb.log.Trace().Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("GetMessagesWithLimit")
 
+	queryLimit := limit
+	if queryLimit > 1000 {
+		queryLimit = 1000
+	}
+
 	request := MessageQueryRequest{
 		ChatGUID: chatID,
-		Limit:    int64(limit),
+		Limit:    queryLimit,
+		Max:      &limit,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		Sort: MessageQuerySortDesc,
 	}
@@ -681,7 +748,6 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 	}
 
 	return resp, nil
-
 }
 
 func (bb *blueBubbles) queryChats(query ChatQueryRequest, allResults []Chat) ([]Chat, error) {
