@@ -1537,6 +1537,8 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.IsSent = true   // assume yes because we made it to this part of the code
 	message.IsEmote = false // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
+	message.IsEdited = bbMessage.DateEdited != 0
+	message.IsRetracted = bbMessage.DateRetracted != 0
 
 	message.ReplyToGUID = bbMessage.ThreadOriginatorGUID
 
