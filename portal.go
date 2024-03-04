@@ -217,6 +217,7 @@ func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		MessageStatuses: make(chan *imessage.SendMessageStatus, 100),
 		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
+		ReadAt:          time.Now(),
 	}
 	portal.log = maulogadapt.ZeroAsMau(&portal.zlog)
 	if !br.IM.Capabilities().MessageSendResponses {
@@ -2062,7 +2063,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 		}
 		portal.bridge.IM.SendMessageBridgeResult(msg.ChatGUID, msg.GUID, eventID, overrideSuccess || hasMXID)
 		// Send read receipt if it's a read message
-		if msg.IsRead && len(dbMessage.MXID) > 0 && portal.ReadAt.Before(msg.ReadAt) {
+		if hasMXID && msg.IsRead && portal.ReadAt.Before(msg.ReadAt) {
 			var intent *appservice.IntentAPI
 			if msg.IsFromMe {
 				intent = portal.bridge.user.DoublePuppetIntent
