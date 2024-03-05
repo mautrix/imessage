@@ -2050,7 +2050,6 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	var dbMessage *database.Message
 	var overrideSuccess bool
-	var editedMessageID id.EventID // Track edited message ID if it's an edit
 
 	defer func() {
 		if err := recover(); err != nil {
@@ -2062,19 +2061,6 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 			eventID = dbMessage.MXID
 		}
 		portal.bridge.IM.SendMessageBridgeResult(msg.ChatGUID, msg.GUID, eventID, overrideSuccess || hasMXID)
-		// Send read receipt if it's a read message
-		if hasMXID && msg.IsRead && portal.ReadAt.Before(msg.ReadAt) {
-			var intent *appservice.IntentAPI
-			if msg.IsFromMe {
-				intent = portal.bridge.user.DoublePuppetIntent
-			} else {
-				intent = portal.MainIntent()
-			}
-			err := portal.markRead(intent, dbMessage.MXID, msg.ReadAt)
-			if err != nil {
-				portal.log.Warnfln("Failed to send read receipt for %s: %v", dbMessage.MXID, err)
-			}
-		}
 	}()
 
 	// Look up the message in the database
@@ -2093,14 +2079,14 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	}
 
 	// If the message exists in the database, handle edits or retractions
-	if dbMessage != nil {
+	if dbMessage != nil && dbMessage.MXID != "" {
 
 		// Clean up the text so the length is accurate
 		msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
 		msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
 
 		// DEVNOTE: It seems sometimes the message is just edited to remove data instead of actually retracting it
-		if (msg.IsRetracted && dbMessage.MXID != "") ||
+		if msg.IsRetracted ||
 			(len(msg.Attachments) == 0 && len(msg.Text) == 0 && len(msg.Subject) == 0) {
 
 			// Retract existing message
@@ -2111,12 +2097,20 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 			}
 
 			overrideSuccess = true
-		} else if msg.IsEdited && dbMessage.MXID != "" {
-			// Edit existing message
-			editedMessageID = dbMessage.MXID
+		} else if msg.IsEdited {
 
+			// Edit existing message
 			intent := portal.getIntentForMessage(msg, nil)
-			portal.handleNormaliMessage(msg, dbMessage, intent, &editedMessageID)
+			portal.handleNormaliMessage(msg, dbMessage, intent, &dbMessage.MXID)
+
+			overrideSuccess = true
+		} else if msg.IsRead {
+
+			// Send read receipt
+			err := portal.markRead(portal.MainIntent(), dbMessage.MXID, msg.ReadAt)
+			if err != nil {
+				portal.log.Warnfln("Failed to send read receipt for %s: %v", dbMessage.MXID, err)
+			}
 
 			overrideSuccess = true
 		} else {
