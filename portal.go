@@ -2104,7 +2104,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 			portal.handleNormaliMessage(msg, dbMessage, intent, &dbMessage.MXID)
 
 			overrideSuccess = true
-		} else if msg.IsRead {
+		} else if msg.IsRead && msg.IsFromMe {
 
 			// Send read receipt
 			err := portal.markRead(portal.MainIntent(), dbMessage.MXID, msg.ReadAt)
