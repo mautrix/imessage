@@ -22,12 +22,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"time"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
-	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
 )
 
@@ -108,7 +106,6 @@ func (user *User) newDoublePuppetIntent() (*appservice.IntentAPI, error) {
 	if err != nil {
 		return nil, err
 	}
-	client.Syncer = user
 
 	ia := user.bridge.AS.NewIntentAPI("custom")
 	ia.Client = client
@@ -144,30 +141,7 @@ func (user *User) startCustomMXID() error {
 		return ErrMismatchingMXID
 	}
 	user.DoublePuppetIntent = intent
-	user.startSyncing()
 	return nil
-}
-
-func (user *User) startSyncing() {
-	if !user.bridge.Config.Bridge.SyncWithCustomPuppets {
-		return
-	}
-	if !user.bridge.IM.Capabilities().SendTypingNotifications && !user.bridge.IM.Capabilities().SendReadReceipts {
-		user.log.Warnln("Syncing with double puppet is enabled in config, but configured platform doesn't support sending typing notifications nor read receipts")
-	}
-	go func() {
-		err := user.DoublePuppetIntent.Sync()
-		if err != nil {
-			user.log.Errorln("Fatal error syncing:", err)
-		}
-	}()
-}
-
-func (user *User) stopSyncing() {
-	if !user.bridge.Config.Bridge.SyncWithCustomPuppets {
-		return
-	}
-	user.DoublePuppetIntent.StopSync()
 }
 
 func (user *User) tryRelogin(cause error, action string) bool {
@@ -179,70 +153,4 @@ func (user *User) tryRelogin(cause error, action string) bool {
 	}
 	user.log.Infofln("Successfully relogined after '%v' while %s", cause, action)
 	return true
-}
-
-func (user *User) handleReceiptEvent(portal *Portal, evt *event.Event) {
-	for eventID, receipts := range *evt.Content.AsReceipt() {
-		if receipt, ok := receipts.GetOrCreate(event.ReceiptTypeRead)[user.MXID]; !ok {
-			// Ignore receipt events where this user isn't present.
-		} else if val, ok := receipt.Extra[appservice.DoublePuppetKey].(string); ok && user.DoublePuppetIntent != nil && val == portal.bridge.Name {
-			// Ignore double puppeted read receipts.
-		} else {
-			portal.HandleMatrixReadReceipt(user, eventID, receipt)
-		}
-	}
-}
-
-func (user *User) ProcessResponse(resp *mautrix.RespSync, _ string) error {
-	for roomID, events := range resp.Rooms.Join {
-		portal := user.bridge.GetPortalByMXID(roomID)
-		if portal == nil {
-			continue
-		}
-		for _, evt := range events.Ephemeral.Events {
-			err := evt.Content.ParseRaw(evt.Type)
-			if err != nil {
-				return err
-			}
-			switch evt.Type {
-			case event.EphemeralEventReceipt:
-				go user.handleReceiptEvent(portal, evt)
-			case event.EphemeralEventTyping:
-				if portal.IsPrivateChat() {
-					go portal.HandleMatrixTyping(evt.Content.AsTyping().UserIDs)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func (user *User) OnFailedSync(_ *mautrix.RespSync, err error) (time.Duration, error) {
-	user.log.Warnln("Failed to sync:", err)
-	if errors.Is(err, mautrix.MUnknownToken) {
-		if !user.tryRelogin(err, "syncing") {
-			return 0, err
-		}
-		return 0, nil
-	}
-	return 10 * time.Second, nil
-}
-
-func (user *User) GetFilterJSON(_ id.UserID) *mautrix.Filter {
-	everything := []event.Type{{Type: "*"}}
-	return &mautrix.Filter{
-		Presence: mautrix.FilterPart{
-			Senders: []id.UserID{user.MXID},
-			Types:   []event.Type{event.EphemeralEventPresence},
-		},
-		AccountData: mautrix.FilterPart{NotTypes: everything},
-		Room: mautrix.RoomFilter{
-			Ephemeral:    mautrix.FilterPart{Types: []event.Type{event.EphemeralEventTyping, event.EphemeralEventReceipt}},
-			IncludeLeave: false,
-			AccountData:  mautrix.FilterPart{NotTypes: everything},
-			State:        mautrix.FilterPart{NotTypes: everything},
-			Timeline:     mautrix.FilterPart{NotTypes: everything},
-		},
-	}
 }

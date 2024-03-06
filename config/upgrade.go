@@ -66,7 +66,6 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Bool, "bridge", "send_error_notices")
 	helper.Copy(up.Int, "bridge", "max_handle_seconds")
 	helper.Copy(up.Str|up.Null, "bridge", "device_id")
-	helper.Copy(up.Bool, "bridge", "sync_with_custom_puppets")
 	helper.Copy(up.Bool, "bridge", "sync_direct_chat_list")
 	helper.Copy(up.Str|up.Null, "bridge", "login_shared_secret")
 	helper.Copy(up.Str|up.Null, "bridge", "double_puppet_server_url")

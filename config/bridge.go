@@ -48,7 +48,6 @@ type BridgeConfig struct {
 	MaxHandleSeconds int    `yaml:"max_handle_seconds"`
 	DeviceID         string `yaml:"device_id"`
 
-	SyncWithCustomPuppets bool   `yaml:"sync_with_custom_puppets"`
 	SyncDirectChatList    bool   `yaml:"sync_direct_chat_list"`
 	LoginSharedSecret     string `yaml:"login_shared_secret"`
 	DoublePuppetServerURL string `yaml:"double_puppet_server_url"`
