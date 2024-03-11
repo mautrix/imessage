@@ -217,6 +217,7 @@ func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		MessageStatuses: make(chan *imessage.SendMessageStatus, 100),
 		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
+		ReadAt:          time.Now(),
 	}
 	portal.log = maulogadapt.ZeroAsMau(&portal.zlog)
 	if !br.IM.Capabilities().MessageSendResponses {
@@ -253,6 +254,7 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
+	ReadAt           time.Time
 
 	userIsTyping bool
 	typingLock   sync.Mutex
@@ -450,6 +452,14 @@ func (portal *Portal) markRead(intent *appservice.IntentAPI, eventID id.EventID,
 	if intent == nil {
 		return nil
 	}
+
+	// Only send the read update if it is more recent than the last read time
+	if portal.ReadAt.After(readAt) {
+		return nil
+	} else {
+		portal.ReadAt = readAt
+	}
+
 	var extra CustomReadReceipt
 	if intent == portal.bridge.user.DoublePuppetIntent {
 		extra.DoublePuppetSource = portal.bridge.Name
@@ -1946,7 +1956,7 @@ func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.
 	return attachments
 }
 
-func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI) {
+func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI, mxID *id.EventID) {
 	if msg.Metadata != nil && portal.bridge.Config.HackyStartupTest.Key != "" {
 		if portal.bridge.Config.HackyStartupTest.EchoMode {
 			_, ok := msg.Metadata[startupTestKey].(map[string]any)
@@ -1966,16 +1976,21 @@ func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *dat
 		portal.log.Warnfln("iMessage %s doesn't contain any attachments nor text", msg.GUID)
 	}
 	for index, converted := range parts {
+		if mxID != nil {
+			converted.Content.SetEdit(*mxID)
+		}
 		portal.log.Debugfln("Sending iMessage attachment %s.%d", msg.GUID, index)
 		resp, err := portal.sendMessage(intent, converted.Type, converted.Content, converted.Extra, dbMessage.Timestamp)
 		if err != nil {
 			portal.log.Errorfln("Failed to send attachment %s.%d: %v", msg.GUID, index, err)
 		} else {
 			portal.log.Debugfln("Handled iMessage attachment %s.%d -> %s", msg.GUID, index, resp.EventID)
-			dbMessage.MXID = resp.EventID
-			dbMessage.Part = index
-			dbMessage.Insert(nil)
-			dbMessage.Part++
+			if mxID == nil {
+				dbMessage.MXID = resp.EventID
+				dbMessage.Part = index
+				dbMessage.Insert(nil)
+				dbMessage.Part++
+			}
 		}
 	}
 }
@@ -2035,6 +2050,7 @@ func (portal *Portal) getIntentForMessage(msg *imessage.Message, dbMessage *data
 func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 	var dbMessage *database.Message
 	var overrideSuccess bool
+
 	defer func() {
 		if err := recover(); err != nil {
 			portal.log.Errorfln("Panic while handling %s: %v\n%s", msg.GUID, err, string(debug.Stack()))
@@ -2047,22 +2063,65 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 		portal.bridge.IM.SendMessageBridgeResult(msg.ChatGUID, msg.GUID, eventID, overrideSuccess || hasMXID)
 	}()
 
+	// Look up the message in the database
+	dbMessage = portal.bridge.DB.Message.GetLastByGUID(portal.GUID, msg.GUID)
+
 	if portal.IsPrivateChat() && msg.ChatGUID != portal.LastSeenHandle {
 		portal.log.Debugfln("Updating last seen handle from %s to %s", portal.LastSeenHandle, msg.ChatGUID)
 		portal.LastSeenHandle = msg.ChatGUID
 		portal.Update(nil)
 	}
 
+	// Handle message tapbacks
 	if msg.Tapback != nil {
 		portal.HandleiMessageTapback(msg)
 		return ""
-	} else if portal.bridge.DB.Message.GetLastByGUID(portal.GUID, msg.GUID) != nil {
-		portal.log.Debugln("Ignoring duplicate message", msg.GUID)
-		// Send a success confirmation since it's a duplicate message
-		overrideSuccess = true
+	}
+
+	// If the message exists in the database, handle edits or retractions
+	if dbMessage != nil && dbMessage.MXID != "" {
+
+		// Clean up the text so the length is accurate
+		msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
+		msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
+
+		// DEVNOTE: It seems sometimes the message is just edited to remove data instead of actually retracting it
+		if msg.IsRetracted ||
+			(len(msg.Attachments) == 0 && len(msg.Text) == 0 && len(msg.Subject) == 0) {
+
+			// Retract existing message
+			if portal.HandleMessageRevoke(*msg) {
+				portal.zlog.Debug().Str("messageGUID", msg.GUID).Str("chatGUID", msg.ChatGUID).Msg("Revoked message")
+			} else {
+				portal.zlog.Warn().Str("messageGUID", msg.GUID).Str("chatGUID", msg.ChatGUID).Msg("Failed to revoke message")
+			}
+
+			overrideSuccess = true
+		} else if msg.IsEdited {
+
+			// Edit existing message
+			intent := portal.getIntentForMessage(msg, nil)
+			portal.handleNormaliMessage(msg, dbMessage, intent, &dbMessage.MXID)
+
+			overrideSuccess = true
+		} else if msg.IsRead && msg.IsFromMe {
+
+			// Send read receipt
+			err := portal.markRead(portal.MainIntent(), dbMessage.MXID, msg.ReadAt)
+			if err != nil {
+				portal.log.Warnfln("Failed to send read receipt for %s: %v", dbMessage.MXID, err)
+			}
+
+			overrideSuccess = true
+		} else {
+			portal.log.Debugln("Ignoring duplicate message", msg.GUID)
+			// Send a success confirmation since it's a duplicate message
+			overrideSuccess = true
+		}
 		return ""
 	}
 
+	// If the message is not found in the database, proceed with handling as usual
 	portal.log.Debugfln("Starting handling of iMessage %s (type: %d, attachments: %d, text: %d)", msg.GUID, msg.ItemType, len(msg.Attachments), len(msg.Text))
 	dbMessage = portal.bridge.DB.Message.New()
 	dbMessage.PortalGUID = portal.GUID
@@ -2081,7 +2140,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 
 	switch msg.ItemType {
 	case imessage.ItemTypeMessage:
-		portal.handleNormaliMessage(msg, dbMessage, intent)
+		portal.handleNormaliMessage(msg, dbMessage, intent, nil)
 	case imessage.ItemTypeMember:
 		groupUpdateEventID = portal.handleIMMemberChange(msg, dbMessage, intent)
 	case imessage.ItemTypeName:
@@ -2184,6 +2243,29 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		existing.HandleGUID = msg.ChatGUID
 		existing.Update()
 	}
+}
+
+func (portal *Portal) HandleMessageRevoke(msg imessage.Message) bool {
+	dbMessage := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID, 0)
+	if dbMessage == nil {
+		return true
+	}
+	intent := portal.getIntentForMessage(&msg, nil)
+	if intent == nil {
+		return false
+	}
+	_, err := intent.RedactEvent(portal.MXID, dbMessage.MXID)
+	if err != nil {
+		if errors.Is(err, mautrix.MForbidden) {
+			_, err = portal.MainIntent().RedactEvent(portal.MXID, dbMessage.MXID)
+			if err != nil {
+				portal.log.Errorln("Failed to redact %s: %v", msg.GUID, err)
+			}
+		}
+	} else {
+		dbMessage.Delete()
+	}
+	return true
 }
 
 func (portal *Portal) Delete() {
