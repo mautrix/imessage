@@ -129,17 +129,15 @@ func (bb *blueBubbles) connectToWebSocket() (*websocket.Conn, error) {
 }
 
 func (bb *blueBubbles) listenWebSocket() {
-	defer func() {
-		if bb.ws != nil {
-			bb.ws.Close()
-		}
-	}()
 	for {
 		if err := bb.pollMessages(); err != nil {
 			bb.log.Error().Err(err).Msg("Error polling messages from WebSocket")
 			// Reconnect logic here
 			if err := bb.reconnect(); err != nil {
 				bb.log.Error().Err(err).Msg("Failed to reconnect to WebSocket")
+				bb.stopListening()
+				return
+			} else {
 				return
 			}
 		}
@@ -244,6 +242,9 @@ func (bb *blueBubbles) pollMessages() error {
 func (bb *blueBubbles) reconnect() error {
 	const maxRetryCount = 12
 	retryCount := 0
+
+	bb.stopListening()
+
 	for {
 		bb.log.Info().Msg("Attempting to reconnect to BlueBubbles WebSocket...")
 		if retryCount >= maxRetryCount {
@@ -268,6 +269,7 @@ func (bb *blueBubbles) reconnect() error {
 func (bb *blueBubbles) stopListening() {
 	if bb.ws != nil {
 		bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
+		bb.ws.Close()
 	}
 }
 
@@ -1537,6 +1539,8 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.IsSent = true   // assume yes because we made it to this part of the code
 	message.IsEmote = false // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
+	message.IsEdited = bbMessage.DateEdited != 0
+	message.IsRetracted = bbMessage.DateRetracted != 0
 
 	message.ReplyToGUID = bbMessage.ThreadOriginatorGUID
 
