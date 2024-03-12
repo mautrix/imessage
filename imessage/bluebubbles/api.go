@@ -296,8 +296,8 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 	if !message.ReadAt.IsZero() && data.DateRetracted == 0 && data.DateEdited == 0 {
 		senderGUID := data.Chats[0].GUID
 		var receipt = imessage.ReadReceipt{
-			SenderGUID:     senderGUID, // TODO: Make sure this is the right field?
-			IsFromMe:       false,      // changing this to false as I believe read receipts will always be from others
+			SenderGUID:     senderGUID,
+			IsFromMe:       false,
 			ChatGUID:       message.ChatGUID,
 			ReadUpTo:       message.GUID,
 			ReadAt:         message.ReadAt,
