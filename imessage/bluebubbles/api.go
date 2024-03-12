@@ -294,7 +294,6 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 		bb.log.Warn().Msg("Incoming message buffer is full")
 	}
 	if !message.ReadAt.IsZero() && data.DateRetracted == 0 && data.DateEdited == 0 {
-		//bb.handleChatReadStatusChanged(rawMessage)
 		senderGUID := data.Chats[0].GUID
 		var receipt = imessage.ReadReceipt{
 			SenderGUID:     senderGUID, // TODO: Make sure this is the right field?
