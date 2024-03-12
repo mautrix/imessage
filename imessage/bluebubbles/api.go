@@ -340,23 +340,6 @@ func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err err
 	default:
 		bb.log.Warn().Msg("Incoming message buffer is full")
 	}
-	if !message.ReadAt.IsZero() && data.DateRetracted == 0 && data.DateEdited == 0 {
-		//bb.handleChatReadStatusChanged(rawMessage)
-		senderGUID := data.Chats[0].GUID
-		var receipt = imessage.ReadReceipt{
-			SenderGUID:     senderGUID, // TODO: Make sure this is the right field?
-			IsFromMe:       false,      // changing this to false as I believe read receipts will always be from others
-			ChatGUID:       message.ChatGUID,
-			ReadUpTo:       message.GUID,
-			ReadAt:         message.ReadAt,
-			JSONUnixReadAt: message.JSONUnixReadAt,
-		}
-		select {
-		case bb.receiptChan <- &receipt:
-		default:
-			bb.log.Warn().Msg("Incoming message buffer is full")
-		}
-	}
 
 	return nil
 }
