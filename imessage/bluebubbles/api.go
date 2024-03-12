@@ -295,7 +295,22 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 	default:
 		bb.log.Warn().Msg("Incoming message buffer is full")
 	}
-
+	if !message.ReadAt.IsZero() && data.DateRetracted == 0 && data.DateEdited == 0 {
+		senderGUID := data.Chats[0].GUID
+		var receipt = imessage.ReadReceipt{
+			SenderGUID:     senderGUID,
+			IsFromMe:       false,
+			ChatGUID:       message.ChatGUID,
+			ReadUpTo:       message.GUID,
+			ReadAt:         message.ReadAt,
+			JSONUnixReadAt: message.JSONUnixReadAt,
+		}
+		select {
+		case bb.receiptChan <- &receipt:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
+	}
 	return nil
 }
 
