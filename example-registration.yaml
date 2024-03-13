@@ -11,7 +11,11 @@ namespaces:
     # Localpart here is appservice -> bot -> username from the config
     - regex: '@imessagebot:example\.com'
       exclusive: true
-# Address that Synapse uses to contact mautrix-wsproxy
+# Address that Synapse uses to contact mautrix-wsproxy, this might be
+# something like "http://mautrix-wsproxy:29331" in a docker-compose
+# setup or "http://localhost:29331" on bare metal; if using Docker you
+# should make sure your networking is setup so this address is
+# reachable from from inside the synapse container
 url: "http://wsproxy.address:29331"
 # Put a new random string here, it doesn't affect anything else
 sender_localpart: random string
