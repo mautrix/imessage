@@ -1368,8 +1368,13 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 		}
 	}
 
-	var dir, filePath string
-	dir, filePath, err = imessage.SendFilePrepare(filename, data)
+	var dir, filePath, guid string
+	prep, ok := portal.bridge.IM.(imessage.FilePreparingAPI)
+	if ok {
+		dir, guid, err = prep.SendFilePrepare(filename, data)
+	} else {
+		dir, filePath, err = imessage.SendFilePrepare(filename, data)
+	}
 	if err != nil {
 		portal.log.Errorfln("failed to prepare to send file: %w", err)
 		return
@@ -1391,7 +1396,7 @@ func (portal *Portal) handleMatrixMediaDirect(url id.ContentURI, file *event.Enc
 		}
 	}
 
-	resp, err = portal.bridge.IM.SendFile(portal.getTargetGUID("media message", evt.ID, ""), caption, filename, filePath, messageReplyID, messageReplyPart, mimeType, isVoiceMemo, metadata)
+	resp, err = portal.bridge.IM.SendFile(portal.getTargetGUID("media message", evt.ID, ""), caption, filename, filePath, guid, messageReplyID, messageReplyPart, mimeType, isVoiceMemo, metadata)
 	portal.bridge.IM.SendFileCleanup(dir)
 	return
 }
