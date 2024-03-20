@@ -693,7 +693,7 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
 		bridgeInfo.Protocol.ID = "imessage-nosip"
 	} else if portal.bridge.Config.IMessage.Platform == "bluebubbles" {
-		bridgeInfo.Protocol.ID = "imessage-nosip"
+		bridgeInfo.Protocol.ID = "imessagego"
 	}
 	return portal.getBridgeInfoStateKey(), bridgeInfo
 }
@@ -1564,7 +1564,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 
 	redactedTapback := portal.bridge.DB.Tapback.GetByMXID(evt.Redacts)
 	if redactedTapback != nil {
-		portal.log.Debugln("Starting handling of Matrix redaction", evt.ID)
+		portal.log.Debugln("Starting handling of Matrix redaction of tapback", evt.ID)
 		redactedTapback.Delete()
 		_, err := portal.bridge.IM.SendTapback(portal.getTargetGUID("tapback redaction", evt.ID, redactedTapback.HandleGUID), redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, true)
 		if err != nil {
@@ -1572,6 +1572,23 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.SendMessageErrorCheckpoint(evt, status.MsgStepRemote, err, true, 0)
 		} else {
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
+			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+				portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, 0)
+			}
+		}
+		return
+	}
+
+	redactedText := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
+	if redactedText != nil {
+		portal.log.Debugln("Starting handling of Matrix redaction of text", evt.ID)
+		redactedText.Delete()
+		_, err := portal.bridge.IM.SendUnsend(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
+		if err != nil {
+			portal.log.Errorfln("Failed to send unsend of message %s/%d: %v", redactedText.GUID, redactedText.Part, err)
+			portal.bridge.SendMessageErrorCheckpoint(evt, status.MsgStepRemote, err, true, 0)
+		} else {
+			portal.log.Debugfln("Handled Matrix redaction %s of iMessage message %s/%d", evt.ID, redactedTapback.MessageGUID, redactedTapback.MessagePart)
 			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
 				portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, 0)
 			}
