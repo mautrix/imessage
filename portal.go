@@ -1552,7 +1552,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, status.MsgStepRemote, errors.New("redactions are not supported"))
+		portal.sendUnsupportedCheckpoint(evt, status.MsgStepRemote, errors.New("reactions are not supported"))
 		return
 	}
 
@@ -1579,16 +1579,21 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 		return
 	}
 
+	if !portal.bridge.IM.Capabilities().UnsendMessages {
+		portal.sendUnsupportedCheckpoint(evt, status.MsgStepRemote, errors.New("redactions of messages are not supported"))
+		return
+	}
+
 	redactedText := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
 	if redactedText != nil {
 		portal.log.Debugln("Starting handling of Matrix redaction of text", evt.ID)
 		redactedText.Delete()
-		_, err := portal.bridge.IM.SendUnsend(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
+		_, err := portal.bridge.IM.UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
 		if err != nil {
 			portal.log.Errorfln("Failed to send unsend of message %s/%d: %v", redactedText.GUID, redactedText.Part, err)
 			portal.bridge.SendMessageErrorCheckpoint(evt, status.MsgStepRemote, err, true, 0)
 		} else {
-			portal.log.Debugfln("Handled Matrix redaction %s of iMessage message %s/%d", evt.ID, redactedTapback.MessageGUID, redactedTapback.MessagePart)
+			portal.log.Debugfln("Handled Matrix redaction %s of iMessage message %s/%d", evt.ID, redactedText.GUID, redactedText.Part)
 			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
 				portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, 0)
 			}

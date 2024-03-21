@@ -244,6 +244,17 @@ type SendTextRequest struct {
 	PartIndex           int    `json:"partIndex,omitempty"`
 }
 
+type UnsendMessage struct {
+	PartIndex int `json:"partIndex"`
+}
+
+type UnsendMessageResponse struct {
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data,omitempty"`
+	Error   any     `json:"error"`
+}
+
 type SendTextResponse struct {
 	Status  int64   `json:"status"`
 	Message string  `json:"message"`

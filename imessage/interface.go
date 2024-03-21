@@ -74,7 +74,7 @@ type API interface {
 	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata MessageMetadata) (*SendResponse, error)
 	SendFileCleanup(sendFileDir string)
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
-	SendUnsend(chatID, targetGUID string, targetPart int) (*SendResponse, error)
+	UnsendMessage(chatID, targetGUID string, targetPart int) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
 	SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool)
