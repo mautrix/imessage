@@ -580,6 +580,10 @@ func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, 
 	return &resp, err
 }
 
+func (ios *iOSConnector) UnsendMessage(chatID string, targetGUID string, targetPart int) (*imessage.SendResponse, error) {
+	return nil, errors.ErrUnsupported
+}
+
 func (ios *iOSConnector) SendReadReceipt(chatID, readUpTo string) error {
 	return ios.IPC.Send(ReqSendReadReceipt, &SendReadReceiptRequest{
 		ChatGUID: chatID,
