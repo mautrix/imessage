@@ -1144,14 +1144,14 @@ func (bb *blueBubbles) EditMessage(chatID string, targetGUID string, newText str
 
 	err := bb.apiPost("/api/v1/message/"+targetGUID+"/edit", request, &res)
 	if err != nil {
-		bb.log.Error().Any("response", res).Msg("Failure when unsending message in BlueBubbles")
+		bb.log.Error().Any("response", res).Msg("Failure when editing message in BlueBubbles")
 		return nil, err
 	}
 
 	if res.Status != 200 {
-		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when unsending message in BlueBubbles")
+		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when editing message in BlueBubbles")
 
-		return nil, errors.New("could not unsend message")
+		return nil, errors.New("could not edit message")
 	}
 
 	return &imessage.SendResponse{
