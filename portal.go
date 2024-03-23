@@ -1244,14 +1244,27 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		msg = msg.NewContent
 	}
 
-	if editEventID != "" && portal.bridge.IM.Capabilities().EditMessages {
+	var err error
+	var resp *imessage.SendResponse
+
+	if editEventID != "" {
+		if !portal.bridge.IM.Capabilities().EditMessages {
+			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge doesn't support editing messages!")
+			return
+		}
+
 		editedMessage := portal.bridge.DB.Message.GetByMXID(editEventID)
 		if editedMessage == nil {
 			portal.zlog.Error().Msg("Failed to get message by MXID")
 			return
 		}
-		portal.bridge.IM.EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
-		return
+
+		if portal.bridge.IM.(imessage.VenturaFeatures) != nil {
+			resp, err = portal.bridge.IM.(imessage.VenturaFeatures).EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
+		} else {
+			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment EditMessage!")
+			return
+		}
 	}
 
 	var imessageRichLink *imessage.RichLink
@@ -1260,8 +1273,6 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 	metadata, _ := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata)
 
-	var err error
-	var resp *imessage.SendResponse
 	if msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote {
 		if evt.Sender != portal.bridge.user.MXID {
 			portal.addRelaybotFormat(evt.Sender, msg)
@@ -1276,6 +1287,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart, metadata)
 	}
+
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
 		statusCode := status.MsgStatusPermFailure
@@ -1603,7 +1615,16 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if redactedText != nil {
 		portal.log.Debugln("Starting handling of Matrix redaction of text", evt.ID)
 		redactedText.Delete()
-		_, err := portal.bridge.IM.UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
+
+		var err error
+		if portal.bridge.IM.(imessage.VenturaFeatures) != nil {
+			_, err = portal.bridge.IM.(imessage.VenturaFeatures).UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
+		} else {
+			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment UnsendMessage!")
+			return
+		}
+
+		//_, err := portal.bridge.IM.UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
 		if err != nil {
 			portal.log.Errorfln("Failed to send unsend of message %s/%d: %v", redactedText.GUID, redactedText.Part, err)
 			portal.bridge.SendMessageErrorCheckpoint(evt, status.MsgStepRemote, err, true, 0)

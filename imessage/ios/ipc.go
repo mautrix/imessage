@@ -580,10 +580,6 @@ func (ios *iOSConnector) SendTapback(chatID, targetGUID string, targetPart int, 
 	return &resp, err
 }
 
-func (ios *iOSConnector) UnsendMessage(chatID string, targetGUID string, targetPart int) (*imessage.SendResponse, error) {
-	return nil, errors.ErrUnsupported
-}
-
 func (ios *iOSConnector) EditMessage(chatID string, targetGUID string, newText string, targetPart int) (*imessage.SendResponse, error) {
 	return nil, errors.ErrUnsupported
 }
