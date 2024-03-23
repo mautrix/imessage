@@ -12,14 +12,15 @@ Note that Barcelona, which the mac-nosip connector uses, is no longer maintained
 | Media/files          | ✔️  | ✔️        | ✔️          |
 | Replies              | 🛑  | ✔️        | ✔️†         |
 | Reactions            | 🛑  | ✔️        | ✔️          |
-| Edits                | 🛑  | ❌         | ✔️*           |
+| Edits                | 🛑  | ❌         | ✔️*          |
 | Unsends              | 🛑  | ❌         | ✔️*           |
 | Redactions           | 🛑  | ✔️        | ✔️          |
 | Read receipts        | 🛑  | ✔️        | ✔️          |
 | Typing notifications | 🛑  | ✔️        | ✔️          |
 
 † BlueBubbles had bugs with replies until v1.9.5
-* macOS Ventura or higher is required
+
+\* macOS Ventura or higher is required
 
 ## iMessage → Matrix
 | Feature                          | mac | mac-nosip | bluebubbles |
