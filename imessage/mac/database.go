@@ -110,14 +110,6 @@ func (mac *macOSDatabase) PreStartupSyncHook() (resp imessage.StartupSyncHookRes
 	return
 }
 
-func (mac *macOSDatabase) UnsendMessage(chatID string, targetGUID string, targetPart int) (*imessage.SendResponse, error) {
-	return nil, errors.ErrUnsupported
-}
-
-func (mac *macOSDatabase) EditMessage(chatID string, targetGUID string, newText string, targetPart int) (*imessage.SendResponse, error) {
-	return nil, errors.ErrUnsupported
-}
-
 func (mac *macOSDatabase) PostStartupSyncHook() {}
 
 func (mac *macOSDatabase) PrepareDM(guid string) error {

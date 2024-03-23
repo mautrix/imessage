@@ -47,6 +47,11 @@ type ChatInfoAPI interface {
 	GetGroupAvatar(chatID string) (*Attachment, error)
 }
 
+type VenturaFeatures interface {
+	UnsendMessage(chatID, targetGUID string, targetPart int) (*SendResponse, error)
+	EditMessage(chatID, targetGUID string, newText string, targetPart int) (*SendResponse, error)
+}
+
 type API interface {
 	Start(readyCallback func()) error
 	Stop()
@@ -74,8 +79,6 @@ type API interface {
 	SendFile(chatID, text, filename string, pathOnDisk string, replyTo string, replyToPart int, mimeType string, voiceMemo bool, metadata MessageMetadata) (*SendResponse, error)
 	SendFileCleanup(sendFileDir string)
 	SendTapback(chatID, targetGUID string, targetPart int, tapback TapbackType, remove bool) (*SendResponse, error)
-	UnsendMessage(chatID, targetGUID string, targetPart int) (*SendResponse, error)
-	EditMessage(chatID, targetGUID string, newText string, targetPart int) (*SendResponse, error)
 	SendReadReceipt(chatID, readUpTo string) error
 	SendTypingNotification(chatID string, typing bool) error
 	SendMessageBridgeResult(chatID, messageID string, eventID id.EventID, success bool)
