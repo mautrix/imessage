@@ -1244,6 +1244,9 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		msg = msg.NewContent
 	}
 
+	var err error
+	var resp *imessage.SendResponse
+
 	if editEventID != "" {
 		if !portal.bridge.IM.Capabilities().EditMessages {
 			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge doesn't support editing messages!")
@@ -1257,7 +1260,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		}
 
 		if portal.bridge.IM.(imessage.VenturaFeatures) != nil {
-			portal.bridge.IM.(imessage.VenturaFeatures).EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
+			resp, err = portal.bridge.IM.(imessage.VenturaFeatures).EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
 		} else {
 			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment EditMessage!")
 			return
@@ -1271,8 +1274,6 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 	metadata, _ := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata)
 
-	var err error
-	var resp *imessage.SendResponse
 	if msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote {
 		if evt.Sender != portal.bridge.user.MXID {
 			portal.addRelaybotFormat(evt.Sender, msg)
@@ -1287,6 +1288,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart, metadata)
 	}
+
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
 		statusCode := status.MsgStatusPermFailure
