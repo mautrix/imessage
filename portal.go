@@ -1239,6 +1239,21 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 
+	editEventID := msg.RelatesTo.GetReplaceID()
+	if editEventID != "" && msg.NewContent != nil {
+		msg = msg.NewContent
+	}
+
+	if editEventID != "" && portal.bridge.IM.Capabilities().EditMessages {
+		editedMessage := portal.bridge.DB.Message.GetByMXID(editEventID)
+		if editedMessage == nil {
+			portal.zlog.Error().Msg("Failed to get message by MXID")
+			return
+		}
+		portal.bridge.IM.EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
+		return
+	}
+
 	var imessageRichLink *imessage.RichLink
 	if portal.bridge.IM.Capabilities().RichLinks {
 		imessageRichLink = portal.convertURLPreviewToIMessage(evt)

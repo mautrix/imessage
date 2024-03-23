@@ -270,6 +270,7 @@ type ConnectorCapabilities struct {
 	SendTypingNotifications  bool
 	SendCaptions             bool
 	UnsendMessages           bool
+	EditMessages             bool
 	BridgeState              bool
 	MessageStatusCheckpoints bool
 	DeliveredStatus          bool

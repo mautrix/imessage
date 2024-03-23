@@ -248,7 +248,20 @@ type UnsendMessage struct {
 	PartIndex int `json:"partIndex"`
 }
 
+type EditMessage struct {
+	EditedMessage                  string `json:"editedMessage"`
+	BackwwardsCompatibilityMessage string `json:"backwardsCompatibilityMessage"`
+	PartIndex                      int    `json:"partIndex"`
+}
+
 type UnsendMessageResponse struct {
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data,omitempty"`
+	Error   any     `json:"error"`
+}
+
+type EditMessageResponse struct {
 	Status  int64   `json:"status"`
 	Message string  `json:"message"`
 	Data    Message `json:"data,omitempty"`
