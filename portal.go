@@ -1265,7 +1265,6 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment EditMessage!")
 			return
 		}
-		return
 	}
 
 	var imessageRichLink *imessage.RichLink
