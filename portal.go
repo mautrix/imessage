@@ -1256,8 +1256,8 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 			return
 		}
 
-		if venturaBridge, ok := portal.bridge.IM.(imessage.VenturaFeatures); ok {
-			venturaBridge.EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
+		if portal.bridge.IM.(imessage.VenturaFeatures) != nil {
+			portal.bridge.IM.(imessage.VenturaFeatures).EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
 		} else {
 			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment EditMessage!")
 			return
@@ -1616,8 +1616,8 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 		redactedText.Delete()
 
 		var err error
-		if venturaBridge, ok := portal.bridge.IM.(imessage.VenturaFeatures); ok {
-			_, err = venturaBridge.UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
+		if portal.bridge.IM.(imessage.VenturaFeatures) != nil {
+			_, err = portal.bridge.IM.(imessage.VenturaFeatures).UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
 		} else {
 			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment UnsendMessage!")
 			return
