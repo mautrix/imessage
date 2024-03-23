@@ -1246,8 +1246,10 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 
 	var err error
 	var resp *imessage.SendResponse
+	var wasEdit bool
 
 	if editEventID != "" {
+		wasEdit = true
 		if !portal.bridge.IM.Capabilities().EditMessages {
 			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge doesn't support editing messages!")
 			return
@@ -1273,7 +1275,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	}
 	metadata, _ := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata)
 
-	if msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote {
+	if (msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote) && !wasEdit {
 		if evt.Sender != portal.bridge.user.MXID {
 			portal.addRelaybotFormat(evt.Sender, msg)
 			if len(msg.Body) == 0 {
