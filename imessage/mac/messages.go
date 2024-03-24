@@ -48,7 +48,7 @@ LEFT JOIN handle target_handle ON message.other_handle = target_handle.ROWID
 `
 
 const attachmentsQuery = `
-SELECT guid, filename, COALESCE(mime_type, ''), transfer_name FROM attachment
+SELECT guid, COALESCE(filename, ''), COALESCE(mime_type, ''), transfer_name FROM attachment
 JOIN message_attachment_join ON message_attachment_join.attachment_id = attachment.ROWID
 WHERE message_attachment_join.message_id = $1
 ORDER BY ROWID
@@ -86,7 +86,7 @@ LIMIT $2
 `
 
 const groupActionQuery = `
-SELECT attachment.filename, COALESCE(attachment.mime_type, ''), attachment.transfer_name
+SELECT COALESCE(attachment.filename, ''), COALESCE(attachment.mime_type, ''), attachment.transfer_name
 FROM message
 JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
 JOIN chat              ON chat_message_join.chat_id = chat.ROWID
