@@ -1130,6 +1130,74 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	}, nil
 }
 
+func (bb *blueBubbles) UnsendMessage(chatID, targetGUID string, targetPart int) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Msg("UnsendMessage")
+
+	if !bb.usingPrivateAPI {
+		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Msg("The private-api isn't enabled in BlueBubbles, can't unsend message")
+		return nil, errors.ErrUnsupported
+	}
+
+	request := UnsendMessage{
+		PartIndex: targetPart,
+	}
+
+	var res UnsendMessageResponse
+
+	err := bb.apiPost("/api/v1/message/"+targetGUID+"/unsend", request, &res)
+	if err != nil {
+		bb.log.Error().Any("response", res).Msg("Failure when unsending message in BlueBubbles")
+		return nil, err
+	}
+
+	if res.Status != 200 {
+		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when unsending message in BlueBubbles")
+
+		return nil, errors.New("could not unsend message")
+	}
+
+	return &imessage.SendResponse{
+		GUID:    res.Data.GUID,
+		Service: res.Data.Handle.Service,
+		Time:    time.UnixMilli(res.Data.DateCreated),
+	}, nil
+}
+
+func (bb *blueBubbles) EditMessage(chatID string, targetGUID string, newText string, targetPart int) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("newText", newText).Int("targetPart", targetPart).Msg("EditMessage")
+
+	if !bb.usingPrivateAPI {
+		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("newText", newText).Int("targetPart", targetPart).Msg("The private-api isn't enabled in BlueBubbles, can't edit message")
+		return nil, errors.ErrUnsupported
+	}
+
+	request := EditMessage{
+		EditedMessage:                  newText,
+		BackwwardsCompatibilityMessage: "Edited to \"" + newText + "\"",
+		PartIndex:                      targetPart,
+	}
+
+	var res EditMessageResponse
+
+	err := bb.apiPost("/api/v1/message/"+targetGUID+"/edit", request, &res)
+	if err != nil {
+		bb.log.Error().Any("response", res).Msg("Failure when editing message in BlueBubbles")
+		return nil, err
+	}
+
+	if res.Status != 200 {
+		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when editing message in BlueBubbles")
+
+		return nil, errors.New("could not edit message")
+	}
+
+	return &imessage.SendResponse{
+		GUID:    res.Data.GUID,
+		Service: res.Data.Handle.Service,
+		Time:    time.UnixMilli(res.Data.DateCreated),
+	}, nil
+}
+
 func (bb *blueBubbles) isPrivateAPI() bool {
 	var serverInfo ServerInfoResponse
 	err := bb.apiGet("/api/v1/server/info", nil, &serverInfo)
@@ -1803,6 +1871,8 @@ func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:     true,
 		SendTapbacks:             bb.usingPrivateAPI,
+		UnsendMessages:           bb.usingPrivateAPI,
+		EditMessages:             bb.usingPrivateAPI,
 		SendReadReceipts:         bb.usingPrivateAPI,
 		SendTypingNotifications:  bb.usingPrivateAPI,
 		SendCaptions:             true,

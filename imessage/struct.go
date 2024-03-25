@@ -269,6 +269,8 @@ type ConnectorCapabilities struct {
 	SendReadReceipts         bool
 	SendTypingNotifications  bool
 	SendCaptions             bool
+	UnsendMessages           bool
+	EditMessages             bool
 	BridgeState              bool
 	MessageStatusCheckpoints bool
 	DeliveredStatus          bool

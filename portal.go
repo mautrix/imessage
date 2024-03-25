@@ -693,7 +693,7 @@ func (portal *Portal) getBridgeInfo() (string, CustomBridgeInfoContent) {
 	} else if portal.bridge.Config.IMessage.Platform == "mac-nosip" {
 		bridgeInfo.Protocol.ID = "imessage-nosip"
 	} else if portal.bridge.Config.IMessage.Platform == "bluebubbles" {
-		bridgeInfo.Protocol.ID = "imessage-nosip"
+		bridgeInfo.Protocol.ID = "imessagego"
 	}
 	return portal.getBridgeInfoStateKey(), bridgeInfo
 }
@@ -1239,15 +1239,43 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 		return
 	}
 
+	editEventID := msg.RelatesTo.GetReplaceID()
+	if editEventID != "" && msg.NewContent != nil {
+		msg = msg.NewContent
+	}
+
+	var err error
+	var resp *imessage.SendResponse
+	var wasEdit bool
+
+	if editEventID != "" {
+		wasEdit = true
+		if !portal.bridge.IM.Capabilities().EditMessages {
+			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge doesn't support editing messages!")
+			return
+		}
+
+		editedMessage := portal.bridge.DB.Message.GetByMXID(editEventID)
+		if editedMessage == nil {
+			portal.zlog.Error().Msg("Failed to get message by MXID")
+			return
+		}
+
+		if portal.bridge.IM.(imessage.VenturaFeatures) != nil {
+			resp, err = portal.bridge.IM.(imessage.VenturaFeatures).EditMessage(portal.getTargetGUID("message edit", evt.ID, editedMessage.HandleGUID), editedMessage.GUID, msg.Body, editedMessage.Part)
+		} else {
+			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment EditMessage!")
+			return
+		}
+	}
+
 	var imessageRichLink *imessage.RichLink
 	if portal.bridge.IM.Capabilities().RichLinks {
 		imessageRichLink = portal.convertURLPreviewToIMessage(evt)
 	}
 	metadata, _ := evt.Content.Raw["com.beeper.message_metadata"].(imessage.MessageMetadata)
 
-	var err error
-	var resp *imessage.SendResponse
-	if msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote {
+	if (msg.MsgType == event.MsgText || msg.MsgType == event.MsgNotice || msg.MsgType == event.MsgEmote) && !wasEdit {
 		if evt.Sender != portal.bridge.user.MXID {
 			portal.addRelaybotFormat(evt.Sender, msg)
 			if len(msg.Body) == 0 {
@@ -1261,6 +1289,7 @@ func (portal *Portal) HandleMatrixMessage(evt *event.Event) {
 	} else if len(msg.URL) > 0 || msg.File != nil {
 		resp, err = portal.handleMatrixMedia(msg, evt, messageReplyID, messageReplyPart, metadata)
 	}
+
 	if err != nil {
 		portal.log.Errorln("Error sending to iMessage:", err)
 		statusCode := status.MsgStatusPermFailure
@@ -1552,7 +1581,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	if !portal.bridge.IM.Capabilities().SendTapbacks {
-		portal.sendUnsupportedCheckpoint(evt, status.MsgStepRemote, errors.New("redactions are not supported"))
+		portal.sendUnsupportedCheckpoint(evt, status.MsgStepRemote, errors.New("reactions are not supported"))
 		return
 	}
 
@@ -1564,7 +1593,7 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 
 	redactedTapback := portal.bridge.DB.Tapback.GetByMXID(evt.Redacts)
 	if redactedTapback != nil {
-		portal.log.Debugln("Starting handling of Matrix redaction", evt.ID)
+		portal.log.Debugln("Starting handling of Matrix redaction of tapback", evt.ID)
 		redactedTapback.Delete()
 		_, err := portal.bridge.IM.SendTapback(portal.getTargetGUID("tapback redaction", evt.ID, redactedTapback.HandleGUID), redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, true)
 		if err != nil {
@@ -1572,6 +1601,37 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 			portal.bridge.SendMessageErrorCheckpoint(evt, status.MsgStepRemote, err, true, 0)
 		} else {
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
+			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
+				portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, 0)
+			}
+		}
+		return
+	}
+
+	if !portal.bridge.IM.Capabilities().UnsendMessages {
+		portal.sendUnsupportedCheckpoint(evt, status.MsgStepRemote, errors.New("redactions of messages are not supported"))
+		return
+	}
+
+	redactedText := portal.bridge.DB.Message.GetByMXID(evt.Redacts)
+	if redactedText != nil {
+		portal.log.Debugln("Starting handling of Matrix redaction of text", evt.ID)
+		redactedText.Delete()
+
+		var err error
+		if portal.bridge.IM.(imessage.VenturaFeatures) != nil {
+			_, err = portal.bridge.IM.(imessage.VenturaFeatures).UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
+		} else {
+			portal.zlog.Err(errors.ErrUnsupported).Msg("Bridge didn't implment UnsendMessage!")
+			return
+		}
+
+		//_, err := portal.bridge.IM.UnsendMessage(portal.getTargetGUID("message redaction", evt.ID, redactedText.HandleGUID), redactedText.GUID, redactedText.Part)
+		if err != nil {
+			portal.log.Errorfln("Failed to send unsend of message %s/%d: %v", redactedText.GUID, redactedText.Part, err)
+			portal.bridge.SendMessageErrorCheckpoint(evt, status.MsgStepRemote, err, true, 0)
+		} else {
+			portal.log.Debugfln("Handled Matrix redaction %s of iMessage message %s/%d", evt.ID, redactedText.GUID, redactedText.Part)
 			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
 				portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, 0)
 			}
