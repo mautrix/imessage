@@ -295,22 +295,34 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 	default:
 		bb.log.Warn().Msg("Incoming message buffer is full")
 	}
-	if !message.ReadAt.IsZero() && data.DateRetracted == 0 && data.DateEdited == 0 {
-		senderGUID := data.Chats[0].GUID
-		var receipt = imessage.ReadReceipt{
-			SenderGUID:     senderGUID,
-			IsFromMe:       false,
-			ChatGUID:       message.ChatGUID,
-			ReadUpTo:       message.GUID,
-			ReadAt:         message.ReadAt,
-			JSONUnixReadAt: message.JSONUnixReadAt,
-		}
+
+	if message.IsEdited || message.IsRetracted {
+		return nil // the regular message channel should handle edits and unsends updates
+	} else if message.IsRead {
 		select {
-		case bb.receiptChan <- &receipt:
+		case bb.receiptChan <- &imessage.ReadReceipt{
+			SenderGUID: message.ChatGUID,
+			IsFromMe:   !message.IsFromMe,
+			ChatGUID:   message.ChatGUID,
+			ReadUpTo:   message.GUID,
+			ReadAt:     message.ReadAt,
+		}:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
+	} else if message.IsDelivered {
+		select {
+		case bb.messageStatusChan <- &imessage.SendMessageStatus{
+			GUID:     message.GUID,
+			ChatGUID: message.ChatGUID,
+			Status:   "delivered",
+			Service:  imessage.ParseIdentifier(message.ChatGUID).Service,
+		}:
 		default:
 			bb.log.Warn().Msg("Incoming message buffer is full")
 		}
 	}
+
 	return nil
 }
 
@@ -336,10 +348,35 @@ func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err err
 		return err
 	}
 
-	select {
-	case bb.messageChan <- message:
-	default:
-		bb.log.Warn().Msg("Incoming message buffer is full")
+	if message.IsEdited || message.IsRetracted {
+		select {
+		case bb.messageChan <- message:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
+	} else if message.IsRead {
+		select {
+		case bb.receiptChan <- &imessage.ReadReceipt{
+			SenderGUID: message.ChatGUID,
+			IsFromMe:   !message.IsFromMe,
+			ChatGUID:   message.ChatGUID,
+			ReadUpTo:   message.GUID,
+			ReadAt:     message.ReadAt,
+		}:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
+	} else if message.IsDelivered {
+		select {
+		case bb.messageStatusChan <- &imessage.SendMessageStatus{
+			GUID:     message.GUID,
+			ChatGUID: message.ChatGUID,
+			Status:   "delivered",
+			Service:  imessage.ParseIdentifier(message.ChatGUID).Service,
+		}:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
 	}
 
 	return nil
@@ -1551,8 +1588,8 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 		message.ReadAt = time.UnixMilli(bbMessage.DateRead)
 	}
 	message.IsDelivered = bbMessage.DateDelivered != 0
-	message.IsSent = true   // assume yes because we made it to this part of the code
-	message.IsEmote = false // emojis seem to send either way, and BB doesn't say whether there is one or not
+	message.IsSent = bbMessage.DateCreated != 0 // assume yes because we made it to this part of the code
+	message.IsEmote = false                     // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
 	message.IsEdited = bbMessage.DateEdited != 0
 	message.IsRetracted = bbMessage.DateRetracted != 0

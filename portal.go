@@ -1977,7 +1977,9 @@ func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *dat
 	}
 	for index, converted := range parts {
 		if mxID != nil {
-			converted.Content.SetEdit(*mxID)
+			if len(parts) == 1 {
+				converted.Content.SetEdit(*mxID)
+			}
 		}
 		portal.log.Debugfln("Sending iMessage attachment %s.%d", msg.GUID, index)
 		resp, err := portal.sendMessage(intent, converted.Type, converted.Content, converted.Extra, dbMessage.Timestamp)
