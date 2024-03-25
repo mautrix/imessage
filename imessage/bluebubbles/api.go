@@ -84,13 +84,13 @@ func init() {
 func (bb *blueBubbles) Start(readyCallback func()) error {
 	bb.log.Trace().Msg("Start")
 
-	if err := bb.connectAndListen(); err != nil {
-		return err
-	}
-
 	// Preload some caches
 	bb.usingPrivateAPI = bb.isPrivateAPI()
 	bb.RefreshContactList()
+
+	if err := bb.connectAndListen(); err != nil {
+		return err
+	}
 
 	// Notify main this API is fully loaded
 	readyCallback()
@@ -129,17 +129,15 @@ func (bb *blueBubbles) connectToWebSocket() (*websocket.Conn, error) {
 }
 
 func (bb *blueBubbles) listenWebSocket() {
-	defer func() {
-		if bb.ws != nil {
-			bb.ws.Close()
-		}
-	}()
 	for {
 		if err := bb.pollMessages(); err != nil {
 			bb.log.Error().Err(err).Msg("Error polling messages from WebSocket")
 			// Reconnect logic here
 			if err := bb.reconnect(); err != nil {
 				bb.log.Error().Err(err).Msg("Failed to reconnect to WebSocket")
+				bb.stopListening()
+				return
+			} else {
 				return
 			}
 		}
@@ -244,6 +242,9 @@ func (bb *blueBubbles) pollMessages() error {
 func (bb *blueBubbles) reconnect() error {
 	const maxRetryCount = 12
 	retryCount := 0
+
+	bb.stopListening()
+
 	for {
 		bb.log.Info().Msg("Attempting to reconnect to BlueBubbles WebSocket...")
 		if retryCount >= maxRetryCount {
@@ -268,6 +269,7 @@ func (bb *blueBubbles) reconnect() error {
 func (bb *blueBubbles) stopListening() {
 	if bb.ws != nil {
 		bb.ws.WriteMessage(websocket.CloseMessage, []byte{})
+		bb.ws.Close()
 	}
 }
 
@@ -292,6 +294,33 @@ func (bb *blueBubbles) handleNewMessage(rawMessage json.RawMessage) (err error) 
 	case bb.messageChan <- message:
 	default:
 		bb.log.Warn().Msg("Incoming message buffer is full")
+	}
+
+	if message.IsEdited || message.IsRetracted {
+		return nil // the regular message channel should handle edits and unsends updates
+	} else if message.IsRead {
+		select {
+		case bb.receiptChan <- &imessage.ReadReceipt{
+			SenderGUID: message.ChatGUID,
+			IsFromMe:   !message.IsFromMe,
+			ChatGUID:   message.ChatGUID,
+			ReadUpTo:   message.GUID,
+			ReadAt:     message.ReadAt,
+		}:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
+	} else if message.IsDelivered {
+		select {
+		case bb.messageStatusChan <- &imessage.SendMessageStatus{
+			GUID:     message.GUID,
+			ChatGUID: message.ChatGUID,
+			Status:   "delivered",
+			Service:  imessage.ParseIdentifier(message.ChatGUID).Service,
+		}:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
 	}
 
 	return nil
@@ -319,10 +348,35 @@ func (bb *blueBubbles) handleMessageUpdated(rawMessage json.RawMessage) (err err
 		return err
 	}
 
-	select {
-	case bb.messageChan <- message:
-	default:
-		bb.log.Warn().Msg("Incoming message buffer is full")
+	if message.IsEdited || message.IsRetracted {
+		select {
+		case bb.messageChan <- message:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
+	} else if message.IsRead {
+		select {
+		case bb.receiptChan <- &imessage.ReadReceipt{
+			SenderGUID: message.ChatGUID,
+			IsFromMe:   !message.IsFromMe,
+			ChatGUID:   message.ChatGUID,
+			ReadUpTo:   message.GUID,
+			ReadAt:     message.ReadAt,
+		}:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
+	} else if message.IsDelivered {
+		select {
+		case bb.messageStatusChan <- &imessage.SendMessageStatus{
+			GUID:     message.GUID,
+			ChatGUID: message.ChatGUID,
+			Status:   "delivered",
+			Service:  imessage.ParseIdentifier(message.ChatGUID).Service,
+		}:
+		default:
+			bb.log.Warn().Msg("Incoming message buffer is full")
+		}
 	}
 
 	return nil
@@ -474,7 +528,7 @@ func (bb *blueBubbles) queryChatMessages(query MessageQueryRequest, allResults [
 	bb.log.Info().Interface("query", query).Msg("queryChatMessages")
 
 	var resp MessageQueryResponse
-	err := bb.apiPost("/api/v1/message/query", query, &resp)
+	err := bb.apiGet(fmt.Sprintf("/api/v1/chat/%s/message", query.ChatGUID), bb.messageQueryRequestToMap(&query), &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -482,12 +536,62 @@ func (bb *blueBubbles) queryChatMessages(query MessageQueryRequest, allResults [
 	allResults = append(allResults, resp.Data...)
 
 	nextPageOffset := resp.Metadata.Offset + resp.Metadata.Limit
+
+	// Determine the limit for the next page
+	var nextLimit int
+	if query.Max != nil && *query.Max > 0 {
+		nextLimit = int(math.Min(float64(*query.Max), 1000))
+	} else {
+		nextLimit = 1000
+	}
+
+	// If there are more messages to fetch and pagination is enabled
 	if paginate && (nextPageOffset < resp.Metadata.Total) {
-		query.Offset = nextPageOffset
+		// If the next page offset exceeds the maximum limit, adjust the query
+		if nextLimit > 0 && nextPageOffset+int64(nextLimit) > resp.Metadata.Total {
+			nextLimit = int(resp.Metadata.Total - nextPageOffset)
+		}
+
+		// Update the query with the new offset and limit
+		query.Offset = int(nextPageOffset)
+		query.Limit = nextLimit
+
+		// Recursively call the function for the next page
 		return bb.queryChatMessages(query, allResults, paginate)
 	}
 
 	return allResults, nil
+}
+
+func (bb *blueBubbles) messageQueryRequestToMap(req *MessageQueryRequest) map[string]string {
+	m := make(map[string]string)
+
+	m["limit"] = fmt.Sprintf("%d", req.Limit)
+	m["offset"] = fmt.Sprintf("%d", req.Offset)
+	m["sort"] = string(req.Sort)
+
+	if req.Before != nil {
+		m["before"] = fmt.Sprintf("%d", *req.Before)
+	}
+
+	if req.After != nil {
+		m["after"] = fmt.Sprintf("%d", *req.After)
+	}
+
+	// Handling slice of MessageQueryWith
+	if len(req.With) > 0 {
+		with := ""
+		for index, withItem := range req.With {
+			if index == 0 {
+				with = string(withItem)
+			} else {
+				with = with + "," + string(withItem)
+			}
+		}
+		m["with"] = with
+	}
+
+	return m
 }
 
 func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) (resp []*imessage.Message, err error) {
@@ -499,11 +603,12 @@ func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, ba
 		Limit:    100,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		After: &after,
 		Sort:  MessageQuerySortDesc,
@@ -539,11 +644,12 @@ func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.T
 		Limit:    100,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		After:  &after,
 		Before: &before,
@@ -574,16 +680,24 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 	bb.log.Trace().Str("chatID", chatID).Time("before", before).Int("limit", limit).Msg("GetMessagesBeforeWithLimit")
 
 	_before := before.UnixNano() / int64(time.Millisecond)
+
+	queryLimit := limit
+	if queryLimit > 1000 {
+		queryLimit = 1000
+	}
+
 	request := MessageQueryRequest{
 		ChatGUID: chatID,
-		Limit:    int64(limit),
+		Limit:    queryLimit,
+		Max:      &limit,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		Before: &_before,
 		Sort:   MessageQuerySortDesc,
@@ -612,16 +726,23 @@ func (bb *blueBubbles) GetMessagesBeforeWithLimit(chatID string, before time.Tim
 func (bb *blueBubbles) GetMessagesWithLimit(chatID string, limit int, backfillID string) (resp []*imessage.Message, err error) {
 	bb.log.Trace().Str("chatID", chatID).Int("limit", limit).Str("backfillID", backfillID).Msg("GetMessagesWithLimit")
 
+	queryLimit := limit
+	if queryLimit > 1000 {
+		queryLimit = 1000
+	}
+
 	request := MessageQueryRequest{
 		ChatGUID: chatID,
-		Limit:    int64(limit),
+		Limit:    queryLimit,
+		Max:      &limit,
 		Offset:   0,
 		With: []MessageQueryWith{
-			MessageQueryWith(MessageQueryWithChat),
 			MessageQueryWith(MessageQueryWithChatParticipants),
 			MessageQueryWith(MessageQueryWithAttachment),
 			MessageQueryWith(MessageQueryWithHandle),
-			MessageQueryWith(MessageQueryWithSMS),
+			MessageQueryWith(MessageQueryWithAttributeBody),
+			MessageQueryWith(MessageQueryWithMessageSummary),
+			MessageQueryWith(MessageQueryWithPayloadData),
 		},
 		Sort: MessageQuerySortDesc,
 	}
@@ -681,7 +802,6 @@ func (bb *blueBubbles) GetMessage(guid string) (resp *imessage.Message, err erro
 	}
 
 	return resp, nil
-
 }
 
 func (bb *blueBubbles) queryChats(query ChatQueryRequest, allResults []Chat) ([]Chat, error) {
@@ -1010,6 +1130,74 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 	}, nil
 }
 
+func (bb *blueBubbles) UnsendMessage(chatID, targetGUID string, targetPart int) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Msg("UnsendMessage")
+
+	if !bb.usingPrivateAPI {
+		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Msg("The private-api isn't enabled in BlueBubbles, can't unsend message")
+		return nil, errors.ErrUnsupported
+	}
+
+	request := UnsendMessage{
+		PartIndex: targetPart,
+	}
+
+	var res UnsendMessageResponse
+
+	err := bb.apiPost("/api/v1/message/"+targetGUID+"/unsend", request, &res)
+	if err != nil {
+		bb.log.Error().Any("response", res).Msg("Failure when unsending message in BlueBubbles")
+		return nil, err
+	}
+
+	if res.Status != 200 {
+		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when unsending message in BlueBubbles")
+
+		return nil, errors.New("could not unsend message")
+	}
+
+	return &imessage.SendResponse{
+		GUID:    res.Data.GUID,
+		Service: res.Data.Handle.Service,
+		Time:    time.UnixMilli(res.Data.DateCreated),
+	}, nil
+}
+
+func (bb *blueBubbles) EditMessage(chatID string, targetGUID string, newText string, targetPart int) (*imessage.SendResponse, error) {
+	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("newText", newText).Int("targetPart", targetPart).Msg("EditMessage")
+
+	if !bb.usingPrivateAPI {
+		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("newText", newText).Int("targetPart", targetPart).Msg("The private-api isn't enabled in BlueBubbles, can't edit message")
+		return nil, errors.ErrUnsupported
+	}
+
+	request := EditMessage{
+		EditedMessage:                  newText,
+		BackwwardsCompatibilityMessage: "Edited to \"" + newText + "\"",
+		PartIndex:                      targetPart,
+	}
+
+	var res EditMessageResponse
+
+	err := bb.apiPost("/api/v1/message/"+targetGUID+"/edit", request, &res)
+	if err != nil {
+		bb.log.Error().Any("response", res).Msg("Failure when editing message in BlueBubbles")
+		return nil, err
+	}
+
+	if res.Status != 200 {
+		bb.log.Error().Int64("statusCode", res.Status).Any("response", res).Msg("Failure when editing message in BlueBubbles")
+
+		return nil, errors.New("could not edit message")
+	}
+
+	return &imessage.SendResponse{
+		GUID:    res.Data.GUID,
+		Service: res.Data.Handle.Service,
+		Time:    time.UnixMilli(res.Data.DateCreated),
+	}, nil
+}
+
 func (bb *blueBubbles) isPrivateAPI() bool {
 	var serverInfo ServerInfoResponse
 	err := bb.apiGet("/api/v1/server/info", nil, &serverInfo)
@@ -1194,6 +1382,11 @@ func (bb *blueBubbles) ResolveIdentifier(address string) (string, error) {
 	if err != nil {
 		bb.log.Error().Any("response", identifierResponse).Str("address", address).Str("handle", handle).Msg("Failure when Resolving Identifier")
 		return "", err
+	}
+
+	if identifierResponse.Data.Service == "" || identifierResponse.Data.Address == "" {
+		bb.log.Warn().Any("response", identifierResponse).Str("address", address).Msg("No results found for provided identifier. Assuming 'iMessage' service.")
+		return "iMessage;-;" + handle, nil
 	}
 
 	return identifierResponse.Data.Service + ";-;" + identifierResponse.Data.Address, nil
@@ -1463,9 +1656,11 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 		message.ReadAt = time.UnixMilli(bbMessage.DateRead)
 	}
 	message.IsDelivered = bbMessage.DateDelivered != 0
-	message.IsSent = true   // assume yes because we made it to this part of the code
-	message.IsEmote = false // emojis seem to send either way, and BB doesn't say whether there is one or not
+	message.IsSent = bbMessage.DateCreated != 0 // assume yes because we made it to this part of the code
+	message.IsEmote = false                     // emojis seem to send either way, and BB doesn't say whether there is one or not
 	message.IsAudioMessage = bbMessage.IsAudioMessage
+	message.IsEdited = bbMessage.DateEdited != 0
+	message.IsRetracted = bbMessage.DateRetracted != 0
 
 	message.ReplyToGUID = bbMessage.ThreadOriginatorGUID
 
@@ -1675,13 +1870,15 @@ func (bb *blueBubbles) PostStartupSyncHook() {
 func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 	return imessage.ConnectorCapabilities{
 		MessageSendResponses:     true,
-		SendTapbacks:             true,
-		SendReadReceipts:         true,
-		SendTypingNotifications:  true,
+		SendTapbacks:             bb.usingPrivateAPI,
+		UnsendMessages:           bb.usingPrivateAPI,
+		EditMessages:             bb.usingPrivateAPI,
+		SendReadReceipts:         bb.usingPrivateAPI,
+		SendTypingNotifications:  bb.usingPrivateAPI,
 		SendCaptions:             true,
 		BridgeState:              false,
 		MessageStatusCheckpoints: false,
-		DeliveredStatus:          true,
+		DeliveredStatus:          bb.usingPrivateAPI,
 		ContactChatMerging:       false,
 		RichLinks:                false,
 		ChatBridgeResult:         false,

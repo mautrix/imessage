@@ -47,6 +47,11 @@ type ChatInfoAPI interface {
 	GetGroupAvatar(chatID string) (*Attachment, error)
 }
 
+type VenturaFeatures interface {
+	UnsendMessage(chatID, targetGUID string, targetPart int) (*SendResponse, error)
+	EditMessage(chatID, targetGUID string, newText string, targetPart int) (*SendResponse, error)
+}
+
 type API interface {
 	Start(readyCallback func()) error
 	Stop()
