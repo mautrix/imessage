@@ -2016,7 +2016,7 @@ func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.
 	return attachments
 }
 
-func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI, mxID *id.EventID) {
+func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *database.Message, intent *appservice.IntentAPI, mxid *id.EventID) {
 	if msg.Metadata != nil && portal.bridge.Config.HackyStartupTest.Key != "" {
 		if portal.bridge.Config.HackyStartupTest.EchoMode {
 			_, ok := msg.Metadata[startupTestKey].(map[string]any)
@@ -2036,9 +2036,9 @@ func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *dat
 		portal.log.Warnfln("iMessage %s doesn't contain any attachments nor text", msg.GUID)
 	}
 	for index, converted := range parts {
-		if mxID != nil {
+		if mxid != nil {
 			if len(parts) == 1 {
-				converted.Content.SetEdit(*mxID)
+				converted.Content.SetEdit(*mxid)
 			}
 		}
 		portal.log.Debugfln("Sending iMessage attachment %s.%d", msg.GUID, index)
@@ -2047,7 +2047,7 @@ func (portal *Portal) handleNormaliMessage(msg *imessage.Message, dbMessage *dat
 			portal.log.Errorfln("Failed to send attachment %s.%d: %v", msg.GUID, index, err)
 		} else {
 			portal.log.Debugfln("Handled iMessage attachment %s.%d -> %s", msg.GUID, index, resp.EventID)
-			if mxID == nil {
+			if mxid == nil {
 				dbMessage.MXID = resp.EventID
 				dbMessage.Part = index
 				dbMessage.Insert(nil)
@@ -2308,7 +2308,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 }
 
 func (portal *Portal) HandleMessageRevoke(msg imessage.Message) bool {
-	dbMessage := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.GUID, 0)
+	dbMessage := portal.bridge.DB.Message.GetLastByGUID(portal.GUID, msg.GUID)
 	if dbMessage == nil {
 		return true
 	}
