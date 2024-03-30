@@ -453,7 +453,6 @@ func (portal *Portal) markRead(intent *appservice.IntentAPI, eventID id.EventID,
 		return nil
 	}
 
-	portal.ReadAt = readAt
 
 	var extra CustomReadReceipt
 	if intent == portal.bridge.user.DoublePuppetIntent {
