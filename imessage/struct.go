@@ -52,6 +52,8 @@ type Message struct {
 	IsSent         bool
 	IsEmote        bool
 	IsAudioMessage bool `json:"is_audio_message"`
+	IsEdited       bool
+	IsRetracted    bool
 
 	ReplyToGUID string   `json:"thread_originator_guid,omitempty"`
 	ReplyToPart int      `json:"thread_originator_part,omitempty"`
@@ -267,6 +269,8 @@ type ConnectorCapabilities struct {
 	SendReadReceipts         bool
 	SendTypingNotifications  bool
 	SendCaptions             bool
+	UnsendMessages           bool
+	EditMessages             bool
 	BridgeState              bool
 	MessageStatusCheckpoints bool
 	DeliveredStatus          bool

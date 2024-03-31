@@ -17,8 +17,9 @@ const (
 type MessageQueryRequest struct {
 	// TODO Other Fields
 	ChatGUID string             `json:"chatGuid"`
-	Limit    int64              `json:"limit"`
-	Offset   int64              `json:"offset"`
+	Limit    int                `json:"limit"`
+	Max      *int               `json:"max"`
+	Offset   int                `json:"offset"`
 	With     []MessageQueryWith `json:"with"`
 	Sort     MessageQuerySort   `json:"sort"`
 	Before   *int64             `json:"before,omitempty"`
@@ -33,6 +34,9 @@ const (
 	MessageQueryWithAttachment       ChatQueryWith = "attachment"
 	MessageQueryWithHandle           ChatQueryWith = "handle"
 	MessageQueryWithSMS              ChatQueryWith = "sms"
+	MessageQueryWithAttributeBody    ChatQueryWith = "message.attributedBody"
+	MessageQueryWithMessageSummary   ChatQueryWith = "message.messageSummaryInfo"
+	MessageQueryWithPayloadData      ChatQueryWith = "message.payloadData"
 )
 
 type MessageQueryResponse struct {
@@ -238,6 +242,30 @@ type SendTextRequest struct {
 	Subject             string `json:"subject,omitempty"`
 	SelectedMessageGUID string `json:"selectedMessageGuid,omitempty"`
 	PartIndex           int    `json:"partIndex,omitempty"`
+}
+
+type UnsendMessage struct {
+	PartIndex int `json:"partIndex"`
+}
+
+type EditMessage struct {
+	EditedMessage                  string `json:"editedMessage"`
+	BackwwardsCompatibilityMessage string `json:"backwardsCompatibilityMessage"`
+	PartIndex                      int    `json:"partIndex"`
+}
+
+type UnsendMessageResponse struct {
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data,omitempty"`
+	Error   any     `json:"error"`
+}
+
+type EditMessageResponse struct {
+	Status  int64   `json:"status"`
+	Message string  `json:"message"`
+	Data    Message `json:"data,omitempty"`
+	Error   any     `json:"error"`
 }
 
 type SendTextResponse struct {
