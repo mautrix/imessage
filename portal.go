@@ -451,7 +451,6 @@ func (portal *Portal) markRead(intent *appservice.IntentAPI, eventID id.EventID,
 		return nil
 	}
 
-
 	var extra CustomReadReceipt
 	if intent == portal.bridge.user.DoublePuppetIntent {
 		extra.DoublePuppetSource = portal.bridge.Name
@@ -2134,7 +2133,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 
 	// If the message exists in the database, handle edits or retractions
 	if dbMessage != nil && dbMessage.MXID != "" {
-	// DEVNOTE: It seems sometimes the message is just edited to remove data instead of actually retracting it
+		// DEVNOTE: It seems sometimes the message is just edited to remove data instead of actually retracting it
 
 		if msg.IsRetracted ||
 			(len(msg.Attachments) == 0 && len(msg.Text) == 0 && len(msg.Subject) == 0) {
