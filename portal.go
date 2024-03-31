@@ -2134,6 +2134,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 
 	// If the message exists in the database, handle edits or retractions
 	if dbMessage != nil && dbMessage.MXID != "" {
+	// DEVNOTE: It seems sometimes the message is just edited to remove data instead of actually retracting it
 
 		if msg.IsRetracted ||
 			(len(msg.Attachments) == 0 && len(msg.Text) == 0 && len(msg.Subject) == 0) {
@@ -2146,7 +2147,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 			}
 
 			overrideSuccess = true
-		} else if msg.IsEdited && dbMessage.Part == 0 {
+		} else if msg.IsEdited && dbMessage.Part > 0 {
 
 			// Edit existing message
 			intent := portal.getIntentForMessage(msg, nil)
