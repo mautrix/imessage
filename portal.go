@@ -217,7 +217,6 @@ func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		MessageStatuses: make(chan *imessage.SendMessageStatus, 100),
 		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
-		ReadAt:          time.Now(),
 	}
 	portal.log = maulogadapt.ZeroAsMau(&portal.zlog)
 	if !br.IM.Capabilities().MessageSendResponses {
@@ -254,7 +253,6 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
-	ReadAt           time.Time
 
 	userIsTyping bool
 	typingLock   sync.Mutex
@@ -453,12 +451,6 @@ func (portal *Portal) markRead(intent *appservice.IntentAPI, eventID id.EventID,
 		return nil
 	}
 
-	// Only send the read update if it is more recent than the last read time
-	if portal.ReadAt.After(readAt) {
-		return nil
-	} else {
-		portal.ReadAt = readAt
-	}
 
 	var extra CustomReadReceipt
 	if intent == portal.bridge.user.DoublePuppetIntent {
@@ -2142,12 +2134,8 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 
 	// If the message exists in the database, handle edits or retractions
 	if dbMessage != nil && dbMessage.MXID != "" {
+	// DEVNOTE: It seems sometimes the message is just edited to remove data instead of actually retracting it
 
-		// Clean up the text so the length is accurate
-		msg.Text = strings.ReplaceAll(msg.Text, "\ufffc", "")
-		msg.Subject = strings.ReplaceAll(msg.Subject, "\ufffc", "")
-
-		// DEVNOTE: It seems sometimes the message is just edited to remove data instead of actually retracting it
 		if msg.IsRetracted ||
 			(len(msg.Attachments) == 0 && len(msg.Text) == 0 && len(msg.Subject) == 0) {
 
@@ -2159,7 +2147,7 @@ func (portal *Portal) HandleiMessage(msg *imessage.Message) id.EventID {
 			}
 
 			overrideSuccess = true
-		} else if msg.IsEdited {
+		} else if msg.IsEdited && dbMessage.Part > 0 {
 
 			// Edit existing message
 			intent := portal.getIntentForMessage(msg, nil)
