@@ -217,7 +217,6 @@ func (br *IMBridge) NewPortal(dbPortal *database.Portal) *Portal {
 		MessageStatuses: make(chan *imessage.SendMessageStatus, 100),
 		MatrixMessages:  make(chan *event.Event, 100),
 		backfillStart:   make(chan struct{}),
-		ReadAt:          time.Now(),
 	}
 	portal.log = maulogadapt.ZeroAsMau(&portal.zlog)
 	if !br.IM.Capabilities().MessageSendResponses {
@@ -254,7 +253,6 @@ type Portal struct {
 	messageDedup     map[string]SentMessage
 	messageDedupLock sync.Mutex
 	Identifier       imessage.Identifier
-	ReadAt           time.Time
 
 	userIsTyping bool
 	typingLock   sync.Mutex
