@@ -163,8 +163,7 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 		}
 
 		if msg.Tapback != nil {
-			// TODO handle tapbacks
-			portal.log.Debugln("Skipping tapback", msg.GUID, "in backfill")
+			portal.log.Debugln("Skipping tapback", msg.GUID, "in backfill, handling later")
 			continue
 		}
 
@@ -198,6 +197,65 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 	return events, metas, metaIndexes, isRead, nil
 }
 
+func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
+	events := make([]*event.Event, 0, len(messages))
+	metas := make([]messageWithIndex, 0, len(messages))
+	metaIndexes := make(map[messageIndex]int, len(messages))
+	unreadThreshold := time.Duration(portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold) * time.Hour
+	var isRead bool
+	for _, msg := range messages {
+		if msg.Tapback == nil {
+			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, should've already handled")
+			continue
+		}
+
+		intent := portal.getIntentForMessage(msg, nil)
+		if intent == nil {
+			portal.log.Debugln("Skipping", msg.GUID, "in backfill (didn't get an intent)")
+			continue
+		}
+
+		dbMessage := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.Tapback.TargetGUID, msg.Tapback.TargetPart)
+		if dbMessage == nil {
+			//TODO BUG: This occurs when trying to find the target reaction for a rich link, related to #183
+			portal.log.Errorfln("Failed to get target message for tabpack, %+v", msg)
+			continue
+		}
+
+		evt := &event.Event{
+			Sender:    intent.UserID,
+			Type:      event.EventReaction,
+			Timestamp: msg.Time.UnixMilli(),
+			Content: event.Content{
+				Parsed: &event.ReactionEventContent{
+					RelatesTo: event.RelatesTo{
+						Type:    event.RelAnnotation,
+						EventID: dbMessage.MXID,
+						Key:     msg.Tapback.Type.Emoji(),
+					},
+				},
+			},
+		}
+
+		var err error
+		evt.Type, err = portal.encrypt(intent, &evt.Content, evt.Type)
+		if err != nil {
+			return nil, nil, nil, false, err
+		}
+		intent.AddDoublePuppetValue(&evt.Content)
+		if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
+			evt.ID = portal.deterministicEventID(msg.GUID, 0)
+		}
+
+		events = append(events, evt)
+		metas = append(metas, messageWithIndex{msg, intent, dbMessage, 0})
+		metaIndexes[messageIndex{msg.GUID, 0}] = len(metas)
+
+		isRead = msg.IsRead || msg.IsFromMe || (unreadThreshold >= 0 && time.Since(msg.Time) > unreadThreshold)
+	}
+	return events, metas, metaIndexes, isRead, nil
+}
+
 func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Message, forward, forwardIfNoMessages, markAsRead bool) (success bool) {
 	idMap := make(map[string][]id.EventID, len(messages))
 	for _, msg := range messages {
@@ -212,16 +270,90 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		portal.bridge.IM.SendBackfillResult(portal.GUID, backfillID, success, idMap)
 	}()
 	batchSending := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
-	events, metas, metaIndexes, isRead, err := portal.convertBackfill(messages)
+
+	var regularMessages []*imessage.Message
+	var tapbackMessages []*imessage.Message
+	for _, message := range messages {
+		if message.Tapback != nil {
+			tapbackMessages = append(tapbackMessages, message)
+		} else {
+			regularMessages = append(regularMessages, message)
+		}
+	}
+
+	events, metas, metaIndexes, isRead, err := portal.convertBackfill(regularMessages)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert messages for backfill: %v", err)
 		return false
 	}
-	portal.log.Debugfln("Converted %d messages into %d events to backfill", len(messages), len(events))
+	portal.log.Debugfln("Converted %d messages into %d events to backfill", len(regularMessages), len(events))
 	if len(events) == 0 {
 		return true
 	}
-	var eventIDs []id.EventID
+
+	eventIDs, sendErr := portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead, events, metas, metaIndexes)
+	if sendErr != nil {
+		return false
+	}
+
+	for i, meta := range metas {
+		idMap[meta.GUID] = append(idMap[meta.GUID], eventIDs[i])
+	}
+	txn, err := portal.bridge.DB.Begin()
+	if err != nil {
+		portal.log.Errorln("Failed to start transaction to save batch messages:", err)
+		return true
+	}
+	portal.log.Debugfln("Inserting %d event IDs to database to finish backfill %s", len(eventIDs), backfillID)
+	portal.finishBackfill(txn, eventIDs, metas)
+	portal.Update(txn)
+	err = txn.Commit()
+	if err != nil {
+		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
+	}
+
+	if len(tapbackMessages) == 0 {
+		portal.log.Infofln("Finished backfill %s", backfillID)
+		return true
+	}
+
+	events, metas, metaIndexes, isRead, err = portal.convertTapbacks(tapbackMessages)
+	if err != nil {
+		portal.log.Errorfln("Failed to convert tapbacks for backfill: %v", err)
+		return false
+	}
+	portal.log.Debugfln("Converted %d tapbacks into %d events to backfill", len(tapbackMessages), len(events))
+	if len(events) == 0 {
+		return true
+	}
+
+	eventIDs, sendErr = portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead, events, metas, metaIndexes)
+	if sendErr != nil {
+		return false
+	}
+
+	for i, meta := range metas {
+		idMap[meta.GUID] = append(idMap[meta.GUID], eventIDs[i])
+	}
+	txn, err = portal.bridge.DB.Begin()
+	if err != nil {
+		portal.log.Errorln("Failed to start transaction to save batch messages:", err)
+		return true
+	}
+	portal.log.Debugfln("Inserting %d event IDs to database to finish backfill %s", len(eventIDs), backfillID)
+	portal.finishBackfill(txn, eventIDs, metas)
+	portal.Update(txn)
+	err = txn.Commit()
+	if err != nil {
+		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
+	}
+
+	portal.log.Infofln("Finished backfill %s", backfillID)
+	return true
+}
+
+func (portal *Portal) sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead bool, events []*event.Event, metas []messageWithIndex,
+	metaIndexes map[messageIndex]int) (eventIDs []id.EventID, err error) {
 	if batchSending {
 		req := &mautrix.ReqBeeperBatchSend{
 			Events:              events,
@@ -234,7 +366,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		resp, err := portal.MainIntent().BeeperBatchSend(portal.MXID, req)
 		if err != nil {
 			portal.log.Errorln("Failed to batch send history:", err)
-			return false
+			return nil, err
 		}
 		eventIDs = resp.EventIDs
 	} else {
@@ -251,7 +383,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 			resp, err := meta.Intent.SendMassagedMessageEvent(portal.MXID, evt.Type, &evt.Content, evt.Timestamp)
 			if err != nil {
 				portal.log.Errorfln("Failed to send event #%d in history: %v", i, err)
-				return false
+				return nil, err
 			}
 			eventIDs[i] = resp.EventID
 		}
@@ -263,42 +395,21 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 			}
 		}
 	}
-	for i, meta := range metas {
-		idMap[meta.GUID] = append(idMap[meta.GUID], eventIDs[i])
-	}
-	txn, err := portal.bridge.DB.Begin()
-	if err != nil {
-		portal.log.Errorln("Failed to start transaction to save batch messages:", err)
-		return true
-	}
-	portal.log.Debugfln("Inserting %d event IDs to database to finish backfill %s", len(eventIDs), backfillID)
-	portal.finishBackfill(txn, eventIDs, metas)
-	portal.Update(txn)
-	err = txn.Commit()
-	if err != nil {
-		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
-	}
-	portal.log.Infofln("Finished backfill %s", backfillID)
-	return true
+	return eventIDs, nil
 }
 
 func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.EventID, metas []messageWithIndex) {
 	for i, info := range metas {
 		if info.Tapback != nil {
-			if info.Tapback.Remove {
-				// TODO handle removing tapbacks?
-			} else {
-				// TODO can existing tapbacks be modified in backfill?
-				dbTapback := portal.bridge.DB.Tapback.New()
-				dbTapback.PortalGUID = portal.GUID
-				dbTapback.SenderGUID = info.Sender.String()
-				dbTapback.MessageGUID = info.TapbackTarget.GUID
-				dbTapback.MessagePart = info.TapbackTarget.Part
-				dbTapback.GUID = info.GUID
-				dbTapback.Type = info.Tapback.Type
-				dbTapback.MXID = eventIDs[i]
-				dbTapback.Insert(txn)
-			}
+			dbTapback := portal.bridge.DB.Tapback.New()
+			dbTapback.PortalGUID = portal.GUID
+			dbTapback.SenderGUID = info.Sender.String()
+			dbTapback.MessageGUID = info.TapbackTarget.GUID
+			dbTapback.MessagePart = info.TapbackTarget.Part
+			dbTapback.GUID = info.GUID
+			dbTapback.Type = info.Tapback.Type
+			dbTapback.MXID = eventIDs[i]
+			dbTapback.Insert(txn)
 		} else {
 			dbMessage := portal.bridge.DB.Message.New()
 			dbMessage.PortalGUID = portal.GUID
