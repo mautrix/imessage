@@ -271,22 +271,12 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	}()
 	batchSending := portal.bridge.SpecVersions.Supports(mautrix.BeeperFeatureBatchSending)
 
-	var regularMessages []*imessage.Message
-	var tapbackMessages []*imessage.Message
-	for _, message := range messages {
-		if message.Tapback != nil {
-			tapbackMessages = append(tapbackMessages, message)
-		} else {
-			regularMessages = append(regularMessages, message)
-		}
-	}
-
-	events, metas, metaIndexes, isRead, err := portal.convertBackfill(regularMessages)
+	events, metas, metaIndexes, isRead, err := portal.convertBackfill(messages)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert messages for backfill: %v", err)
 		return false
 	}
-	portal.log.Debugfln("Converted %d messages into %d events to backfill", len(regularMessages), len(events))
+	portal.log.Debugfln("Converted %d messages into %d message events to backfill", len(messages), len(events))
 	if len(events) == 0 {
 		return true
 	}
@@ -312,17 +302,12 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
 	}
 
-	if len(tapbackMessages) == 0 {
-		portal.log.Infofln("Finished backfill %s", backfillID)
-		return true
-	}
-
-	events, metas, metaIndexes, isRead, err = portal.convertTapbacks(tapbackMessages)
+	events, metas, metaIndexes, isRead, err = portal.convertTapbacks(messages)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert tapbacks for backfill: %v", err)
 		return false
 	}
-	portal.log.Debugfln("Converted %d tapbacks into %d events to backfill", len(tapbackMessages), len(events))
+	portal.log.Debugfln("Converted %d messages into %d tapbacks events to backfill", len(messages), len(events))
 	if len(events) == 0 {
 		return true
 	}
