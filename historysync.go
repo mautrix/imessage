@@ -215,6 +215,10 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 			continue
 		}
 
+		if msg.Tapback.Remove {
+			continue
+		}
+
 		dbMessage := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.Tapback.TargetGUID, msg.Tapback.TargetPart)
 		if dbMessage == nil {
 			//TODO BUG: This occurs when trying to find the target reaction for a rich link, related to #183
@@ -386,6 +390,9 @@ func (portal *Portal) sendBackfillToMatrixServer(batchSending, forward, forwardI
 func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.EventID, metas []messageWithIndex) {
 	for i, info := range metas {
 		if info.Tapback != nil {
+			if info.Tapback.Remove {
+				continue
+			}
 			dbTapback := portal.bridge.DB.Tapback.New()
 			dbTapback.PortalGUID = portal.GUID
 			dbTapback.SenderGUID = info.Sender.String()
