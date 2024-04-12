@@ -1107,6 +1107,7 @@ func (bb *blueBubbles) SendMessage(chatID, text string, replyTo string, replyToP
 		TempGUID:            fmt.Sprintf("temp-%s", RandString(8)),
 		SelectedMessageGUID: replyTo,
 		PartIndex:           replyToPart,
+		DDScan:              bb.usingPrivateAPI,
 	}
 
 	var res SendTextResponse
@@ -1688,6 +1689,9 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// Attachments
 	message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
 	for i, attachment := range bbMessage.Attachments {
+		if attachment.HideAttachment {
+			continue
+		}
 		attachment, err := bb.downloadAttachment(attachment.GUID)
 		if err != nil {
 			bb.log.Err(err).Str("attachmentGUID", attachment.GUID).Msg("Failed to download attachment")
@@ -1705,12 +1709,63 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.GroupActionType = imessage.GroupActionType(bbMessage.GroupActionType)
 	message.NewGroupName = bbMessage.GroupTitle
 
+	for _, attachment := range bbMessage.Attachments {
+		bb.bridge.GetLog().Errorfln("%+v", attachment)
+	}
+
 	// TODO Richlinks
 	// message.RichLink =
+
+	if IsUrl(bbMessage.Text) && bbMessage.HasPayloadData {
+		//richlinkJSON, _ := bbMessage.PayloadData.(string)
+		//rlJson, _ := json.Marshal(&bbMessage.PayloadData)
+		//bb.bridge.GetLog().Errorln(string(rlJson))
+		//var payload PayloadData = bbMessage.PayloadData[0]
+
+		bb.bridge.GetLog().Errorfln("%+v", bbMessage.PayloadData)
+		// err := json.Unmarshal(rlJson, &richlink)
+		// if err != nil {
+		// 	bb.bridge.GetLog().Errorfln("FUCK, %v", err)
+		// }
+
+		bb.bridge.GetLog().Errorln("CONVERTING....")
+		// message.RichLink.OriginalURL = payload.UrlData[0].OriginalUrl.NSRelative
+		// message.RichLink.URL = payload.UrlData[0].Url.NSRelative
+		// message.RichLink.Title = payload.UrlData[0].Title
+		// message.RichLink.Summary = payload.UrlData[0].Summary
+		// // message.RichLink.SelectedText
+		// message.RichLink.SiteName = payload.UrlData[0].SiteName
+		// // message.RichLink.RelatedURL
+		// // message.RichLink.Creator
+		// // message.RichLink.CreatorFacebookProfile
+		// // message.RichLink.CreatorTwitterUsername
+		// message.RichLink.ItemType = payload.UrlData[0].ItemType
+
+		// message.RichLink.Icon.OriginalURL = payload.UrlData[0].IconMetadata.Url.NSRelative
+		// message.RichLink.Icon.Source.URL = payload.UrlData[0].IconMetadata.Url.NSRelative
+		// // message.RichLink.Icon.Size   //Size always seems to be 0,0 from BB
+
+		// message.RichLink.Image.OriginalURL = payload.UrlData[0].ImageMetadata.Url.NSRelative
+		// message.RichLink.Image.Source.URL = payload.UrlData[0].ImageMetadata.Url.NSRelative
+		// // message.RichLink.Image.Size
+
+		// message.RichLink.Video.Asset.OriginalURL = payload.UrlData[0].VideoMetadata.Url.NSRelative
+		// message.RichLink.Video.Asset.Source.URL = payload.UrlData[0].VideoMetadata.Url.NSRelative
+		// message.RichLink.Video.YouTubeURL = payload.UrlData[0].VideoMetadata.Url.NSRelative
+		// message.RichLink.Video.StreamingURL = payload.UrlData[0].VideoMetadata.Url.NSRelative
+		// message.RichLink.Video.Size
+		bb.bridge.GetLog().Errorln("THERE WAS AN ATTACHMENT!!! " + bbMessage.Text + " - " + strconv.Itoa(len(bbMessage.Attachments)))
+		//bb.bridge.GetLog().Errorln(bbMessage.)
+	}
 
 	message.ThreadID = bbMessage.ThreadOriginatorGUID
 
 	return &message, nil
+}
+
+func IsUrl(str string) bool {
+    u, err := url.Parse(str)
+    return err == nil && u.Scheme != "" && u.Host != ""
 }
 
 func (bb *blueBubbles) convertBBChatToiMessageChat(bbChat Chat) (*imessage.ChatInfo, error) {
@@ -1880,7 +1935,7 @@ func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 		MessageStatusCheckpoints: false,
 		DeliveredStatus:          bb.usingPrivateAPI,
 		ContactChatMerging:       false,
-		RichLinks:                false,
+		RichLinks:                true, //RichLinks:                bb.usingPrivateAPI,
 		ChatBridgeResult:         false,
 	}
 }

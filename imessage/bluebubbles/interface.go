@@ -175,7 +175,7 @@ type Message struct {
 	OriginalROWID             int          `json:"originalROWID,omitempty"`
 	OtherHandle               int          `json:"otherHandle,omitempty"`
 	PartCount                 int          `json:"partCount,omitempty"`
-	PayloadData               any          `json:"payloadData,omitempty"`
+	PayloadData               []PayloadData        `json:"payloadData,omitempty"`
 	ReplyToGUID               string       `json:"replyToGuid,omitempty"`
 	ShareDirection            int          `json:"shareDirection,omitempty"`
 	ShareStatus               int          `json:"shareStatus,omitempty"`
@@ -204,6 +204,41 @@ type Attachment struct {
 	Width          int64  `json:"width,omitempty"`
 	Metadata       any    `json:"metadata,omitempty"`
 }
+
+type PayloadData struct {
+	Version int `json:"$version,omitempty"`
+	Archiver string `json:"$archiver,omitempty"`
+	Top any `json:"$top,omitempty"`
+	Objects []any `json:"$objects,omitempty"`
+}
+
+
+// type PayloadData struct {
+// 	Type			int		   `json:"type,omitempty"`
+// 	UrlData 		URLData	   `json:"urlData,omitempty"` 
+// 	AppData 		any		   `json:"appData,omitempty"`
+// }
+
+// type URLData struct {
+// 	ImageMetadata	Metadata   `json:"imageMetadata,omitempty"`
+// 	VideoMetadata	Metadata   `json:"videoMetadata,omitempty"`
+// 	IconMetadata	Metadata   `json:"iconMetadata,omitempty"`
+// 	ItemType		string	   `json:"itemType,omitempty"`
+// 	OriginalUrl		URL		   `json:"originalURL,omitempty"`
+// 	Url				URL		   `json:"URL,omitempty"`
+// 	Title			string	   `json:"title,omitempty"`
+// 	Summary			string	   `json:"summary,omitempty"`
+// 	SiteName		string	   `json:"siteName,omitempty"`
+// }
+
+// type Metadata struct {
+// 	Size			string	   `json:"size,omitempty"`
+// 	Url				URL		   `json:"URL,omitempty"`
+// }
+
+// type URL struct {
+// 	NSRelative		string	   `json:"NS.relative,omitempty"`
+// }
 
 type AttachmentResponse struct {
 	Status  int64      `json:"status"`
@@ -242,6 +277,7 @@ type SendTextRequest struct {
 	Subject             string `json:"subject,omitempty"`
 	SelectedMessageGUID string `json:"selectedMessageGuid,omitempty"`
 	PartIndex           int    `json:"partIndex,omitempty"`
+	DDScan				bool   `json:"ddScan,omitempty"`
 }
 
 type UnsendMessage struct {
