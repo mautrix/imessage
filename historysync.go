@@ -167,6 +167,12 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 			continue
 		}
 
+		//Skip the last message in the array, we will add it later to correct inbox sorting
+		if msg == messages[len(messages)-1] && len(messages) > 1 /* we call this function again with one element in the array for the last message, so we'll want to process it */ {
+			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, last one in the convo")
+			continue
+		}
+
 		converted := portal.convertiMessage(msg, intent)
 		for index, conv := range converted {
 			evt := &event.Event{
@@ -204,8 +210,15 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 	unreadThreshold := time.Duration(portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold) * time.Hour
 	var isRead bool
 	for _, msg := range messages {
+		//Only want tapbacks
 		if msg.Tapback == nil {
 			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, should've already handled")
+			continue
+		}
+
+		//Skip the last message in the array, we will add it later to correct inbox sorting
+		if msg == messages[len(messages)-1] && len(messages) > 1 /* we call this function again with one element in the array for the last message, so we'll want to process it */ {
+			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, last one in the convo")
 			continue
 		}
 
@@ -215,6 +228,7 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 			continue
 		}
 
+		//If we don't process it, there won't be a reaction; at least for BB, we never have to remove a reaction
 		if msg.Tapback.Remove {
 			continue
 		}
@@ -289,23 +303,9 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	if sendErr != nil {
 		return false
 	}
+	portal.addBackfillToDB(metas, eventIDs, idMap, backfillID)
 
-	for i, meta := range metas {
-		idMap[meta.GUID] = append(idMap[meta.GUID], eventIDs[i])
-	}
-	txn, err := portal.bridge.DB.Begin()
-	if err != nil {
-		portal.log.Errorln("Failed to start transaction to save batch messages:", err)
-		return true
-	}
-	portal.log.Debugfln("Inserting %d event IDs to database to finish backfill %s", len(eventIDs), backfillID)
-	portal.finishBackfill(txn, eventIDs, metas)
-	portal.Update(txn)
-	err = txn.Commit()
-	if err != nil {
-		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
-	}
-
+	//We have to process tapbacks after all other messages because we need texts in the DB in order to target them
 	events, metas, metaIndexes, isRead, err = portal.convertTapbacks(messages)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert tapbacks for backfill: %v", err)
@@ -320,14 +320,43 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	if sendErr != nil {
 		return false
 	}
+	portal.addBackfillToDB(metas, eventIDs, idMap, backfillID)
 
+	//Process the last message in the conversation that we skipped before in converting, 
+	// this is dumb but Beeper sorts its inbox on when the event was recieved and not the timestamp
+	var lastMessage *imessage.Message = messages[len(messages)-1]
+	var lastMessages []*imessage.Message
+	lastMessages = append(lastMessages, lastMessage)
+	if lastMessage.Tapback == nil {
+		events, metas, metaIndexes, isRead, err = portal.convertBackfill(lastMessages)
+		if err != nil {
+			portal.log.Errorfln("Failed to convert messages for backfill: %v", err)
+			return false
+		}
+	} else {
+		events, metas, metaIndexes, isRead, err = portal.convertTapbacks(lastMessages)
+		if err != nil {
+			portal.log.Errorfln("Failed to convert tapbacks for backfill: %v", err)
+			return false
+		}
+	}
+	eventIDs, sendErr = portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead, events, metas, metaIndexes)
+	if sendErr != nil {
+		return false
+	}
+	portal.addBackfillToDB(metas, eventIDs, idMap, backfillID)
+
+	portal.log.Infofln("Finished backfill %s", backfillID)
+	return true
+}
+
+func (portal *Portal) addBackfillToDB(metas []messageWithIndex, eventIDs []id.EventID, idMap map[string][]id.EventID, backfillID string) {
 	for i, meta := range metas {
 		idMap[meta.GUID] = append(idMap[meta.GUID], eventIDs[i])
 	}
-	txn, err = portal.bridge.DB.Begin()
+	txn, err := portal.bridge.DB.Begin()
 	if err != nil {
 		portal.log.Errorln("Failed to start transaction to save batch messages:", err)
-		return true
 	}
 	portal.log.Debugfln("Inserting %d event IDs to database to finish backfill %s", len(eventIDs), backfillID)
 	portal.finishBackfill(txn, eventIDs, metas)
@@ -336,9 +365,6 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	if err != nil {
 		portal.log.Errorln("Failed to commit transaction to save batch messages:", err)
 	}
-
-	portal.log.Infofln("Finished backfill %s", backfillID)
-	return true
 }
 
 func (portal *Portal) sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead bool, events []*event.Event, metas []messageWithIndex,
