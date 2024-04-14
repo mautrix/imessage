@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/dyatlov/go-opengraph/opengraph"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
 	"github.com/sahilm/fuzzy"
@@ -1689,9 +1691,6 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// Attachments
 	message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
 	for i, attachment := range bbMessage.Attachments {
-		if attachment.HideAttachment {
-			continue
-		}
 		attachment, err := bb.downloadAttachment(attachment.GUID)
 		if err != nil {
 			bb.log.Err(err).Str("attachmentGUID", attachment.GUID).Msg("Failed to download attachment")
@@ -1709,63 +1708,105 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.GroupActionType = imessage.GroupActionType(bbMessage.GroupActionType)
 	message.NewGroupName = bbMessage.GroupTitle
 
-	for _, attachment := range bbMessage.Attachments {
-		bb.bridge.GetLog().Errorfln("%+v", attachment)
-	}
-
-	// TODO Richlinks
-	// message.RichLink =
-
-	if IsUrl(bbMessage.Text) && bbMessage.HasPayloadData {
-		//richlinkJSON, _ := bbMessage.PayloadData.(string)
-		//rlJson, _ := json.Marshal(&bbMessage.PayloadData)
-		//bb.bridge.GetLog().Errorln(string(rlJson))
-		//var payload PayloadData = bbMessage.PayloadData[0]
-
-		bb.bridge.GetLog().Errorfln("%+v", bbMessage.PayloadData)
-		// err := json.Unmarshal(rlJson, &richlink)
-		// if err != nil {
-		// 	bb.bridge.GetLog().Errorfln("FUCK, %v", err)
-		// }
-
-		bb.bridge.GetLog().Errorln("CONVERTING....")
-		// message.RichLink.OriginalURL = payload.UrlData[0].OriginalUrl.NSRelative
-		// message.RichLink.URL = payload.UrlData[0].Url.NSRelative
-		// message.RichLink.Title = payload.UrlData[0].Title
-		// message.RichLink.Summary = payload.UrlData[0].Summary
-		// // message.RichLink.SelectedText
-		// message.RichLink.SiteName = payload.UrlData[0].SiteName
-		// // message.RichLink.RelatedURL
-		// // message.RichLink.Creator
-		// // message.RichLink.CreatorFacebookProfile
-		// // message.RichLink.CreatorTwitterUsername
-		// message.RichLink.ItemType = payload.UrlData[0].ItemType
-
-		// message.RichLink.Icon.OriginalURL = payload.UrlData[0].IconMetadata.Url.NSRelative
-		// message.RichLink.Icon.Source.URL = payload.UrlData[0].IconMetadata.Url.NSRelative
-		// // message.RichLink.Icon.Size   //Size always seems to be 0,0 from BB
-
-		// message.RichLink.Image.OriginalURL = payload.UrlData[0].ImageMetadata.Url.NSRelative
-		// message.RichLink.Image.Source.URL = payload.UrlData[0].ImageMetadata.Url.NSRelative
-		// // message.RichLink.Image.Size
-
-		// message.RichLink.Video.Asset.OriginalURL = payload.UrlData[0].VideoMetadata.Url.NSRelative
-		// message.RichLink.Video.Asset.Source.URL = payload.UrlData[0].VideoMetadata.Url.NSRelative
-		// message.RichLink.Video.YouTubeURL = payload.UrlData[0].VideoMetadata.Url.NSRelative
-		// message.RichLink.Video.StreamingURL = payload.UrlData[0].VideoMetadata.Url.NSRelative
-		// message.RichLink.Video.Size
-		bb.bridge.GetLog().Errorln("THERE WAS AN ATTACHMENT!!! " + bbMessage.Text + " - " + strconv.Itoa(len(bbMessage.Attachments)))
-		//bb.bridge.GetLog().Errorln(bbMessage.)
-	}
-
 	message.ThreadID = bbMessage.ThreadOriginatorGUID
+
+	if IsUrl(bbMessage.Text) && bbMessage.HasDDResults && len(message.Attachments) > 0 {
+		var reader io.Reader
+		resp, err := http.Get(bbMessage.Text)
+		if err != nil {
+			bb.bridge.GetLog().Errorfln("Error while fetching url: %v", err)
+			return &message, nil
+		}
+		reader = resp.Body
+
+		og := opengraph.NewOpenGraph()
+		if err := og.ProcessHTML(reader); err != nil {
+			bb.bridge.GetLog().Errorfln("Error processing html: %v", err)
+			return &message, nil
+		}
+
+		if og != nil && og.SiteName != "" {
+			message.RichLink = &imessage.RichLink{}
+			message.RichLink.OriginalURL = og.URL
+			message.RichLink.URL = og.URL
+			message.RichLink.SiteName = og.SiteName
+			message.RichLink.Title = og.Title
+			if og.Description != "" {
+				message.RichLink.Summary = og.Description
+			} else {
+				message.RichLink.Summary = og.URL
+			}
+			if og.Profile != nil {
+				message.RichLink.Creator = og.Profile.Username
+			}
+
+			var icon []byte
+			var err error
+			if len(message.Attachments) > 0 && message.Attachments[0] != nil {
+				icon, err = message.Attachments[0].Read()
+			}
+			if err == nil {
+				message.RichLink.Icon = &imessage.RichLinkAsset{}
+				//message.RichLink.Icon.OriginalURL = og.URL + "/favicon.ico"
+				message.RichLink.Icon.Source = &imessage.RichLinkAssetSource{}
+				message.RichLink.Icon.Source.Data = icon
+				//message.RichLink.Icon.Source.URL = og.URL + "/favicon.ico"
+			}
+
+			if len(og.Images) > 0 {
+				message.RichLink.Image = &imessage.RichLinkAsset{}
+				message.RichLink.Image.OriginalURL = og.Images[0].URL
+				var image []byte
+				var err error
+				if len(message.Attachments) > 1 && message.Attachments[1] != nil {
+					image, err = message.Attachments[1].Read()
+				}
+				if err == nil && image != nil {
+					message.RichLink.Image.Source = &imessage.RichLinkAssetSource{}
+					message.RichLink.Image.Source.URL = og.Images[0].URL
+					message.RichLink.Image.Source.Data = image
+				}
+				message.RichLink.Image.MimeType = og.Images[0].Type
+				message.RichLink.Image.Size = &imessage.RichLinkAssetSize{}
+				message.RichLink.Image.Size.Height = float64(og.Images[0].Height)
+				message.RichLink.Image.Size.Width = float64(og.Images[0].Width)
+			}
+
+			if len(og.Videos) > 0 {
+				message.RichLink.Video = &imessage.RichLinkVideoAsset{}
+				message.RichLink.Video.StreamingURL = og.Videos[0].URL
+				message.RichLink.Video.YouTubeURL = og.Videos[0].URL
+				message.RichLink.Video.Asset.OriginalURL = og.Videos[0].URL
+				message.RichLink.Video.Asset.Source = &imessage.RichLinkAssetSource{}
+				message.RichLink.Video.Asset.Source.URL = og.Videos[0].URL
+				message.RichLink.Video.Asset.MimeType = og.Videos[0].Type
+				message.RichLink.Video.Asset.Size = &imessage.RichLinkAssetSize{}
+				message.RichLink.Video.Asset.Size.Height = float64(og.Videos[0].Height)
+				message.RichLink.Video.Asset.Size.Width = float64(og.Videos[0].Width)
+			}
+		}
+		resp.Body.Close()
+
+		//Remove the attachments iMessage sent to display the link, we want to remove them even if we don't have richlink data
+		message.Attachments = make([]*imessage.Attachment, 0)
+	}
 
 	return &message, nil
 }
 
 func IsUrl(str string) bool {
-    u, err := url.Parse(str)
-    return err == nil && u.Scheme != "" && u.Host != ""
+	url, err := url.ParseRequestURI(str)
+	if err != nil {
+		return false
+	}
+
+	address := net.ParseIP(url.Host)
+
+	if address == nil {
+		return strings.Contains(url.Host, ".")
+	}
+
+	return true
 }
 
 func (bb *blueBubbles) convertBBChatToiMessageChat(bbChat Chat) (*imessage.ChatInfo, error) {
@@ -1823,6 +1864,7 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 		PathOnDisk: tempFile.Name(),
 		FileName:   attachmentResponse.Data.TransferName,
 		MimeType:   attachmentResponse.Data.MimeType,
+		//HideAttachment: attachmentResponse.Data.HideAttachment,
 	}, nil
 }
 
