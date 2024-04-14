@@ -154,13 +154,12 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 	var lastMessage *imessage.Message
 	for _, msg := range messages {
 		if msg.Tapback != nil {
-			portal.log.Debugln("Skipping tapback", msg.GUID, "in backfill, handling later")
 			continue
 		}
 
 		//Skip the last message in the array, we will add it later to correct inbox sorting
 		if msg == messages[len(messages)-1] && len(messages) > 1 /* we call this function again with one element in the array for the last message, so we'll want to process it */ {
-			portal.log.Errorln("Skipping message", msg.GUID, "in backfill, last one in the convo")
+			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, last one in the convo")
 			lastMessage = msg
 			continue
 		}
@@ -206,13 +205,12 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 	for _, msg := range messages {
 		//Only want tapbacks
 		if msg.Tapback == nil {
-			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, should've already handled")
 			continue
 		}
 
 		//Skip the last message in the array, we will add it later to correct inbox sorting
 		if msg == messages[len(messages)-1] && len(messages) > 1 /* we call this function again with one element in the array for the last message, so we'll want to process it */ {
-			portal.log.Errorln("Skipping message", msg.GUID, "in backfill, last one in the convo")
+			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, last one in the convo")
 			lastMessage = msg
 			continue
 		}
