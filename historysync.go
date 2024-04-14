@@ -210,11 +210,6 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 			continue
 		}
 
-		//If we don't process it, there won't be a reaction; at least for BB, we never have to remove a reaction
-		if msg.Tapback.Remove {
-			continue
-		}
-
 		//Skip the last message in the array, we will add it later to correct inbox sorting
 		if msg == messages[len(messages)-1] && len(messages) > 1 /* we call this function again with one element in the array for the last message, so we'll want to process it */ {
 			portal.log.Errorln("Skipping message", msg.GUID, "in backfill, last one in the convo")
@@ -289,6 +284,13 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		if intent == nil {
 			portal.log.Debugln("Skipping", msg.GUID, "in backfill (didn't get an intent)")
 			continue
+		}
+		if msg.Tapback != nil && msg.Tapback.Remove {
+			//If we don't process it, there won't be a reaction; at least for BB, we never have to remove a reaction
+			if msg.Tapback.Remove {
+				portal.log.Debugln("Skipping", msg.GUID, "in backfill (it was a remove tapback)")
+				continue
+			}
 		}
 
 		validMessages = append(validMessages, msg)
