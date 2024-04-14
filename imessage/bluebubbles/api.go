@@ -1872,7 +1872,6 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 		PathOnDisk: tempFile.Name(),
 		FileName:   attachmentResponse.Data.TransferName,
 		MimeType:   attachmentResponse.Data.MimeType,
-		//HideAttachment: attachmentResponse.Data.HideAttachment,
 	}, nil
 }
 
@@ -1985,7 +1984,7 @@ func (bb *blueBubbles) Capabilities() imessage.ConnectorCapabilities {
 		MessageStatusCheckpoints: false,
 		DeliveredStatus:          bb.usingPrivateAPI,
 		ContactChatMerging:       false,
-		RichLinks:                true, //RichLinks:                bb.usingPrivateAPI,
+		RichLinks:                bb.usingPrivateAPI,
 		ChatBridgeResult:         false,
 	}
 }
