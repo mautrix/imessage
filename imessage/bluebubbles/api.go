@@ -1710,6 +1710,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 
 	message.ThreadID = bbMessage.ThreadOriginatorGUID
 
+	// Was the text a URL, does BB have a ddScan for it, did it come with any attachements because of the scan
 	if IsUrl(bbMessage.Text) && bbMessage.HasDDResults && len(message.Attachments) > 0 {
 		var reader io.Reader
 		resp, err := http.Get(bbMessage.Text)
@@ -1719,12 +1720,17 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 		}
 		reader = resp.Body
 
+		// Fetch the data ourselves because the payloadData object is raw from the iMessage DB, from BB.
+		// That would require a ton of parsing that the BB app does client side to become something useable but it's written in Dart
+		// See https://github.com/BlueBubblesApp/bluebubbles-app/blob/d0257c9080e82140602340b48f85fa148721553c/lib/models/global/payload_data.dart
 		og := opengraph.NewOpenGraph()
 		if err := og.ProcessHTML(reader); err != nil {
 			bb.bridge.GetLog().Errorfln("Error processing html: %v", err)
 			return &message, nil
 		}
 
+		// Was there any OpenGraph tags? Sometimes ddScan is able to produce data without them
+		// But this is the compromise for not wanting to parse payloadData
 		if og != nil && og.SiteName != "" {
 			message.RichLink = &imessage.RichLink{}
 			message.RichLink.OriginalURL = og.URL
@@ -1740,6 +1746,7 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 				message.RichLink.Creator = og.Profile.Username
 			}
 
+			// It's always assumed that the first attachment is the icon, the second is the banenr image
 			var icon []byte
 			var err error
 			if len(message.Attachments) > 0 && message.Attachments[0] != nil {
@@ -1747,8 +1754,8 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 			}
 			if err == nil {
 				message.RichLink.Icon = &imessage.RichLinkAsset{}
-				//message.RichLink.Icon.OriginalURL = og.URL + "/favicon.ico"
-				message.RichLink.Icon.Source = &imessage.RichLinkAssetSource{}
+				//message.RichLink.Icon.OriginalURL = og.URL + "/favicon.ico"	// Don't add URLs, if the icon is empty then it wil attempt to fetch the icon
+				message.RichLink.Icon.Source = &imessage.RichLinkAssetSource{}	// But the library doesn't provide anything for an icon
 				message.RichLink.Icon.Source.Data = icon
 				//message.RichLink.Icon.Source.URL = og.URL + "/favicon.ico"
 			}
@@ -1787,7 +1794,8 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 		}
 		resp.Body.Close()
 
-		//Remove the attachments iMessage sent to display the link, we want to remove them even if we don't have richlink data
+		// Remove the attachments iMessage sent to display the link
+		// We want to remove them even if we don't have OpenGraph data because ddScan probably sent attachments
 		message.Attachments = make([]*imessage.Attachment, 0)
 	}
 
