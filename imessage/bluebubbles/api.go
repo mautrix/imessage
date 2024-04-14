@@ -1754,8 +1754,10 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 			}
 			if err == nil {
 				message.RichLink.Icon = &imessage.RichLinkAsset{}
-				//message.RichLink.Icon.OriginalURL = og.URL + "/favicon.ico"	// Don't add URLs, if the icon is empty then it wil attempt to fetch the icon
-				message.RichLink.Icon.Source = &imessage.RichLinkAssetSource{}	// But the library doesn't provide anything for an icon
+				// Don't add URLs, if the icon is empty then it wil attempt to fetch the icon with the URL
+				// The library used also doesn't provide anything for an icon
+				//message.RichLink.Icon.OriginalURL = og.URL + "/favicon.ico"
+				message.RichLink.Icon.Source = &imessage.RichLinkAssetSource{}
 				message.RichLink.Icon.Source.Data = icon
 				//message.RichLink.Icon.Source.URL = og.URL + "/favicon.ico"
 			}
