@@ -1716,10 +1716,10 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 func (bb *blueBubbles) convertBBTapbackToImessageTapback(associatedMessageType string) (tbType imessage.TapbackType) {
 	if strings.Contains(associatedMessageType, "love") {
 		tbType = imessage.TapbackLove
-	} else if strings.Contains(associatedMessageType, "like") {
-		tbType = imessage.TapbackLike
 	} else if strings.Contains(associatedMessageType, "dislike") {
 		tbType = imessage.TapbackDislike
+	} else if strings.Contains(associatedMessageType, "like") {
+		tbType = imessage.TapbackLike
 	} else if strings.Contains(associatedMessageType, "laugh") {
 		tbType = imessage.TapbackLaugh
 	} else if strings.Contains(associatedMessageType, "emphasize") {
