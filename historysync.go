@@ -264,10 +264,8 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		}
 		if msg.Tapback != nil && msg.Tapback.Remove {
 			//If we don't process it, there won't be a reaction; at least for BB, we never have to remove a reaction
-			if msg.Tapback.Remove {
-				portal.log.Debugln("Skipping", msg.GUID, "in backfill (it was a remove tapback)")
-				continue
-			}
+			portal.log.Debugln("Skipping", msg.GUID, "in backfill (it was a remove tapback)")
+			continue
 		}
 
 		validMessages = append(validMessages, msg)
