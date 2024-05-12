@@ -145,22 +145,14 @@ type messageIndex struct {
 	Index int
 }
 
-func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, *imessage.Message, error) {
+func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
 	events := make([]*event.Event, 0, len(messages))
 	metas := make([]messageWithIndex, 0, len(messages))
 	metaIndexes := make(map[messageIndex]int, len(messages))
 	unreadThreshold := time.Duration(portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold) * time.Hour
 	var isRead bool
-	var lastMessage *imessage.Message
 	for _, msg := range messages {
 		if msg.Tapback != nil {
-			continue
-		}
-
-		//Skip the last message in the array, we will add it later to correct inbox sorting
-		if msg == messages[len(messages)-1] && len(messages) > 1 /* we call this function again with one element in the array for the last message, so we'll want to process it */ {
-			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, last one in the convo")
-			lastMessage = msg
 			continue
 		}
 
@@ -179,7 +171,7 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 			var err error
 			evt.Type, err = portal.encrypt(intent, &evt.Content, evt.Type)
 			if err != nil {
-				return nil, nil, nil, false, nil, err
+				return nil, nil, nil, false, err
 			}
 			intent.AddDoublePuppetValue(&evt.Content)
 			if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
@@ -192,26 +184,18 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 		}
 		isRead = msg.IsRead || msg.IsFromMe || (unreadThreshold >= 0 && time.Since(msg.Time) > unreadThreshold)
 	}
-	return events, metas, metaIndexes, isRead, lastMessage, nil
+	return events, metas, metaIndexes, isRead, nil
 }
 
-func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, *imessage.Message, error) {
+func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
 	events := make([]*event.Event, 0, len(messages))
 	metas := make([]messageWithIndex, 0, len(messages))
 	metaIndexes := make(map[messageIndex]int, len(messages))
 	unreadThreshold := time.Duration(portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold) * time.Hour
 	var isRead bool
-	var lastMessage *imessage.Message
 	for _, msg := range messages {
 		//Only want tapbacks
 		if msg.Tapback == nil {
-			continue
-		}
-
-		//Skip the last message in the array, we will add it later to correct inbox sorting
-		if msg == messages[len(messages)-1] && len(messages) > 1 /* we call this function again with one element in the array for the last message, so we'll want to process it */ {
-			portal.log.Debugln("Skipping message", msg.GUID, "in backfill, last one in the convo")
-			lastMessage = msg
 			continue
 		}
 
@@ -238,11 +222,6 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 			},
 		}
 
-		var err error
-		evt.Type, err = portal.encrypt(intent, &evt.Content, evt.Type)
-		if err != nil {
-			return nil, nil, nil, false, nil, err
-		}
 		intent.AddDoublePuppetValue(&evt.Content)
 		if portal.bridge.Config.Homeserver.Software == bridgeconfig.SoftwareHungry {
 			evt.ID = portal.deterministicEventID(msg.GUID, 0)
@@ -254,7 +233,7 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 
 		isRead = msg.IsRead || msg.IsFromMe || (unreadThreshold >= 0 && time.Since(msg.Time) > unreadThreshold)
 	}
-	return events, metas, metaIndexes, isRead, lastMessage, nil
+	return events, metas, metaIndexes, isRead, nil
 }
 
 func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Message, forward, forwardIfNoMessages, markAsRead bool) (success bool) {
@@ -294,7 +273,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		validMessages = append(validMessages, msg)
 	}
 
-	events, metas, metaIndexes, isRead, lastMessage, err := portal.convertBackfill(validMessages)
+	events, metas, metaIndexes, isRead, err := portal.convertBackfill(validMessages)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert messages for backfill: %v", err)
 		return false
@@ -311,7 +290,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	portal.addBackfillToDB(metas, eventIDs, idMap, backfillID)
 
 	//We have to process tapbacks after all other messages because we need texts in the DB in order to target them
-	events, metas, metaIndexes, isRead, lastTapback, err := portal.convertTapbacks(validMessages)
+	events, metas, metaIndexes, isRead, err = portal.convertTapbacks(validMessages)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert tapbacks for backfill: %v", err)
 		return false
@@ -319,27 +298,6 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 	portal.log.Debugfln("Converted %d messages into %d tapbacks events to backfill", len(messages), len(events))
 	if len(events) == 0 {
 		return true
-	}
-
-	eventIDs, sendErr = portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead, events, metas, metaIndexes)
-	if sendErr != nil {
-		return false
-	}
-	portal.addBackfillToDB(metas, eventIDs, idMap, backfillID)
-
-	//Process the last message in the conversation that we skipped before in converting,
-	// this is dumb but Beeper sorts its inbox on when the event was recieved and not the timestamp
-	var lastMessageArray []*imessage.Message
-	if lastMessage != nil {
-		lastMessageArray = append(lastMessageArray, lastMessage)
-		events, metas, metaIndexes, isRead, _, err = portal.convertBackfill(lastMessageArray)
-	} else if lastTapback != nil {
-		lastMessageArray = append(lastMessageArray, lastTapback)
-		events, metas, metaIndexes, isRead, _, err = portal.convertTapbacks(lastMessageArray)
-	}
-	if err != nil {
-		portal.log.Errorfln("Failed to convert last message for backfill: %v", err)
-		return false
 	}
 
 	eventIDs, sendErr = portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead, events, metas, metaIndexes)
