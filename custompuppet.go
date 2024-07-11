@@ -76,4 +76,3 @@ func (user *User) tryAutomaticDoublePuppeting() {
 		user.zlog.Info().Msg("Successfully automatically enabled double puppet")
 	}
 }
-
