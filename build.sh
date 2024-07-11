@@ -14,4 +14,4 @@ if [[ -f "$HEIF_PATH/libheif.1.dylib" ]]; then
 	build_tags="libheif"
 fi
 
-go build -tags "$build_tags" -ldflags "-X main.Tag=$(git describe --exact-match --tags 2>/dev/null) -X main.Commit=$(git rev-parse HEAD) -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'" "$@"
+go build -o mautrix-imessage -tags "$build_tags" -ldflags "-X main.Tag=$(git describe --exact-match --tags 2>/dev/null) -X main.Commit=$(git rev-parse HEAD) -X 'main.BuildTime=`date '+%b %_d %Y, %H:%M:%S'`'" "$@"

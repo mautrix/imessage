@@ -4,16 +4,6 @@ if [[ -z "$GID" ]]; then
 	GID="$UID"
 fi
 
-# Define functions.
-function fixperms {
-	chown -R $UID:$GID /data
-
-	# /opt/mautrix-imessage is read-only, so disable file logging if it's pointing there.
-	if [[ "$(yq e '.logging.writers[1].filename' /data/config.yaml)" == "./logs/mautrix-imessage.log" ]]; then
-		yq -I4 e -i 'del(.logging.writers[1])' /data/config.yaml
-	fi
-}
-
 if [[ ! -f /data/config.yaml ]]; then
 	cp /opt/mautrix-imessage/example-config.yaml /data/config.yaml
 	echo "Didn't find a config file."
@@ -32,5 +22,7 @@ if [[ ! -f /data/registration.yaml ]]; then
 fi
 
 cd /data
-fixperms
-exec su-exec $UID:$GID /usr/bin/mautrix-imessage
+
+chown -R $UID:$GID /data
+#exec su-exec $UID:$GID /usr/bin/mautrix-imessage
+exec /usr/bin/mautrix-imessage
