@@ -22,4 +22,3 @@ contains a general overview of what is supported by the bridge.
 
 ## Discussion
 Matrix room: [#imessage:maunium.net](https://matrix.to/#/#imessage:maunium.net)
-
