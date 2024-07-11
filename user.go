@@ -23,8 +23,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog"
 	log "maunium.net/go/maulogger/v2"
-
 	"maunium.net/go/mautrix/appservice"
 	"maunium.net/go/mautrix/bridge"
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
@@ -41,7 +41,7 @@ type User struct {
 
 	bridge *IMBridge
 	log    log.Logger
-
+	zlog   zerolog.Logger
 	DoublePuppetIntent *appservice.IntentAPI
 
 	mgmtCreateLock sync.Mutex

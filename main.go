@@ -481,7 +481,7 @@ func (br *IMBridge) isWarmingUp() bool {
 func (br *IMBridge) Start() {
 	br.ZLog.Debug().Msg("Finding bridge user")
 	br.user = br.loadDBUser()
-	br.user.initDoublePuppet()
+	br.user.tryAutomaticDoublePuppeting()
 
 	// If this bridge is in OnlyBackfill mode, then only run the backfill
 	// queue and the IPC listener, and not the new message listeners.

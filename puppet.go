@@ -152,6 +152,8 @@ func (puppet *Puppet) GetDisplayname() string {
 	return puppet.Displayname
 }
 
+func (puppet *Puppet) ClearCustomMXID() {}
+
 func (puppet *Puppet) GetAvatarURL() id.ContentURI {
 	return puppet.AvatarURL
 }

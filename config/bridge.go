@@ -39,6 +39,8 @@ type BridgeConfig struct {
 	UsernameTemplate    string `yaml:"username_template"`
 	DisplaynameTemplate string `yaml:"displayname_template"`
 
+	DoublePuppetConfig bridgeconfig.DoublePuppetConfig `yaml:",inline"`
+
 	PersonalFilteringSpaces bool `yaml:"personal_filtering_spaces"`
 
 	DeliveryReceipts    bool `yaml:"delivery_receipts"`
@@ -95,6 +97,10 @@ type BridgeConfig struct {
 	usernameTemplate    *template.Template `yaml:"-"`
 	displaynameTemplate *template.Template `yaml:"-"`
 	communityTemplate   *template.Template `yaml:"-"`
+}
+
+func (bc BridgeConfig) GetDoublePuppetConfig() bridgeconfig.DoublePuppetConfig {
+	return bc.DoublePuppetConfig
 }
 
 func (bc BridgeConfig) GetResendBridgeInfo() bool {

@@ -18,6 +18,7 @@ package config
 
 import (
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
+	"maunium.net/go/mautrix/id"
 
 	"go.mau.fi/mautrix-imessage/imessage"
 )
@@ -43,4 +44,10 @@ type Config struct {
 		SendOnStartup   bool   `yaml:"send_on_startup"`
 		PeriodicResolve int    `yaml:"periodic_resolve"`
 	} `yaml:"hacky_startup_test"`
+}
+
+func (config *Config) CanAutoDoublePuppet(userID id.UserID) bool {
+	_, homeserver, _ := userID.Parse()
+	_, hasSecret := config.Bridge.DoublePuppetConfig.SharedSecretMap[homeserver]
+	return hasSecret
 }
