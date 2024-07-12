@@ -3,7 +3,7 @@ FROM alpine:3.19
 ENV UID=1337 \
     GID=1337
 
-RUN apk add --no-cache ffmpeg su-exec ca-certificates bash jq curl yq
+RUN apk add --no-cache ffmpeg su-exec ca-certificates bash jq curl yq olm
 
 ARG EXECUTABLE=./mautrix-imessage
 COPY $EXECUTABLE /usr/bin/mautrix-imessage
