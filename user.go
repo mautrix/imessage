@@ -39,9 +39,9 @@ import (
 type User struct {
 	*database.User
 
-	bridge *IMBridge
-	log    log.Logger
-	zlog   zerolog.Logger
+	bridge             *IMBridge
+	log                log.Logger
+	zlog               zerolog.Logger
 	DoublePuppetIntent *appservice.IntentAPI
 
 	mgmtCreateLock sync.Mutex
