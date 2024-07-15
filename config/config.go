@@ -51,3 +51,9 @@ func (config *Config) CanAutoDoublePuppet(userID id.UserID) bool {
 	_, hasSecret := config.Bridge.DoublePuppetConfig.SharedSecretMap[homeserver]
 	return hasSecret
 }
+
+func (config *Config) GetDoublePuppetSecret(userID id.UserID) string {
+	_, homeserver, _ := userID.Parse()
+	secret := config.Bridge.DoublePuppetConfig.SharedSecretMap[homeserver]
+	return secret
+}
