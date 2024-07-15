@@ -479,7 +479,7 @@ func (br *IMBridge) isWarmingUp() bool {
 }
 
 func (br *IMBridge) Start() {
-	br.ZLog.Debug().Msg("Finding bridge user")
+	br.ZLog.Debug().Msg("Finding bridge user - trying to automatically enable double puppet")
 	br.user = br.loadDBUser()
 	br.user.tryAutomaticDoublePuppeting()
 
