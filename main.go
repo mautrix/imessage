@@ -58,7 +58,7 @@ var (
 	BuildTime = "unknown"
 )
 
-//go:embed example-config.yaml
+//go:embed config.yaml
 var ExampleConfig string
 
 var configURL = flag.MakeFull("u", "url", "The URL to download the config file from.", "").String()
