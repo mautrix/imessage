@@ -112,6 +112,7 @@ func (br *IMBridge) NewUser(dbUser *database.User) *User {
 		User:   dbUser,
 		bridge: br,
 		log:    br.Log.Sub("User").Sub(string(dbUser.MXID)),
+		zlog:   br.ZLog.With().Str("user", string(dbUser.MXID)).Logger(),
 	}
 
 	return user
