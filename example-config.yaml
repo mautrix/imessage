@@ -144,7 +144,8 @@ bridge:
     #
     # If set, double puppeting will be enabled automatically instead of the user
     # having to find an access token and run `login-matrix` manually.
-    login_shared_secret: null
+    login_shared_secret_map:
+        example.com: as_token:double_puppet_token
     # Homeserver URL for the double puppet. If null, will use the URL set in homeserver -> address
     double_puppet_server_url: null
     # Backfill settings

@@ -17,6 +17,9 @@
 package config
 
 import (
+	"encoding/json"
+	"log"
+
 	"maunium.net/go/mautrix/bridge/bridgeconfig"
 	"maunium.net/go/mautrix/id"
 
@@ -53,7 +56,13 @@ func (config *Config) CanAutoDoublePuppet(userID id.UserID) bool {
 }
 
 func (config *Config) GetDoublePuppetSecret(userID id.UserID) string {
-	_, homeserver, _ := userID.Parse()
-	secret := config.Bridge.DoublePuppetConfig.SharedSecretMap[homeserver]
-	return secret
+	sharedSecretMap := config.Bridge.DoublePuppetConfig.SharedSecretMap
+	// Convert the map to a JSON string
+	jsonData, err := json.Marshal(sharedSecretMap)
+	if err != nil {
+		log.Printf("Error marshalling SharedSecretMap: %v", err)
+		return ""
+	}
+
+	return string(jsonData)
 }
