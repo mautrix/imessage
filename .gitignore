@@ -4,6 +4,7 @@
 !.pre-commit-config.yaml
 !example-config.yaml
 !example-registration.yaml
+!config.yaml
 
 *.session
 *.json
