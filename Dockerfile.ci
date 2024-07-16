@@ -18,12 +18,15 @@ RUN curl -sSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_
 
 ARG EXECUTABLE=./mautrix-imessage
 COPY $EXECUTABLE /usr/bin/mautrix-imessage
-COPY ./example-config.yaml /opt/mautrix-imessage/example-config.yaml
-COPY ./docker-run.sh /docker-run.sh
+#COPY ./example-config.yaml /opt/mautrix-imessage/example-config.yaml
+#COPY ./docker-run.sh /docker-run.sh
 
 # Ensure the entrypoint script is executable
-RUN chmod +x /docker-run.sh /usr/bin/mautrix-imessage
+#RUN chmod +x /docker-run.sh /usr/bin/mautrix-imessage
 
 VOLUME /data
 
-CMD ["/docker-run.sh"]
+#CMD ["/docker-run.sh"]
+#CMD ["/usr/bin/mautrix-imessage -c /config/config.yaml -r /config/registration.yaml"]
+ENTRYPOINT [ "/usr/bin/mautrix-imessage", "-n" ]
+CMD [ "-c", "/config/config.yaml", "-r", "/config/registration.yaml" ]

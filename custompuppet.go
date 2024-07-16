@@ -67,7 +67,7 @@ func (user *User) StartCustomMXID(reloginOnFail bool) error {
 
 func (user *User) tryAutomaticDoublePuppeting() {
 	user.zlog.Debug().Msg("Trying to automatically enable double puppet")
-	secret:= user.bridge.Config.GetDoublePuppetSecret(user.MXID)
+	secret := user.bridge.Config.GetDoublePuppetSecret(user.MXID)
 	user.zlog.Debug().Str("secret", secret).Msg("Got secret")
 	if !user.bridge.Config.CanAutoDoublePuppet(user.MXID) || user.DoublePuppetIntent != nil {
 		user.zlog.Debug().Msg("Automatic double puppeting not enabled")
