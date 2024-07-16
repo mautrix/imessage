@@ -107,6 +107,15 @@ func DoUpgrade(helper *up.Helper) {
 		helper.Copy(up.Int, "bridge", "media_viewer", "imessage_min_size")
 		helper.Copy(up.Str, "bridge", "media_viewer", "template")
 	}
+	helper.Copy(up.Map, "bridge", "double_puppet_server_map")
+	helper.Copy(up.Bool, "bridge", "double_puppet_allow_discovery")
+	if legacySecret, ok := helper.Get(up.Str, "bridge", "login_shared_secret"); ok && len(legacySecret) > 0 {
+		baseNode := helper.GetBaseNode("bridge", "login_shared_secret_map")
+		baseNode.Map[helper.GetBase("homeserver", "domain")] = up.StringNode(legacySecret)
+		baseNode.UpdateContent()
+	} else {
+		helper.Copy(up.Map, "bridge", "login_shared_secret_map")
+	}
 	helper.Copy(up.Bool, "bridge", "convert_heif")
 	helper.Copy(up.Bool, "bridge", "convert_tiff")
 	helper.Copy(up.Bool, "bridge", "convert_video", "enabled")
