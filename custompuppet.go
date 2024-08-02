@@ -80,3 +80,39 @@ func (user *User) tryAutomaticDoublePuppeting() {
 		user.zlog.Info().Msg("Successfully automatically enabled double puppet")
 	}
 }
+
+func contains(slice []id.RoomID, item id.RoomID) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
+}
+
+func (user *User) tryAutomaticRoomMigrationToDirectChats() {
+	user.zlog.Debug().Msg("Trying to automatically migrate rooms to direct chats")
+
+	if !user.bridge.Config.Bridge.SyncDirectChatList {
+		user.zlog.Debug().Msg("Automatic room migration not enabled")
+		return
+	}
+
+	user.zlog.Debug().Msg("Automatic room migration enabled")
+
+	portals:= user.bridge.GetAllPortals()
+	directs:= user.getDirectChats()
+	userId:= user.GetMXID()
+	usersDirects:= directs[userId]
+	roomsToMigrate:= []id.RoomID{}
+
+	for _, portal:= range portals {
+		if !contains(usersDirects, portal.MXID) {
+			roomsToMigrate = append(roomsToMigrate, portal.MXID)
+		}
+	}
+
+	user.UpdateDirectChats(map[id.UserID][]id.RoomID{userId: roomsToMigrate})
+
+	user.zlog.Info().Msg("Successfully automatically migrated rooms to direct chats")
+}
