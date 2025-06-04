@@ -100,6 +100,13 @@ func (imh *iMessageHandler) rerouteGroupMMS(portal *Portal, msg *imessage.Messag
 		return portal
 	}
 	mergedChatGUID := imh.bridge.DB.MergedChat.Get(portal.GUID)
+	imh.bridge.ZLog.Trace().
+		Str("portal_guid", portal.GUID).
+		Str("merged_chat_guid", mergedChatGUID).
+		Str("portal_mxid", portal.MXID.String()).
+		Str("msg_guid", msg.GUID).
+		Str("msg_chatguid", msg.ChatGUID).
+		Msg("rerouteGroupMMS")
 	if mergedChatGUID != "" && mergedChatGUID != portal.GUID {
 		newPortal := imh.bridge.GetPortalByGUID(mergedChatGUID)
 		if newPortal.MXID != "" {
@@ -154,6 +161,10 @@ func (imh *iMessageHandler) updateChatGUIDByThreadID(portal *Portal, threadID st
 	if len(portal.MXID) > 0 || !portal.Identifier.IsGroup || threadID == "" || portal.bridge.Config.IMessage.Platform == "android" {
 		return portal
 	}
+	imh.bridge.ZLog.Trace().
+		Str("portal_guid", portal.GUID).
+		Str("thread_id", threadID).
+		Msg("updateChatGUIDByThreadID")
 	existingByThreadID := imh.bridge.FindPortalsByThreadID(threadID)
 	if len(existingByThreadID) > 1 {
 		imh.log.Warnfln("Found multiple portals with thread ID %s (message chat guid: %s)", threadID, portal.GUID)
@@ -175,9 +186,11 @@ func (imh *iMessageHandler) getPortalFromMessage(msg *imessage.Message) *Portal 
 }
 
 func (imh *iMessageHandler) HandleMessage(msg *imessage.Message) {
-	imh.log.Debugfln("Received incoming message %s in %s (%s)", msg.GUID, msg.ChatGUID, msg.ThreadID)
-	// TODO trace log
-	//imh.log.Debugfln("Received incoming message: %+v", msg)
+	imh.bridge.ZLog.Debug().
+		Str("msg_guid", msg.GUID).
+		Str("msg_chatguid", msg.ChatGUID).
+		Str("msg_threadid", msg.ThreadID).
+		Msg("HandleMessage")
 	portal := imh.updateChatGUIDByThreadID(
 		imh.rerouteGroupMMS(
 			imh.bridge.GetPortalByGUID(msg.ChatGUID),
