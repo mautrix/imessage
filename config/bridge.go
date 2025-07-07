@@ -18,6 +18,7 @@ package config
 
 import (
 	"bytes"
+	"log"
 	"strconv"
 	"strings"
 	"text/template"
@@ -177,10 +178,12 @@ func (bc BridgeConfig) FormatUsername(username string) string {
 type RelayConfig struct {
 	Enabled        bool                         `yaml:"enabled"`
 	Whitelist      []string                     `yaml:"whitelist"`
+	Blacklist      []string                     `yaml:"blacklist"`
 	MessageFormats map[event.MessageType]string `yaml:"message_formats"`
 
 	messageTemplates *template.Template  `yaml:"-"`
 	whitelistMap     map[string]struct{} `yaml:"-"`
+	blacklistMap     map[string]struct{} `yaml:"-"`
 	isAllWhitelisted bool                `yaml:"-"`
 }
 
@@ -200,6 +203,11 @@ func (rc *RelayConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	rc.blacklistMap = make(map[string]struct{}, len(rc.Blacklist))
+	for _, item := range rc.Blacklist {
+		rc.blacklistMap[item] = struct{}{}
+	}
+
 	rc.whitelistMap = make(map[string]struct{}, len(rc.Whitelist))
 	for _, item := range rc.Whitelist {
 		rc.whitelistMap[item] = struct{}{}
@@ -212,7 +220,7 @@ func (rc *RelayConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
-	if !rc.Enabled {
+	if !rc.Enabled || rc.IsBlacklisted(userID) {
 		return false
 	} else if rc.isAllWhitelisted {
 		return true
@@ -221,6 +229,17 @@ func (rc *RelayConfig) IsWhitelisted(userID id.UserID) bool {
 	} else {
 		_, homeserver, _ := userID.Parse()
 		_, ok = rc.whitelistMap[homeserver]
+		return len(homeserver) > 0 && ok
+	}
+}
+
+func (rc *RelayConfig) IsBlacklisted(userID id.UserID) bool {
+	log.Print("Im testing: " + string(userID))
+	if _, ok := rc.blacklistMap[string(userID)]; ok {
+		return true
+	} else {
+		_, homeserver, _ := userID.Parse()
+		_, ok = rc.blacklistMap[homeserver]
 		return len(homeserver) > 0 && ok
 	}
 }
