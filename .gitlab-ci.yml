@@ -27,13 +27,15 @@ build universal:
   - install_name_tool -add_rpath @executable_path $BINARY_NAME-arm64
   - install_name_tool -add_rpath /opt/homebrew/opt/libolm/lib $BINARY_NAME-arm64
   - install_name_tool -add_rpath /usr/local/opt/libolm/lib $BINARY_NAME-arm64
+  - install_name_tool -add_rpath /usr/local/lib $BINARY_NAME-arm64
   # Build amd64 binary
   - MACOSX_DEPLOYMENT_TARGET=10.13 LIBRARY_PATH=/usr/local/lib CGO_ENABLED=1 GOARCH=amd64 go build -ldflags "$GO_LDFLAGS" -o $BINARY_NAME-amd64
-  - install_name_tool -change /usr/local/opt/libolm/lib/libolm.3.dylib @rpath/libolm.3.dylib $BINARY_NAME-amd64
+  - install_name_tool -change /usr/local/lib/libolm.3.dylib @rpath/libolm.3.dylib $BINARY_NAME-amd64
   - install_name_tool -add_rpath @executable_path $BINARY_NAME-amd64
   - install_name_tool -add_rpath /usr/local/opt/libolm/lib $BINARY_NAME-amd64
+  - install_name_tool -add_rpath /usr/local/lib $BINARY_NAME-amd64
   # Create universal libolm and bridge binary
-  - lipo -create -output libolm.3.dylib /opt/homebrew/opt/libolm/lib/libolm.3.dylib /usr/local/opt/libolm/lib/libolm.3.dylib
+  - lipo -create -output libolm.3.dylib /opt/homebrew/opt/libolm/lib/libolm.3.dylib /usr/local/lib/libolm.3.dylib
   - lipo -create -output $BINARY_NAME $BINARY_NAME-arm64 $BINARY_NAME-amd64
   artifacts:
     paths:
