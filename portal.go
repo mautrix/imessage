@@ -784,6 +784,7 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 		IsDirect:        portal.IsPrivateChat(),
 		InitialState:    initialState,
 		CreationContent: creationContent,
+		RoomVersion:     "11",
 
 		BeeperAutoJoinInvites: autoJoinInvites,
 	}

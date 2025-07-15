@@ -231,6 +231,7 @@ func (user *User) GetSpaceRoom() id.RoomID {
 					user.MXID:              100,
 				},
 			},
+			RoomVersion: "11",
 		})
 
 		if err != nil {
