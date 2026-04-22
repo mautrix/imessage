@@ -4639,7 +4639,9 @@ impl LoginSession {
                     .map(|r| r.calculate_rereg_time_s().map(|t| t > 0).unwrap_or(false))
                     .unwrap_or(false);
                 let has_required_services = wrapped.inner[0].registration.contains_key(MADRID_SERVICE.name)
-                    && wrapped.inner[0].registration.contains_key(MULTIPLEX_SERVICE.name);
+                    && wrapped.inner[0].registration.contains_key(MULTIPLEX_SERVICE.name)
+                    && wrapped.inner[0].registration.contains_key(FACETIME_SERVICE.name)
+                    && wrapped.inner[0].registration.contains_key(VIDEO_SERVICE.name);
                 // Also validate MULTIPLEX cert isn't expired and data_hash
                 // (sub_services + client_data) hasn't changed since registration.
                 // A stale MULTIPLEX registration makes the bridge invisible to
@@ -4662,86 +4664,42 @@ impl LoginSession {
                     existing
                 } else {
                     info!(
-                        "Existing registration missing required services or expired, must re-register"
+                        "Existing registration missing required services or expired, must re-register with full 4-service bundle"
                     );
                     let mut users = vec![fresh_user];
-                    match register(
+                    // Match OB-Android: single register() call with all four
+                    // services (MADRID, MULTIPLEX, FACETIME, VIDEO). Peer iOS
+                    // gates unprompted StatusKit reshare on seeing a 4-service
+                    // IDS identity.
+                    register(
                         &*os_config,
                         &*conn.state.read().await,
-                        &[&MADRID_SERVICE, &MULTIPLEX_SERVICE],
+                        &[&MADRID_SERVICE, &MULTIPLEX_SERVICE, &FACETIME_SERVICE, &VIDEO_SERVICE],
                         &mut users,
                         &identity,
-                    ).await {
-                        Ok(()) => {},
-                        Err(e) => {
-                            warn!("Combined MADRID+MULTIPLEX registration failed: {} — retrying MADRID-only", e);
-                            users[0].registration.clear();
-                            register(
-                                &*os_config,
-                                &*conn.state.read().await,
-                                &[&MADRID_SERVICE],
-                                &mut users,
-                                &identity,
-                            ).await.map_err(|e| WrappedError::GenericError { msg: format!("MADRID-only registration also failed: {}", e) })?;
-                        }
-                    }
+                    ).await.map_err(|e| WrappedError::GenericError { msg: format!("4-service registration failed: {}", e) })?;
+                    let registered: Vec<&str> = users[0].registration.keys().map(|s| s.as_str()).collect();
+                    info!("Re-registration OK — services registered: [{}]", registered.join(", "));
                     users
                 }
             }
             _ => {
                 let mut users = vec![fresh_user];
                 if users[0].registration.is_empty() {
-                    info!("Registering identity (first login)...");
+                    info!("Registering identity (first login) with full 4-service bundle...");
                     register(
                         &*os_config,
                         &*conn.state.read().await,
-                        &[&MADRID_SERVICE, &MULTIPLEX_SERVICE],
+                        &[&MADRID_SERVICE, &MULTIPLEX_SERVICE, &FACETIME_SERVICE, &VIDEO_SERVICE],
                         &mut users,
                         &identity,
                     ).await.map_err(|e| WrappedError::GenericError { msg: format!("Registration failed: {}", e) })?;
+                    let registered: Vec<&str> = users[0].registration.keys().map(|s| s.as_str()).collect();
+                    info!("First-login registration OK — services registered: [{}]", registered.join(", "));
                 }
                 users
             }
         };
-
-        // StatusKit key exchange requires MULTIPLEX. If register() returned
-        // without MULTIPLEX in the user's registration map (e.g. the MADRID-only
-        // fallback above fired, or Apple 6005'd MULTIPLEX in the combined call),
-        // attempt one targeted register() with MULTIPLEX alone before giving up.
-        // Some IDS endpoints return 6005 on bundled eligibility checks but accept
-        // a standalone MULTIPLEX registration. Never let MULTIPLEX failure
-        // tank iMessage — the whole point of the MADRID-only fallback above is
-        // to keep iMessage alive when auxiliary services misbehave.
-        let mut users = users;
-        if !users.is_empty() && !users[0].registration.contains_key(MULTIPLEX_SERVICE.name) {
-            let present: Vec<&str> = users[0].registration.keys().map(|s| s.as_str()).collect();
-            error!(
-                "MULTIPLEX registration absent after register(); present services=[{}] — attempting MULTIPLEX-only retry; StatusKit key exchange will not work without it",
-                present.join(", ")
-            );
-            match register(
-                &*os_config,
-                &*conn.state.read().await,
-                &[&MULTIPLEX_SERVICE],
-                &mut users,
-                &identity,
-            ).await {
-                Ok(()) if users[0].registration.contains_key(MULTIPLEX_SERVICE.name) => {
-                    info!("MULTIPLEX-only retry succeeded — StatusKit key exchange available");
-                }
-                Ok(()) => {
-                    error!(
-                        "MULTIPLEX-only retry returned Ok but MULTIPLEX still absent from registration map — continuing without StatusKit; iMessage unaffected"
-                    );
-                }
-                Err(e) => {
-                    error!(
-                        "MULTIPLEX-only retry failed: {} — continuing without StatusKit; iMessage unaffected. Grep for this line + raise a TPP if StatusKit is needed",
-                        e
-                    );
-                }
-            }
-        }
 
         // Take ownership of the account to create a TokenProvider.
         // The MobileMe delegate from `delegates` is seeded into the WrappedTokenProvider
