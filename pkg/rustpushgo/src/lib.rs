@@ -1901,6 +1901,26 @@ impl WrappedTokenProvider {
             info!("GSA announce: already done (flag at {})", flag_path);
             return Ok(());
         }
+
+        // update_postdata needs the "com.apple.gs.idms.hb" (happy-birthday)
+        // GSA token. On fresh login that's populated as a side-effect of
+        // login_email_pass, but the warm-path restore_token_provider only
+        // injects the PET. Running a PET refresh first re-invokes
+        // login_email_pass internally, which repopulates the full GSA token
+        // set including HB — so update_postdata won't fail with
+        // HappyBirthdayError on first warm-path invocation.
+        {
+            let mut account = self.account.lock().await;
+            let username = account.username.clone();
+            let hashed_password = account.hashed_password.clone();
+            if let (Some(u), Some(h)) = (username, hashed_password) {
+                info!("GSA announce: priming GSA tokens via PET refresh");
+                refresh_pet_with_snapshot(&mut account, &u, &h, "announce_apple_device").await;
+            } else {
+                warn!("GSA announce: account has no username/password for prime — update_postdata may fail if HB token is missing");
+            }
+        }
+
         info!("GSA announce: calling update_postdata(\"Apple Device\", None, [\"icloud\", \"imessage\", \"facetime\"])");
         let mut account = self.account.lock().await;
         match account
