@@ -988,17 +988,27 @@ func (c *IMClient) Connect(ctx context.Context) {
 			// and failed with "StatusKit not initialized". Re-run it now that
 			// the StatusKit client is guaranteed to be ready.
 			c.subscribeToContactPresence(log)
-			// Best-effort status publish so contacts' iOS discovers this device.
-			// Non-fatal: the sharedchannels.auth GSA token may not be available
-			// (e.g. NeedsDevice2FA on token refresh). Invites still work via IDS.
-			if err := c.client.SetStatus(true); err != nil {
-				log.Warn().Err(err).Msg("StatusKit: failed to publish status (non-fatal, invites use IDS)")
-			} else {
-				log.Info().Msg("StatusKit: published status")
-			}
-			// Send our StatusKit key to known contacts to trigger key exchange.
-			// Uses IDS (not GSA), so this works even when GSA tokens are stale.
+			// Send our StatusKit key to known contacts BEFORE publishing status.
+			// Invites use IDS only (not GSA), so they must not be gated behind
+			// SetStatus — which can deadlock if anisette is poisoned (see
+			// project_anisette_panic_deadlock). OB-Android doesn't auto-call
+			// share_status either; invites are what drive peer key exchange.
 			c.inviteContactsToStatusSharing(log)
+			// Best-effort status publish in the background. Non-fatal and
+			// potentially blocking on GSA/anisette — never let it gate invite
+			// dispatch or presence subscription.
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Warn().Interface("panic", r).Msg("StatusKit SetStatus panicked — skipped")
+					}
+				}()
+				if err := c.client.SetStatus(true); err != nil {
+					log.Warn().Err(err).Msg("StatusKit: failed to publish status (non-fatal, invites use IDS)")
+				} else {
+					log.Info().Msg("StatusKit: published status")
+				}
+			}()
 
 			// Complement the `StatusKit startup` line above with the peer-key
 			// count, which is only available once the StatusKit client is ready.
