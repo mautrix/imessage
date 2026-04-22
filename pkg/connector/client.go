@@ -871,6 +871,27 @@ func (c *IMClient) Connect(ctx context.Context) {
 	}
 	c.client = client
 
+	// Announce this endpoint as a new Apple Device via GSA /circle, once per
+	// persisted login (flag-guarded in Rust at subsystem_state_path("postdata-done.flag")).
+	// This matches OB-Android's restore_account call to update_postdata and is
+	// the only post-register side-effect that differs from the bridge — Apple
+	// propagates the device enrollment via iCloud account state, which peer
+	// iOS uses to decide which endpoints to proactively reshare Focus keys to.
+	// Runs in a goroutine so a slow GSA call can't block Connect.
+	if c.tokenProvider != nil && *c.tokenProvider != nil {
+		tp := *c.tokenProvider
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Warn().Interface("panic", r).Msg("GSA announce: panicked — skipped (non-fatal)")
+				}
+			}()
+			if err := tp.AnnounceAppleDeviceIfNeeded(); err != nil {
+				log.Warn().Err(err).Msg("GSA announce: failed (non-fatal, will retry on next start)")
+			}
+		}()
+	}
+
 	// Get our handle (precedence: config > login metadata > first handle)
 	handles := client.GetHandles()
 	c.allHandles = handles

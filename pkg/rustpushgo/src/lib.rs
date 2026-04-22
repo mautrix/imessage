@@ -1878,6 +1878,53 @@ impl WrappedTokenProvider {
         refresh_pet_with_snapshot(&mut account, &username, &hashed_password, "refresh_pet_token").await;
         Ok(())
     }
+
+    /// Announce this endpoint as a new "Apple Device" via GSA `/circle`, exactly
+    /// once per persisted login. Matches OB-Android's `restore_account` call to
+    /// `update_postdata("Apple Device", None, &["icloud", "imessage", "facetime"])`
+    /// guarded by `postdata_done` in `gsa.plist` (ob/rust/src/api/api.rs:675-679).
+    ///
+    /// Why: at the IDS-register layer the bridge and OB are byte-identical, yet
+    /// peer iOS devices only reshape StatusKit keys to OB automatically. The
+    /// difference is this GSA side-channel call, which declares a new
+    /// Apple-Device-class identity on the account with cdpStatus/circleStatus=true
+    /// across iCloud/iMessage/FaceTime. Apple propagates that device-enrollment
+    /// via iCloud account state, and peer iOS uses it to decide which endpoints
+    /// to proactively share Focus keys with.
+    ///
+    /// Idempotent: guarded by a persisted flag file. Non-fatal: a failure here
+    /// does not break any other bridge functionality, and the call is retried on
+    /// every subsequent bridge start until it succeeds.
+    pub async fn announce_apple_device_if_needed(&self) -> Result<(), WrappedError> {
+        let flag_path = subsystem_state_path("postdata-done.flag");
+        if std::path::Path::new(&flag_path).exists() {
+            info!("GSA announce: already done (flag at {})", flag_path);
+            return Ok(());
+        }
+        info!("GSA announce: calling update_postdata(\"Apple Device\", None, [\"icloud\", \"imessage\", \"facetime\"])");
+        let mut account = self.account.lock().await;
+        match account
+            .update_postdata("Apple Device", None, &["icloud", "imessage", "facetime"])
+            .await
+        {
+            Ok(state) => {
+                info!("GSA announce: update_postdata OK (login_state={:?})", state);
+                if let Err(e) = std::fs::write(&flag_path, b"done") {
+                    warn!(
+                        "GSA announce: succeeded but failed to persist flag at {}: {} — will re-announce on next start",
+                        flag_path, e
+                    );
+                }
+                Ok(())
+            }
+            Err(e) => {
+                warn!("GSA announce: update_postdata failed: {:?} — will retry on next restart", e);
+                Err(WrappedError::GenericError {
+                    msg: format!("update_postdata failed: {:?}", e),
+                })
+            }
+        }
+    }
 }
 
 /// Reshape a stored MobileMe delegate plist value so that deserializing it as
