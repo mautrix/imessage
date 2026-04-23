@@ -1892,16 +1892,17 @@ impl WrappedTokenProvider {
     /// via iCloud account state, and peer iOS uses it to decide which endpoints
     /// to proactively share Focus keys with.
     ///
-    /// Idempotent: guarded by a persisted flag file. Non-fatal: a failure here
-    /// does not break any other bridge functionality, and the call is retried on
-    /// every subsequent bridge start until it succeeds.
+    /// Idempotent on Apple's side: same device-name + same account dedupes
+    /// server-side. Non-fatal: a failure here does not break any other bridge
+    /// functionality. Previously guarded by a persisted `postdata-done.flag`;
+    /// that guard was removed because empirical evidence (zero
+    /// "GSA announce" log lines after a restart in which grep for them came
+    /// up empty, despite prior success on older code) suggests an earlier
+    /// announce can land on Apple without actually propagating the device
+    /// state that peer iOS needs for reshare eligibility. Forcing re-announce
+    /// every bridge start is the simplest way to guarantee eventual
+    /// propagation; the request itself is cheap and de-duped server-side.
     pub async fn announce_apple_device_if_needed(&self) -> Result<(), WrappedError> {
-        let flag_path = subsystem_state_path("postdata-done.flag");
-        if std::path::Path::new(&flag_path).exists() {
-            info!("GSA announce: already done (flag at {})", flag_path);
-            return Ok(());
-        }
-
         // update_postdata needs the "com.apple.gs.idms.hb" (happy-birthday)
         // GSA token. On fresh login that's populated as a side-effect of
         // login_email_pass, but the warm-path restore_token_provider only
@@ -1929,12 +1930,6 @@ impl WrappedTokenProvider {
         {
             Ok(state) => {
                 info!("GSA announce: update_postdata OK (login_state={:?})", state);
-                if let Err(e) = std::fs::write(&flag_path, b"done") {
-                    warn!(
-                        "GSA announce: succeeded but failed to persist flag at {}: {} — will re-announce on next start",
-                        flag_path, e
-                    );
-                }
                 Ok(())
             }
             Err(e) => {
