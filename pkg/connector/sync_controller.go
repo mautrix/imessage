@@ -858,9 +858,8 @@ const statusKitPerHandleMinSpacing = 4 * time.Hour
 
 // inviteContactsToStatusSharing sends our StatusKit key to the peer
 // handles of every 1:1 iMessage portal that has not yet keyed us back,
-// one handle per IDS message, with a short delay between sends. Skips
-// handles we've invited within statusKitPerHandleMinSpacing so a
-// restart-inside-the-window doesn't re-hammer the same peer.
+// one handle per IDS message, with a short delay between sends. See
+// inviteContactsToStatusSharingOpts for the spacing-gate flag.
 //
 // Uses 1:1 portal participants — NOT the ghost table — as the source set,
 // matching OB-Android's `chat.participants.length == 1` gate
@@ -870,6 +869,17 @@ const statusKitPerHandleMinSpacing = 4 * time.Hour
 // interaction with, so inviting group-only ghosts is spam that produces
 // zero reshares and likely contributes to peer-side throttling.
 func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
+	c.inviteContactsToStatusSharingOpts(log, false)
+}
+
+// inviteContactsToStatusSharingOpts is the core invite sweep. When
+// respectSpacing is true (periodic tick path), handles invited within
+// statusKitPerHandleMinSpacing are skipped — bounds worst-case re-invite
+// rate for an unresponsive peer. When false (startup / post-backfill
+// paths), every pending 1:1 portal target gets invited regardless of
+// KV state — restart is an intentional event; users who restart the
+// bridge expect their StatusKit to re-initiate.
+func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respectSpacing bool) {
 	if c.client == nil || c.handle == "" {
 		log.Warn().Bool("client_nil", c.client == nil).Str("handle", c.handle).Msg("StatusKit invite: skipped (client or handle not ready)")
 		return
@@ -951,21 +961,24 @@ func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
 			skippedKnown++
 			continue
 		}
-		last := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitLastInviteKeyPrefix+h))
-		if last != "" {
-			if ts, parseErr := time.Parse(time.RFC3339, last); parseErr == nil && now.Sub(ts) < statusKitPerHandleMinSpacing {
-				skippedSpacing++
-				continue
+		if respectSpacing {
+			last := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitLastInviteKeyPrefix+h))
+			if last != "" {
+				if ts, parseErr := time.Parse(time.RFC3339, last); parseErr == nil && now.Sub(ts) < statusKitPerHandleMinSpacing {
+					skippedSpacing++
+					continue
+				}
 			}
 		}
 		pending = append(pending, h)
 	}
 
 	log.Info().
-		Int("total_ghosts", len(allGhosts)).
+		Int("total_targets", len(allGhosts)).
 		Int("already_keyed", skippedKnown).
 		Int("spacing_skip", skippedSpacing).
 		Int("pending", len(pending)).
+		Bool("respect_spacing", respectSpacing).
 		Msg("StatusKit invite: plan")
 
 	if len(pending) == 0 {

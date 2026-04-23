@@ -7740,18 +7740,19 @@ func (c *IMClient) periodicPetRefresh(log zerolog.Logger) {
 }
 
 // periodicStatusSharingReinvite re-runs the pending-only StatusKit invite
-// sweep every 4h. Peers who've already keyed us are skipped inside
-// inviteContactsToStatusSharing. Per-ghost KV spacing inside that function
-// also prevents the tick from hammering the same unresponsive peer if the
-// bridge restarts mid-window. First tick fires after the full interval so
-// we don't pile on top of the startup sweep.
+// sweep every 4h. Peers who've already keyed us are skipped inside the
+// sweep. The periodic path sets respectSpacing=true so per-handle KV
+// timestamps bound worst-case re-invite rate for unresponsive peers.
+// Startup and post-backfill paths pass respectSpacing=false: a restart
+// is intentional and should always re-initiate invites regardless of
+// KV state from the prior session.
 func (c *IMClient) periodicStatusSharingReinvite(log zerolog.Logger) {
 	ticker := time.NewTicker(4 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			c.inviteContactsToStatusSharing(log)
+			c.inviteContactsToStatusSharingOpts(log, true)
 		case <-c.stopChan:
 			return
 		}
