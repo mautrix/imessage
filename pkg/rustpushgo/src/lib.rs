@@ -4214,7 +4214,24 @@ fn read_plist_state<T: serde::de::DeserializeOwned>(path: &str) -> Option<T> {
 }
 
 fn persist_plist_state<T: serde::Serialize>(path: &str, state: &T) {
-    if let Err(err) = plist::to_file_xml(path, state) {
+    // Write to a sibling tmp file, then atomic-rename. Sidesteps EACCES
+    // when the existing file at `path` is owned by a UID different from
+    // the current bridge process (stranded from a prior deploy under a
+    // different uid/gid — seen on Beeper-hosted infra where plist files
+    // landed as 0644 owned by a previous deploy's user, leaving the
+    // current bridge with read-but-not-write access). The tmp file
+    // inherits our uid; rename(2) replaces the old inode regardless of
+    // its ownership, since we own the parent directory.
+    let tmp_path = format!("{}.tmp.{}", path, std::process::id());
+    let write_result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = std::fs::File::create(&tmp_path)?;
+        plist::to_writer_xml(&mut file, state)?;
+        file.sync_all()?;
+        std::fs::rename(&tmp_path, path)?;
+        Ok(())
+    })();
+    if let Err(err) = write_result {
+        let _ = std::fs::remove_file(&tmp_path);
         warn!("Failed to persist state to {}: {}", path, err);
     }
 }
