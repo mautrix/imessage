@@ -856,16 +856,19 @@ const statusKitLastInviteKeyPrefix = "statuskit.last_invite."
 // gets at most one invite per tick worst case.
 const statusKitPerHandleMinSpacing = 4 * time.Hour
 
-// inviteContactsToStatusSharing sends our StatusKit key to ghost handles
-// that have not yet keyed us back, one handle per IDS message, with a
-// short delay between sends. Skips handles we've invited within
-// statusKitPerHandleMinSpacing so a restart-inside-the-window doesn't
-// re-hammer the same peer.
+// inviteContactsToStatusSharing sends our StatusKit key to the peer
+// handles of every 1:1 iMessage portal that has not yet keyed us back,
+// one handle per IDS message, with a short delay between sends. Skips
+// handles we've invited within statusKitPerHandleMinSpacing so a
+// restart-inside-the-window doesn't re-hammer the same peer.
 //
-// Matches OB-Android's per-chat invite shape (one handle per
-// invite_to_channel call) rather than batching all participants into one
-// IDS message, and filters to pending peers so re-invites don't go to
-// contacts who already keyed us.
+// Uses 1:1 portal participants — NOT the ghost table — as the source set,
+// matching OB-Android's `chat.participants.length == 1` gate
+// (chat_manager.dart:70). Ghosts include group-chat-only contacts whose
+// iOS devices have no 1:1 keysharing relationship with us; peer iOS
+// appears to filter invites from devices it hasn't had 1:1 iMessage
+// interaction with, so inviting group-only ghosts is spam that produces
+// zero reshares and likely contributes to peer-side throttling.
 func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
 	if c.client == nil || c.handle == "" {
 		log.Warn().Bool("client_nil", c.client == nil).Str("handle", c.handle).Msg("StatusKit invite: skipped (client or handle not ready)")
@@ -879,34 +882,54 @@ func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
 	}()
 
 	ctx := context.Background()
-	rows, err := c.Main.Bridge.DB.RawDB.QueryContext(ctx, "SELECT id FROM ghost WHERE bridge_id=$1", c.Main.Bridge.ID)
+	portals, err := c.Main.Bridge.GetAllPortalsWithMXID(ctx)
 	if err != nil {
-		log.Warn().Err(err).Msg("StatusKit invite: failed to query ghosts")
+		log.Warn().Err(err).Msg("StatusKit invite: failed to query portals")
 		return
 	}
 	selfHandles := make(map[string]struct{}, len(c.allHandles))
 	for _, h := range c.allHandles {
 		selfHandles[h] = struct{}{}
 	}
-	var allGhosts []string
-	var rawCount int
-	for rows.Next() {
-		var ghostID string
-		if err := rows.Scan(&ghostID); err != nil {
+
+	// Iterate 1:1 DM portals only. Portal.ID for a DM IS the peer's handle
+	// (tel:+1... or mailto:...). Group portals have `gid:` prefix or a
+	// comma-joined participant ID; both are rejected by isGroupPortalID.
+	// De-dupe via a set in case two portals ever share a handle.
+	targetSet := make(map[string]struct{})
+	var rawCount, groupSkipped, selfSkipped int
+	for _, portal := range portals {
+		if portal == nil {
+			continue
+		}
+		// Only consider portals owned by this login.
+		if portal.Receiver != c.UserLogin.ID {
 			continue
 		}
 		rawCount++
-		if _, isSelf := selfHandles[ghostID]; isSelf {
+		id := string(portal.ID)
+		if isGroupPortalID(id) {
+			groupSkipped++
 			continue
 		}
-		allGhosts = append(allGhosts, ghostID)
+		if _, isSelf := selfHandles[id]; isSelf {
+			selfSkipped++
+			continue
+		}
+		targetSet[id] = struct{}{}
 	}
-	if err := rows.Err(); err != nil {
-		log.Warn().Err(err).Msg("StatusKit invite: ghost row iteration error")
+	allGhosts := make([]string, 0, len(targetSet))
+	for h := range targetSet {
+		allGhosts = append(allGhosts, h)
 	}
-	rows.Close()
+	log.Info().
+		Int("portals_raw", rawCount).
+		Int("group_skipped", groupSkipped).
+		Int("self_skipped", selfSkipped).
+		Int("one_to_one_targets", len(allGhosts)).
+		Msg("StatusKit invite: portal sweep")
 	if len(allGhosts) == 0 {
-		log.Warn().Int("raw_count", rawCount).Msg("StatusKit invite: zero ghost handles — nothing to invite")
+		log.Warn().Msg("StatusKit invite: no 1:1 portal targets — nothing to invite")
 		return
 	}
 
