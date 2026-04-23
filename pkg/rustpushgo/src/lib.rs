@@ -7583,7 +7583,23 @@ impl Client {
         }
 
         let token = sk.request_handles(&augmented).await;
-        self.statuskit_interest_tokens.lock().await.push(token);
+        // Replace (not accumulate) interest tokens. subscribe_to_status
+        // may be called multiple times (post-init + post-backfill + future
+        // re-subscribe paths); without clearing, each call leaks the
+        // previous token, pinning stale per-handle subscriptions on
+        // StatusKitClient's internal channel-interest map. Callers treat
+        // this function as "set the current subscription set", matching
+        // OB-Android's `requestHandles(to: [participant])` semantics —
+        // one authoritative interest list per chat activation.
+        {
+            let mut tokens = self.statuskit_interest_tokens.lock().await;
+            let prev = tokens.len();
+            tokens.clear();
+            tokens.push(token);
+            if prev > 0 {
+                info!("Dropped {} previous interest token(s) before re-subscribing", prev);
+            }
+        }
         info!(
             "Requested presence subscription for {} handle(s) ({} ghost + {} from keys)",
             augmented.len(),
