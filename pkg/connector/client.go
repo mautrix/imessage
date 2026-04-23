@@ -1348,12 +1348,33 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 		// the tel: handle, so we derive the ghost from the resolved portal.
 		//
 		// Resolution order for mailto: handles:
+		//   (0) statusKitPortalCache — learned from inbound message traffic,
+		//       covers any peer who has ever messaged bridge regardless of
+		//       whether they appear in iCloud contacts.
 		//   (1) address-book phones (fast, no network)
 		//   (2) IDS correlation — self-bounding 5s tokio timeout in Rust
 		//   (3) mailto: portal itself as absolute last resort
 		var portal *bridgev2.Portal
 
-		if strings.HasPrefix(normalizedUser, "mailto:") {
+		// (0) Fast path: check the learned sender→portal cache first. This
+		// is populated from every inbound message, so any peer who has
+		// messaged bridge has a direct mapping here that doesn't depend on
+		// iCloud CardDAV contact completeness (the common failure mode for
+		// reshare correlation).
+		for _, key := range [2]string{user, normalizedUser} {
+			if key == "" {
+				continue
+			}
+			if cached, ok := c.statusKitPortalCache.Load(key); ok {
+				if p := findPortal(cached.(networkid.PortalID)); p != nil {
+					portal = p
+					log.Info().Str("user", user).Str("portal_id", string(p.ID)).Msg("StatusKit: resolved via learned sender cache")
+					break
+				}
+			}
+		}
+
+		if portal == nil && strings.HasPrefix(normalizedUser, "mailto:") {
 			// (1) Address-book.
 			contact := c.lookupContact(user)
 			if contact != nil {
@@ -1384,7 +1405,7 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 					portal = p
 				}
 			}
-		} else {
+		} else if portal == nil {
 			portalID := c.resolveContactPortalID(normalizedUser)
 			portalID = c.resolveExistingDMPortalID(string(portalID))
 			portal = findPortal(portalID)
@@ -2063,6 +2084,18 @@ func (c *IMClient) handleMessage(log zerolog.Logger, msg rustpushgo.WrappedMessa
 	sender := c.makeEventSender(msg.Sender)
 	portalKey := c.makePortalKey(msg.Participants, msg.GroupName, msg.Sender, msg.SenderGuid)
 	sender = c.canonicalizeDMSender(portalKey, sender)
+
+	// Eagerly learn sender-handle → portal mapping for StatusKit presence
+	// correlation. A peer iPhone that reshares Focus keys addresses the APS
+	// payload to whichever of the user's handles they use to reach them — so
+	// a reshare can arrive at bridge with a sender handle that has no matching
+	// portal ID (e.g. mailto:x@y.com when the portal is tel:+X). The iCloud
+	// CardDAV-based resolver often fails for peers missing from contacts. By
+	// stamping the cache on every inbound 1:1 message, we ensure any peer
+	// who's ever messaged bridge has a direct lookup path for presence.
+	if msg.Sender != nil && *msg.Sender != "" && !isGroupPortalID(string(portalKey.ID)) && portalKey.ID != "unknown" {
+		c.statusKitPortalCache.Store(*msg.Sender, portalKey.ID)
+	}
 
 	// Drop messages that couldn't be resolved to a real portal.
 	// makePortalKey returns ID:"unknown" when participants and sender are both
