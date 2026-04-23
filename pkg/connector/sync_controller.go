@@ -771,7 +771,14 @@ func (c *IMClient) setContactsReady(log zerolog.Logger) {
 	}
 	go c.refreshGhostNamesFromContacts(log)
 	go c.refreshGroupPortalNamesFromContacts(log)
-	go c.subscribeToContactPresence(log)
+	// Presence subscription only needs to run on first-ready and whenever new
+	// StatusKit keys arrive (via OnKeysReceived). The ghost set doesn't change
+	// per periodic contact-sync tick; re-subscribing every 15 minutes just
+	// churns APS interest tokens for no gain and spams the journal. Leave
+	// incremental updates to OnKeysReceived.
+	if firstTime {
+		go c.subscribeToContactPresence(log)
+	}
 }
 
 // subscribeToContactPresence subscribes to iMessage presence updates for all
