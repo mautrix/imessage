@@ -664,16 +664,6 @@ func (c *IMClient) onForwardBackfillDone() {
 			go c.refreshGhostNamesFromContacts(log.Logger)
 		}
 
-		// Send StatusKit keysharing invites now that ghosts exist.
-		// On fresh reset, subscribeAfterInit runs before CloudKit sync
-		// creates ghosts, so it returns early with no handles. This
-		// post-backfill call ensures invites go out once we have
-		// handles to invite.
-		go c.inviteContactsToStatusSharing(log.Logger)
-		// Belt-and-suspenders: also trigger the pending-reinvite path so
-		// contacts who were in the DB but never responded to earlier
-		// invites get another chance the moment backfill settles.
-		go c.reinvitePendingStatusSharingGhosts(log.Logger)
 	}
 }
 
@@ -1009,15 +999,17 @@ func (c *IMClient) Connect(ctx context.Context) {
 			// and failed with "StatusKit not initialized". Re-run it now that
 			// the StatusKit client is guaranteed to be ready.
 			c.subscribeToContactPresence(log)
-			// Send our StatusKit key to known contacts BEFORE publishing status.
-			// Invites use IDS only (not GSA), so they must not be gated behind
-			// SetStatus — which can deadlock if anisette is poisoned (see
-			// project_anisette_panic_deadlock). OB-Android doesn't auto-call
-			// share_status either; invites are what drive peer key exchange.
-			c.inviteContactsToStatusSharing(log)
+			// No automatic invite on startup — matches OB-Android, which only
+			// calls invite_to_channel on explicit per-chat user action (zen
+			// mode share toggle). Bulk startup invites appear to trip peer-side
+			// rate limiting / spam filtering that prevents reshares from
+			// arriving. Peer keys flow passively on peer-side status changes
+			// via the channel subscription subscribeToContactPresence holds.
+			// Manual invite is available via the !statuskit-invite-all admin
+			// command for when explicit fan-out is actually wanted.
 			// Best-effort status publish in the background. Non-fatal and
-			// potentially blocking on GSA/anisette — never let it gate invite
-			// dispatch or presence subscription.
+			// potentially blocking on GSA/anisette — never let it gate presence
+			// subscription.
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -1059,7 +1051,6 @@ func (c *IMClient) Connect(ctx context.Context) {
 	c.msgBuffer = &messageBuffer{client: c}
 	go c.periodicStateSave(log)
 	go c.periodicPetRefresh(log)
-	go c.periodicStatusSharingReinvite(log)
 	go c.startSharedStreamsWatcher(log)
 
 	// Ensure shared-profile schema and hydrate the in-memory cache from the
@@ -1759,7 +1750,6 @@ func (c *IMClient) OnKeysReceived() {
 		Logger()
 	log.Info().Msg("StatusKit: key-sharing message received — re-subscribing to presence")
 	go c.subscribeToContactPresence(log)
-	go c.reciprocateStatusSharingKeys(log)
 }
 
 // OnMessage is called by rustpush when a message is received via APNs.
@@ -7732,24 +7722,6 @@ func (c *IMClient) periodicPetRefresh(log zerolog.Logger) {
 			} else {
 				log.Debug().Msg("Periodic PET refresh completed")
 			}
-		case <-c.stopChan:
-			return
-		}
-	}
-}
-
-// periodicStatusSharingReinvite re-invites ghosts whose devices haven't
-// responded to our StatusKit key invite. Tick cadence (1h) is deliberately
-// short, but the per-ghost backoff inside reinvitePendingStatusSharingGhosts
-// keeps worst-case IDS keysharing load bounded. First tick fires after the
-// full interval so we don't pile on top of the startup invite.
-func (c *IMClient) periodicStatusSharingReinvite(log zerolog.Logger) {
-	ticker := time.NewTicker(1 * time.Hour)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			c.reinvitePendingStatusSharingGhosts(log)
 		case <-c.stopChan:
 			return
 		}
