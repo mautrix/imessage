@@ -1017,11 +1017,35 @@ func (c *IMClient) Connect(ctx context.Context) {
 			// 12h on passive-only yielded zero real-iOS reshares, whereas
 			// OB (which invites one at a time) gets reshares fine.
 			go c.inviteContactsToStatusSharing(log)
-			// Deliberately no startup SetStatus(true): OB-Android only calls
-			// share_status via its native zen-mode hooks (StatusQuery.kt on
-			// OS DND state change), never unconditionally at app startup.
-			// Publishing status before peers have our key is wasted bytes
-			// and diverges from OB's shape for no observed benefit.
+			// Share status "available" once at startup. Empirically, peer iOS
+			// reciprocates a share with its own reshare, which is what gives
+			// us the key material to decrypt their subsequent presence
+			// updates. OB-Android only calls share_status from its zen-mode
+			// hooks (StatusQuery.kt on OS DND change) — but bridge has no OS
+			// DND to hook, and gating share behind a bot command puts a
+			// per-user setup step in the way that most users won't discover.
+			// So: share "available" unconditionally on startup. Bridge has no
+			// Focus mode of its own; "available" is the only truthful state.
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Warn().Interface("panic", r).Msg("StatusKit startup share panicked")
+					}
+				}()
+				sk, err := c.client.GetStatuskitClient()
+				if err != nil || sk == nil {
+					log.Debug().Err(err).Msg("StatusKit startup share skipped — client not ready")
+					return
+				}
+				if c.tokenProvider != nil && *c.tokenProvider != nil {
+					_ = safeRefreshPetToken(*c.tokenProvider)
+				}
+				if err := sk.ShareStatus(true, nil); err != nil {
+					log.Warn().Err(err).Msg("StatusKit startup share_status failed")
+					return
+				}
+				log.Info().Msg("StatusKit startup share_status(available) published")
+			}()
 
 			// Complement the `StatusKit startup` line above with the peer-key
 			// count, which is only available once the StatusKit client is ready.

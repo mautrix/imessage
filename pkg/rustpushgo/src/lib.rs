@@ -6585,8 +6585,30 @@ pub async fn new_client(
                                         sk.state.read().await.keys.keys().cloned().collect();
                                     let new_channels: Vec<&String> = keys_after.difference(&keys_before).collect();
                                     if !new_channels.is_empty() {
-                                        info!("StatusKit key-sharing message received — state.keys gained {} new channel(s)", new_channels.len());
+                                        // Extract sP (sender participant) from the raw IDS
+                                        // envelope so we can stamp this reshare's sender
+                                        // into the Go-side cache. Peer iOS fans each
+                                        // reshare to every alias of our account with the
+                                        // SAME channel id but DIFFERENT sP, and upstream
+                                        // state.keys overwrites on each — without stamping
+                                        // here, the aliases processed by upstream handle()
+                                        // (not the Dictionary-payload workaround) get lost
+                                        // the same way the workaround case used to, just
+                                        // silently. Mirrors the workaround stamping at the
+                                        // cb.on_reshare_sender call above.
+                                        let upstream_sender = if let rustpush::APSMessage::Notification { payload: plist::Value::Data(payload), .. } = &msg {
+                                            plist::from_bytes::<plist::Value>(payload)
+                                                .ok()
+                                                .and_then(|v| v.into_dictionary())
+                                                .and_then(|d| d.get("sP").and_then(|v| v.as_string()).map(|s| s.to_string()))
+                                        } else {
+                                            None
+                                        };
+                                        info!("StatusKit key-sharing message received — state.keys gained {} new channel(s), sender={:?}", new_channels.len(), upstream_sender);
                                         if let Some(cb) = status_cb_for_recv.read().await.as_ref() {
+                                            if let Some(sender) = upstream_sender {
+                                                cb.on_reshare_sender(sender);
+                                            }
                                             cb.on_keys_received();
                                         }
                                     } else {
