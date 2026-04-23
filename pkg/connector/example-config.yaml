@@ -31,6 +31,12 @@ heic_jpeg_quality: 95
 # Available handles are logged on startup.
 preferred_handle: ""
 
+# Publish "available" to StatusKit once after startup. Peer iOS reciprocates
+# with a reshare, which is what gives the bridge the keys needed to decrypt
+# contacts' Focus/DND presence. Leaving this on dramatically improves the
+# chance of seeing others' Focus state in Matrix. Set to false to opt out.
+statuskit_share_on_startup: true
+
 # External CardDAV server for contact name resolution.
 # Works with Google (app passwords), Nextcloud, Radicale, Fastmail, etc.
 # When configured, this is used instead of iCloud contacts.

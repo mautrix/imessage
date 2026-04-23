@@ -54,6 +54,13 @@ type IMConfig struct {
 	// If empty, the handle chosen during login is used.
 	PreferredHandle string `yaml:"preferred_handle"`
 
+	// StatusKitShareOnStartup publishes share_status(available) once after
+	// StatusKit init completes. Peer iOS reciprocates with a reshare (which
+	// carries the key material needed to decrypt its subsequent presence
+	// updates), so keeping this on dramatically improves the chance of
+	// seeing contacts' Focus state in Matrix. Default true.
+	StatusKitShareOnStartup bool `yaml:"statuskit_share_on_startup"`
+
 	// CardDAV is an external CardDAV server for contact name resolution.
 	// When configured, this is used instead of iCloud CardDAV contacts.
 	CardDAV CardDAVConfig `yaml:"carddav"`
@@ -147,6 +154,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "heic_conversion")
 	helper.Copy(up.Int, "heic_jpeg_quality")
 	helper.Copy(up.Str, "preferred_handle")
+	helper.Copy(up.Bool, "statuskit_share_on_startup")
 	helper.Copy(up.Str, "carddav", "email")
 	helper.Copy(up.Str, "carddav", "url")
 	helper.Copy(up.Str, "carddav", "username")
