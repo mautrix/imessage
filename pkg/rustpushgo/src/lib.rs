@@ -6105,7 +6105,10 @@ pub async fn new_client(
                 // keysharing-topic message we receive, BEFORE any workaround
                 // or handle() logic. Lets us distinguish "peers aren't sending
                 // / APS dropping" (zero of these logs after restart) from
-                // "receive path broken after message arrives".
+                // "receive path broken after message arrives". Suppresses the
+                // well-understood noise commands (c=255 server ACK, c=120 IDS
+                // per-target retry error, c=97 keysharing noise) to avoid
+                // drowning the real signal in server retry traffic.
                 if let rustpush::APSMessage::Notification { topic: t, payload: ref p, ref channel, .. } = msg {
                     let ks_hash: [u8; 20] = openssl::sha::sha1(
                         "com.apple.private.alloy.status.keysharing".as_bytes(),
@@ -6114,21 +6117,24 @@ pub async fn new_client(
                         "com.apple.private.alloy.status.personal".as_bytes(),
                     );
                     if t == ks_hash || t == ps_hash {
-                        let topic_name = if t == ks_hash { "status.keysharing" } else { "status.personal" };
-                        let shape = match p {
-                            plist::Value::Data(_) => "Data",
-                            plist::Value::Dictionary(_) => "Dictionary",
-                            _ => "Other",
-                        };
                         let cmd = if let plist::Value::Dictionary(d) = p {
                             d.get("c").and_then(|v| v.as_unsigned_integer())
                         } else {
                             None
                         };
-                        info!(
-                            "StatusKit diag: APS message received — topic={} payload_shape={} c={:?} has_channel={}",
-                            topic_name, shape, cmd, channel.is_some()
-                        );
+                        let is_noise = matches!(cmd, Some(255) | Some(120) | Some(97));
+                        if !is_noise {
+                            let topic_name = if t == ks_hash { "status.keysharing" } else { "status.personal" };
+                            let shape = match p {
+                                plist::Value::Data(_) => "Data",
+                                plist::Value::Dictionary(_) => "Dictionary",
+                                _ => "Other",
+                            };
+                            info!(
+                                "StatusKit diag: APS message received — topic={} payload_shape={} c={:?} has_channel={}",
+                                topic_name, shape, cmd, channel.is_some()
+                            );
+                        }
                     }
                 }
 
