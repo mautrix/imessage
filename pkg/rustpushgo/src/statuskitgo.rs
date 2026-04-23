@@ -39,17 +39,24 @@ pub async fn invite_keysharing<T: AnisetteProvider + Send + Sync + 'static>(
         .await?;
     let reachable: std::collections::HashSet<&str> =
         targets.iter().map(|t| t.participant.as_str()).collect();
-    let unreachable = handles
+    let unreachable_handles: Vec<&str> = handles
         .iter()
-        .filter(|h| !reachable.contains(h.as_str()))
-        .count();
+        .map(|h| h.as_str())
+        .filter(|h| !reachable.contains(h))
+        .collect();
     info!(
         "StatusKit: IDS found {} delivery target(s) for {}/{} handle(s) ({} unreachable)",
         targets.len(),
         reachable.len(),
         handles.len(),
-        unreachable
+        unreachable_handles.len()
     );
+    if !unreachable_handles.is_empty() {
+        info!(
+            "StatusKit: unreachable handles (peer not registered for keysharing sub-service): {:?}",
+            unreachable_handles
+        );
+    }
 
     // Zero targets usually means the cache still has stale-empty entries
     // from a prior session (dirty cutoff is ~1 hour). One invalidate + retry

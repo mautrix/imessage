@@ -6101,6 +6101,37 @@ pub async fn new_client(
             const INITIAL_BACKOFF: Duration = Duration::from_millis(500);
 
             while let Some((msg, drain_ts)) = rx.recv().await {
+                // Diagnostic — log at the earliest APS dispatch point every
+                // keysharing-topic message we receive, BEFORE any workaround
+                // or handle() logic. Lets us distinguish "peers aren't sending
+                // / APS dropping" (zero of these logs after restart) from
+                // "receive path broken after message arrives".
+                if let rustpush::APSMessage::Notification { topic: t, payload: ref p, ref channel, .. } = msg {
+                    let ks_hash: [u8; 20] = openssl::sha::sha1(
+                        "com.apple.private.alloy.status.keysharing".as_bytes(),
+                    );
+                    let ps_hash: [u8; 20] = openssl::sha::sha1(
+                        "com.apple.private.alloy.status.personal".as_bytes(),
+                    );
+                    if t == ks_hash || t == ps_hash {
+                        let topic_name = if t == ks_hash { "status.keysharing" } else { "status.personal" };
+                        let shape = match p {
+                            plist::Value::Data(_) => "Data",
+                            plist::Value::Dictionary(_) => "Dictionary",
+                            _ => "Other",
+                        };
+                        let cmd = if let plist::Value::Dictionary(d) = p {
+                            d.get("c").and_then(|v| v.as_unsigned_integer())
+                        } else {
+                            None
+                        };
+                        info!(
+                            "StatusKit diag: APS message received — topic={} payload_shape={} c={:?} has_channel={}",
+                            topic_name, shape, cmd, channel.is_some()
+                        );
+                    }
+                }
+
                 // StatusKit gets first crack at the APNs message. If it
                 // consumes the message (presence update on a subscribed
                 // channel), we dispatch to the Go callback and skip iMessage
@@ -7425,6 +7456,67 @@ impl Client {
         *self.shared_statuskit.write().await = Some(wrapped.inner.clone());
         *self.status_callback.write().await = Some(Arc::from(callback));
         info!("StatusKit initialized — presence system ready");
+
+        // Self-visibility diagnostic: query IDS for our own handle's
+        // keysharing identities and compare the returned push tokens against
+        // our own APS push token. If our token is absent, peer iOS cannot
+        // include us when querying for this handle and will never reshare
+        // their status key to us.
+        let my_token = self.conn.get_token().await;
+        let my_token_b64 = base64_encode(&my_token);
+        let handles = self.client.identity.get_handles().await;
+        info!(
+            "StatusKit self-visibility: our APS push token={}, our handles={:?}",
+            my_token_b64, handles
+        );
+        for handle in &handles {
+            match self
+                .client
+                .identity
+                .targets_for_handles(
+                    "com.apple.private.alloy.status.keysharing",
+                    std::slice::from_ref(handle),
+                    handle,
+                )
+                .await
+            {
+                Ok(targets) => {
+                    let mut self_visible = false;
+                    let mut token_list: Vec<String> = Vec::new();
+                    for t in &targets {
+                        let tok_b64 = base64_encode(&t.delivery_data.push_token);
+                        if t.delivery_data.push_token == my_token {
+                            self_visible = true;
+                            token_list.push(format!("{}(SELF)", tok_b64));
+                        } else {
+                            token_list.push(tok_b64);
+                        }
+                    }
+                    if self_visible {
+                        info!(
+                            "StatusKit self-visibility OK for {}: IDS returned {} target(s), our token is present — tokens=[{}]",
+                            handle,
+                            targets.len(),
+                            token_list.join(", ")
+                        );
+                    } else {
+                        warn!(
+                            "StatusKit self-visibility FAIL for {}: IDS returned {} target(s), our token is NOT present — peer iOS will never target this bridge when querying this handle. tokens=[{}]",
+                            handle,
+                            targets.len(),
+                            token_list.join(", ")
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "StatusKit self-visibility: IDS query for {} failed: {:?}",
+                        handle, e
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 
