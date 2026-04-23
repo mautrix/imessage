@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use log::{info, warn};
+use log::info;
 use omnisette::AnisetteProvider;
 
 use rustpush::{
@@ -58,32 +58,16 @@ pub async fn invite_keysharing<T: AnisetteProvider + Send + Sync + 'static>(
         );
     }
 
-    // Zero targets usually means the cache still has stale-empty entries
-    // from a prior session (dirty cutoff is ~1 hour). One invalidate + retry
-    // forces a live IDS query.
+    // Zero targets means the peer is not registered for the keysharing
+    // sub-service right now. Return an error so the caller can move on to
+    // the next handle; the 4h periodic re-invite tick will retry later
+    // (giving peer iOS time to naturally re-register if they add keysharing
+    // via a Focus toggle or similar).
     //
-    // Scoped to the keysharing topic only — upstream's `invalidate_id_cache`
-    // (identity_manager.rs:910) calls `invalidate_all` (line 256) which wipes
-    // MADRID's key cache too, forcing an IDS re-query before the next
-    // iMessage send. Dropping just the keysharing entry from the cache map
-    // is functionally equivalent for this service (no private_data/env_hash
-    // to preserve — those are MADRID-only per line 636/650/662/669) and
-    // leaves iMessage's cache untouched.
-    let targets = if targets.is_empty() {
-        warn!(
-            "StatusKit: zero targets for keysharing topic — invalidating keysharing cache and retrying"
-        );
-        {
-            let mut cache_guard = sk.identity.cache.lock().await;
-            cache_guard.cache.remove(KEYSHARING_TOPIC);
-            cache_guard.save();
-        }
-        sk.identity
-            .targets_for_handles(KEYSHARING_TOPIC, handles, sender_handle)
-            .await?
-    } else {
-        targets
-    };
+    // Prior versions tried a cache-invalidate-and-retry here, which either
+    // corrupted the cache structure (panic in put_keys) or was redundant
+    // (same IDS result on the second try). Simpler to let the tick handle
+    // it.
     if targets.is_empty() {
         return Err(PushError::NoValidTargets);
     }
