@@ -1017,21 +1017,11 @@ func (c *IMClient) Connect(ctx context.Context) {
 			// 12h on passive-only yielded zero real-iOS reshares, whereas
 			// OB (which invites one at a time) gets reshares fine.
 			go c.inviteContactsToStatusSharing(log)
-			// Best-effort status publish in the background. Non-fatal and
-			// potentially blocking on GSA/anisette — never let it gate presence
-			// subscription.
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						log.Warn().Interface("panic", r).Msg("StatusKit SetStatus panicked — skipped")
-					}
-				}()
-				if err := c.client.SetStatus(true); err != nil {
-					log.Warn().Err(err).Msg("StatusKit: failed to publish status (non-fatal, invites use IDS)")
-				} else {
-					log.Info().Msg("StatusKit: published status")
-				}
-			}()
+			// Deliberately no startup SetStatus(true): OB-Android only calls
+			// share_status via its native zen-mode hooks (StatusQuery.kt on
+			// OS DND state change), never unconditionally at app startup.
+			// Publishing status before peers have our key is wasted bytes
+			// and diverges from OB's shape for no observed benefit.
 
 			// Complement the `StatusKit startup` line above with the peer-key
 			// count, which is only available once the StatusKit client is ready.

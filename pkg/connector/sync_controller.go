@@ -845,15 +845,23 @@ func (c *IMClient) subscribeToContactPresence(log zerolog.Logger) {
 // that appears to trigger peer-side filtering / spam heuristics.
 const statusKitInterInviteDelay = 1500 * time.Millisecond
 
-// statusKitLastInviteKeyPrefix is the KV store prefix for per-ghost
-// last-invite timestamps (RFC3339). Enforces per-handle min-spacing
-// independent of sweep cadence, so bridge restart inside the periodic
-// window doesn't double-invite the same peer.
+// statusKitLastInviteKeyPrefix is the KV store prefix for per-handle
+// last-ATTEMPT timestamps (RFC3339). Used only on the periodic tick path
+// to bound failed-retry cadence; successful sends are latched separately
+// and never re-attempted.
 const statusKitLastInviteKeyPrefix = "statuskit.last_invite."
 
-// statusKitPerHandleMinSpacing is the minimum time between re-invites to
-// the same handle. Matches the periodic tick cadence so a pending peer
-// gets at most one invite per tick worst case.
+// statusKitInvitedOkKeyPrefix marks handles that received a StatusKit
+// invite which IDS accepted (no error, targets > 0). Once marked, bridge
+// never re-invites that handle. Matches OB-Android's one-shot latch via
+// `config == zenModeIsShared` — invite per chat activation, never again.
+// Peer iOS may treat repeat invites from a device it already has keys
+// for as spam.
+const statusKitInvitedOkKeyPrefix = "statuskit.invited_ok."
+
+// statusKitPerHandleMinSpacing is the minimum time between failed-retry
+// invites. Only applies on the periodic tick path to handles that did NOT
+// succeed; successful sends are latched and never retried.
 const statusKitPerHandleMinSpacing = 4 * time.Hour
 
 // inviteContactsToStatusSharing sends our StatusKit key to the peer
@@ -955,10 +963,18 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 
 	now := time.Now()
 	var pending []string
-	var skippedKnown, skippedSpacing int
+	var skippedKnown, skippedSpacing, skippedAlreadySent int
 	for _, h := range allGhosts {
 		if _, known := knownSet[h]; known {
 			skippedKnown++
+			continue
+		}
+		// One-shot latch: if we've previously sent this handle an invite
+		// that IDS accepted, never re-send. Matches OB's one-invite-per-
+		// chat-activation model; repeated invites to the same peer
+		// produce no additional reshares and may trip spam heuristics.
+		if c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitInvitedOkKeyPrefix+h)) != "" {
+			skippedAlreadySent++
 			continue
 		}
 		if respectSpacing {
@@ -976,6 +992,7 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 	log.Info().
 		Int("total_targets", len(allGhosts)).
 		Int("already_keyed", skippedKnown).
+		Int("already_invited_ok", skippedAlreadySent).
 		Int("spacing_skip", skippedSpacing).
 		Int("pending", len(pending)).
 		Bool("respect_spacing", respectSpacing).
@@ -1013,6 +1030,12 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 				log.Warn().Err(err).Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: failed for handle")
 			} else {
 				okCount++
+				// Write both keys:
+				// - invited_ok: one-shot latch, never re-invite this peer
+				// - last_invite: periodic-tick spacing timestamp (no effect
+				//   because invited_ok is checked first, but harmless and
+				//   useful for debug timelines)
+				c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+h), nowStr)
 				c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+h), nowStr)
 				log.Info().Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: ok for handle")
 			}
