@@ -7742,7 +7742,7 @@ func (c *IMClient) periodicStatusSharingReinvite(log zerolog.Logger) {
 	for {
 		select {
 		case <-ticker.C:
-			c.inviteContactsToStatusSharingOpts(log, true)
+			c.inviteContactsToStatusSharingOpts(log, true, false)
 		case <-c.stopChan:
 			return
 		}

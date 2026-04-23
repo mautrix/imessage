@@ -342,6 +342,9 @@ func fnStatuskitInviteAll(ce *commands.Event) {
 	go func() {
 		log := client.UserLogin.Log.With().Str("trigger", "statuskit-invite-all").Logger()
 		client.subscribeToContactPresence(log)
-		client.inviteContactsToStatusSharing(log)
+		// User-invoked retry — bypass the one-shot invited_ok latch so
+		// every 1:1 portal gets re-driven, not just handles without a
+		// prior accepted invite.
+		client.inviteContactsToStatusSharingOpts(log, false, true)
 	}()
 }

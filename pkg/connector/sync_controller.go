@@ -884,17 +884,20 @@ const statusKitPerHandleMinSpacing = 4 * time.Hour
 // interaction with, so inviting group-only ghosts is spam that produces
 // zero reshares and likely contributes to peer-side throttling.
 func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
-	c.inviteContactsToStatusSharingOpts(log, false)
+	c.inviteContactsToStatusSharingOpts(log, false, false)
 }
 
-// inviteContactsToStatusSharingOpts is the core invite sweep. When
-// respectSpacing is true (periodic tick path), handles invited within
-// statusKitPerHandleMinSpacing are skipped — bounds worst-case re-invite
-// rate for an unresponsive peer. When false (startup / post-backfill
-// paths), every pending 1:1 portal target gets invited regardless of
-// KV state — restart is an intentional event; users who restart the
-// bridge expect their StatusKit to re-initiate.
-func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respectSpacing bool) {
+// inviteContactsToStatusSharingOpts is the core invite sweep.
+//
+//   - respectSpacing (periodic tick path): skip handles invited within
+//     statusKitPerHandleMinSpacing — bounds worst-case re-invite rate for
+//     an unresponsive peer. Startup / post-backfill paths pass false.
+//   - bypassLatch (user-invoked retry): ignore the invited_ok one-shot
+//     latch so every pending 1:1 portal target is re-invited, even peers
+//     that previously got an accepted invite. Use for !statuskit-invite-all;
+//     automatic paths leave it false to preserve the "invite once per peer"
+//     contract with peer iOS.
+func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respectSpacing bool, bypassLatch bool) {
 	if c.client == nil || c.handle == "" {
 		log.Warn().Bool("client_nil", c.client == nil).Str("handle", c.handle).Msg("StatusKit invite: skipped (client or handle not ready)")
 		return
@@ -980,7 +983,9 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 		// that IDS accepted, never re-send. Matches OB's one-invite-per-
 		// chat-activation model; repeated invites to the same peer
 		// produce no additional reshares and may trip spam heuristics.
-		if c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitInvitedOkKeyPrefix+h)) != "" {
+		// User-invoked retry (bypassLatch) intentionally overrides this
+		// so `!statuskit-invite-all` can re-drive every known peer.
+		if !bypassLatch && c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitInvitedOkKeyPrefix+h)) != "" {
 			skippedAlreadySent++
 			continue
 		}
