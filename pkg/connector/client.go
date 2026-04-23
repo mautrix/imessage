@@ -1774,6 +1774,88 @@ func (c *IMClient) OnKeysReceived() {
 	go c.subscribeToContactPresence(log)
 }
 
+// OnReshareSender is called once per reshare with the peer handle that sent
+// it. Peer iOS fans a reshare across every alias of our account (tel: + each
+// mailto:) with the same channel id but a different `from` handle on each
+// copy. Upstream state keys by channel, so every reshare overwrites the
+// previous `from` — only the last sender survives in state.keys. Without this
+// hook the bridge learns just one alias per peer and presence updates on the
+// others have no portal mapping. Eagerly resolving the sender's portal here
+// and stamping it into statusKitPortalCache preserves the mapping across
+// overwrites so OnStatusUpdate's cache lookup always hits regardless of which
+// alias Apple routes the next presence message to.
+func (c *IMClient) OnReshareSender(sender string) {
+	if sender == "" {
+		return
+	}
+	if _, ok := c.statusKitPortalCache.Load(sender); ok {
+		return
+	}
+	normalized := normalizeIdentifierForPortalID(sender)
+	if normalized != sender {
+		if _, ok := c.statusKitPortalCache.Load(normalized); ok {
+			return
+		}
+	}
+	log := c.UserLogin.Log.With().
+		Str("component", "statuskit").
+		Str("sender", sender).
+		Logger()
+	go c.eagerResolveReshareSender(sender, normalized, log)
+}
+
+// eagerResolveReshareSender runs the same resolution chain OnStatusUpdate uses
+// (learned cache → address-book mailto→tel → IDS correlation → direct portal)
+// and populates statusKitPortalCache on success. Idempotent; cheap no-op on
+// cache hit. Runs in a goroutine to avoid blocking the Rust FFI caller.
+func (c *IMClient) eagerResolveReshareSender(sender, normalizedUser string, log zerolog.Logger) {
+	ctx := context.Background()
+
+	findPortal := func(id networkid.PortalID) *bridgev2.Portal {
+		p, err := c.Main.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+			ID:       id,
+			Receiver: c.UserLogin.ID,
+		})
+		if err != nil || p == nil || p.MXID == "" {
+			return nil
+		}
+		return p
+	}
+
+	if strings.HasPrefix(normalizedUser, "mailto:") {
+		if contact := c.lookupContact(sender); contact != nil {
+			for _, altID := range contactPortalIDs(contact) {
+				if !strings.HasPrefix(altID, "tel:") {
+					continue
+				}
+				if p := findPortal(networkid.PortalID(altID)); p != nil {
+					c.statusKitPortalCache.Store(sender, p.ID)
+					log.Info().Str("resolved_portal_id", string(p.ID)).Msg("StatusKit: eager-resolved reshare sender via address book")
+					return
+				}
+			}
+		}
+		if altPortal := c.resolveStatusPortalViaIDS(ctx, log, sender); altPortal != nil {
+			log.Info().Str("resolved_portal_id", string(altPortal.ID)).Msg("StatusKit: eager-resolved reshare sender via IDS correlation")
+			return
+		}
+		if p := findPortal(networkid.PortalID(normalizedUser)); p != nil {
+			c.statusKitPortalCache.Store(sender, p.ID)
+			log.Info().Str("resolved_portal_id", string(p.ID)).Msg("StatusKit: eager-resolved reshare sender via direct mailto: portal")
+			return
+		}
+	} else {
+		portalID := c.resolveContactPortalID(normalizedUser)
+		portalID = c.resolveExistingDMPortalID(string(portalID))
+		if p := findPortal(portalID); p != nil {
+			c.statusKitPortalCache.Store(sender, p.ID)
+			log.Info().Str("resolved_portal_id", string(p.ID)).Msg("StatusKit: eager-resolved reshare sender (tel: direct)")
+			return
+		}
+	}
+	log.Debug().Msg("StatusKit: eager-resolve found no portal for reshare sender — will retry when presence arrives")
+}
+
 // OnMessage is called by rustpush when a message is received via APNs.
 func (c *IMClient) OnMessage(msg rustpushgo.WrappedMessage) {
 	log := c.UserLogin.Log.With().

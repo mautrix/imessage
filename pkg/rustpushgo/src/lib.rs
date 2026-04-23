@@ -4054,6 +4054,15 @@ pub trait StatusCallback: Send + Sync {
     /// encryption keys to the internal state. The Go side should re-subscribe
     /// to presence so that APNs channels are created for the newly-available keys.
     fn on_keys_received(&self);
+    /// Called once per reshare with the `from` handle of the peer device that
+    /// sent it. Peer iOS fans reshares to every alias of our account (tel: plus
+    /// each mailto:) with the SAME channel id but a DIFFERENT sender handle.
+    /// Upstream state keys by channel, so every reshare overwrites the previous
+    /// sender — only the last one survives in `state.keys`. Without this hook
+    /// the Go side only learns ONE alias per peer and cannot resolve presence
+    /// updates that arrive on any of the others. Stamping each sender into the
+    /// learned-sender cache preserves all aliases across overwrites.
+    fn on_reshare_sender(&self, sender: String);
 }
 
 // ============================================================================
@@ -6387,6 +6396,16 @@ pub async fn new_client(
                                 if let Some(cb) =
                                     status_cb_for_recv.read().await.as_ref()
                                 {
+                                    // Stamp the sender into the Go-side
+                                    // presence→portal cache BEFORE
+                                    // on_keys_received triggers the
+                                    // resubscribe. Peer iOS fans reshares to
+                                    // every handle alias on the same channel;
+                                    // upstream's HashMap only keeps the last
+                                    // `from`, so without this, presence
+                                    // updates for overwritten aliases have
+                                    // no portal mapping.
+                                    cb.on_reshare_sender(sender.clone());
                                     cb.on_keys_received();
                                 }
                                 Ok(true)

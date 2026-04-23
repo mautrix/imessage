@@ -2205,6 +2205,10 @@ uint16_t uniffi_rustpushgo_checksum_method_statuscallback_on_keys_received(
 	RustCallStatus* out_status
 );
 
+uint16_t uniffi_rustpushgo_checksum_method_statuscallback_on_reshare_sender(
+	RustCallStatus* out_status
+);
+
 uint16_t uniffi_rustpushgo_checksum_method_updateuserscallback_update_users(
 	RustCallStatus* out_status
 );

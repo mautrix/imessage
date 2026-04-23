@@ -1888,6 +1888,15 @@ func uniffiCheckChecksums() {
 	}
 	{
 		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
+			return C.uniffi_rustpushgo_checksum_method_statuscallback_on_reshare_sender(uniffiStatus)
+		})
+		if checksum != 38947 {
+			// If this happens try cleaning and rebuilding your project
+			panic("rustpushgo: uniffi_rustpushgo_checksum_method_statuscallback_on_reshare_sender: UniFFI API checksum mismatch")
+		}
+	}
+	{
+		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
 			return C.uniffi_rustpushgo_checksum_method_updateuserscallback_update_users(uniffiStatus)
 		})
 		if checksum != 85 {
@@ -8165,6 +8174,8 @@ type StatusCallback interface {
 	OnStatusUpdate(user string, mode *string, available bool)
 
 	OnKeysReceived()
+
+	OnReshareSender(sender string)
 }
 
 // foreignCallbackCallbackInterfaceStatusCallback cannot be callable be a compiled function at a same time
@@ -8191,6 +8202,11 @@ func rustpushgo_cgo_StatusCallback(handle C.uint64_t, method C.int32_t, argsPtr 
 		args := unsafe.Slice((*byte)(argsPtr), argsLen)
 		result = foreignCallbackCallbackInterfaceStatusCallback{}.InvokeOnKeysReceived(cb, args, outBuf)
 		return C.int32_t(result)
+	case 3:
+		var result uniffiCallbackResult
+		args := unsafe.Slice((*byte)(argsPtr), argsLen)
+		result = foreignCallbackCallbackInterfaceStatusCallback{}.InvokeOnReshareSender(cb, args, outBuf)
+		return C.int32_t(result)
 
 	default:
 		// This should never happen, because an out of bounds method index won't
@@ -8208,6 +8224,12 @@ func (foreignCallbackCallbackInterfaceStatusCallback) InvokeOnStatusUpdate(callb
 }
 func (foreignCallbackCallbackInterfaceStatusCallback) InvokeOnKeysReceived(callback StatusCallback, args []byte, outBuf *C.RustBuffer) uniffiCallbackResult {
 	callback.OnKeysReceived()
+
+	return uniffiCallbackResultSuccess
+}
+func (foreignCallbackCallbackInterfaceStatusCallback) InvokeOnReshareSender(callback StatusCallback, args []byte, outBuf *C.RustBuffer) uniffiCallbackResult {
+	reader := bytes.NewReader(args)
+	callback.OnReshareSender(FfiConverterStringINSTANCE.Read(reader))
 
 	return uniffiCallbackResultSuccess
 }
