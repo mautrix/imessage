@@ -158,10 +158,10 @@ func primeGsaTokensForStatuskit(ce *commands.Event) {
 		return
 	}
 	client, ok := login.Client.(*IMClient)
-	if !ok || client == nil || client.tokenProvider == nil || *client.tokenProvider == nil {
+	if !ok || client == nil {
 		return
 	}
-	_ = safeRefreshPetToken(*client.tokenProvider)
+	_ = client.safeRefreshPetTokenThrottled()
 }
 
 func parseBoolish(value string) (bool, error) {

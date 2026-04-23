@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1039,8 +1040,8 @@ func (c *IMClient) Connect(ctx context.Context) {
 						log.Debug().Err(err).Msg("StatusKit startup share skipped — client not ready")
 						return
 					}
-					if c.tokenProvider != nil && *c.tokenProvider != nil {
-						_ = safeRefreshPetToken(*c.tokenProvider)
+					if err := c.safeRefreshPetTokenThrottled(); err != nil {
+						log.Debug().Err(err).Msg("StatusKit startup share: PET refresh skipped")
 					}
 					if err := sk.ShareStatus(true, nil); err != nil {
 						log.Warn().Err(err).Msg("StatusKit startup share_status failed")
@@ -7825,11 +7826,58 @@ func (c *IMClient) periodicStateSave(log zerolog.Logger) {
 	}
 }
 
+// petRefreshMinInterval throttles startup/on-demand PET refreshes to protect
+// against restart-loop-induced Apple rate limiting. login_email_pass is
+// per-user-expected but bridges in a crash-restart loop could stack several
+// per minute, which is the one failure mode that reliably trips 429s or a
+// temporary account lock. 5 min gives a comfortable margin (max 12/hour vs
+// the ~30/hour threshold where Apple's fraud systems start reacting) while
+// still allowing legitimate manual restarts close together during debugging.
+const petRefreshMinInterval = 5 * time.Minute
+
+// petRefreshKVKey is the KV key used to persist the last PET refresh time.
+// Persistent (not in-memory) so the throttle survives the exact failure mode
+// it's protecting against — a crash-restart loop that wipes in-memory state
+// between each attempt.
+const petRefreshKVKey = database.Key("gsa.pet_last_refresh")
+
+// safeRefreshPetTokenThrottled is safeRefreshPetToken with a persistent
+// timestamp guard. Returns an error without hitting GSA if a refresh
+// completed within petRefreshMinInterval. Callers on hot startup paths
+// (share_status prime, announce, command handlers) should use this variant;
+// the 12h periodicPetRefresh is already self-throttled and uses the raw
+// function.
+func (c *IMClient) safeRefreshPetTokenThrottled() error {
+	if c.tokenProvider == nil || *c.tokenProvider == nil {
+		return fmt.Errorf("no token provider")
+	}
+	ctx := context.Background()
+	now := time.Now()
+	if raw := c.Main.Bridge.DB.KV.Get(ctx, petRefreshKVKey); raw != "" {
+		if ts, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil {
+			if elapsed := now.Sub(time.Unix(ts, 0)); elapsed < petRefreshMinInterval {
+				return fmt.Errorf("PET refresh throttled: last refresh %s ago (min %s)",
+					elapsed.Round(time.Second), petRefreshMinInterval)
+			}
+		}
+	}
+	if err := safeRefreshPetToken(*c.tokenProvider); err != nil {
+		return err
+	}
+	c.Main.Bridge.DB.KV.Set(ctx, petRefreshKVKey, strconv.FormatInt(now.Unix(), 10))
+	return nil
+}
+
 // safeRefreshPetToken wraps RefreshPetToken with panic recovery and a 60s
 // timeout. Uniffi turns Rust panics into Go panics; without recovery a single
 // anisette or network hiccup could crash the bridge from a best-effort
 // background refresh. The timeout prevents an anisette-poisoned tokio mutex
 // (see project memory) from blocking the goroutine indefinitely.
+//
+// For hot startup paths (announce, share_status prime, etc.) prefer
+// safeRefreshPetTokenThrottled to avoid stacking GSA logins across
+// restart loops. This raw variant is appropriate only for self-throttled
+// paths like the 12h periodic refresh.
 func safeRefreshPetToken(tp *rustpushgo.WrappedTokenProvider) error {
 	done := make(chan error, 1)
 	go func() {
