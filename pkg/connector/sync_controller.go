@@ -988,16 +988,42 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 	// One sender only — OB calls invite_to_channel with a single
 	// `ensureHandle()` result per chat, not with every registered handle.
 	sender := c.handle
-	var okCount, failCount int
+	var okCount, failCount, timeoutCount int
 	nowStr := now.Format(time.RFC3339)
+
+	// Per-invite timeout. An invite_to_channel call that blocks (e.g. on a
+	// poisoned anisette mutex, or an IDS cache lock held by another task)
+	// used to freeze the whole sweep — one bad handle and the remaining
+	// 20 never got invited, summary log never fired. Run each invite in a
+	// goroutine and race it against a 30s deadline; on timeout, log and
+	// move on. Rust side keeps running in the background and will finish
+	// or fail at its own pace; we just don't wait on it.
+	const perInviteTimeout = 30 * time.Second
+
 	for i, h := range pending {
-		if err := c.client.InviteToStatusSharing(sender, []string{h}); err != nil {
-			failCount++
-			log.Warn().Err(err).Str("sender", sender).Str("handle", h).Msg("StatusKit invite failed for handle")
-		} else {
-			okCount++
-			c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+h), nowStr)
+		inviteDone := make(chan error, 1)
+		go func(handle string) {
+			inviteDone <- c.client.InviteToStatusSharing(sender, []string{handle})
+		}(h)
+
+		select {
+		case err := <-inviteDone:
+			if err != nil {
+				failCount++
+				log.Warn().Err(err).Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: failed for handle")
+			} else {
+				okCount++
+				c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+h), nowStr)
+				log.Info().Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: ok for handle")
+			}
+		case <-time.After(perInviteTimeout):
+			timeoutCount++
+			log.Warn().Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Dur("timeout", perInviteTimeout).Msg("StatusKit invite: timed out for handle — abandoning this handle, continuing sweep")
+		case <-c.stopChan:
+			log.Info().Int("done", i).Int("total", len(pending)).Msg("StatusKit invite: bridge stopping, aborting sweep")
+			return
 		}
+
 		// Skip the delay after the last handle.
 		if i < len(pending)-1 {
 			select {
@@ -1008,7 +1034,7 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 			}
 		}
 	}
-	log.Info().Int("pending", len(pending)).Int("ok", okCount).Int("failed", failCount).Str("sender", sender).Msg("Sent StatusKit key invites one-per-handle (pending-only, paced)")
+	log.Info().Int("pending", len(pending)).Int("ok", okCount).Int("failed", failCount).Int("timed_out", timeoutCount).Str("sender", sender).Msg("Sent StatusKit key invites one-per-handle (pending-only, paced)")
 }
 
 func (c *IMClient) refreshGhostNamesFromContacts(log zerolog.Logger) {
