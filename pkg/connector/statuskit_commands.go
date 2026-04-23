@@ -142,6 +142,28 @@ func statusKitClientFromEvent(ce *commands.Event) (*rustpushgo.WrappedStatusKitC
 	return sk, true
 }
 
+// primeGsaTokensForStatuskit runs a PET refresh on the current login's token
+// provider before a StatusKit operation that needs a GSA token the bridge
+// hasn't fetched yet (e.g. com.apple.gs.sharedchannels.auth used by
+// ensure_channel + share_status). Upstream `AppleAccount::get_token` at
+// icloud-auth/src/client.rs:338-360 only refreshes when the entire token map
+// is empty; a specific missing token returns None without triggering a
+// refresh, which makes share_status fail with StatusKitAuthMissing on bridges
+// that have never exercised the sharedchannels endpoint. The existing
+// AnnounceAppleDeviceIfNeeded path already uses this prime for the
+// happy-birthday token — same mechanism, different consumer.
+func primeGsaTokensForStatuskit(ce *commands.Event) {
+	login := ce.User.GetDefaultLogin()
+	if login == nil {
+		return
+	}
+	client, ok := login.Client.(*IMClient)
+	if !ok || client == nil || client.tokenProvider == nil || *client.tokenProvider == nil {
+		return
+	}
+	_ = safeRefreshPetToken(*client.tokenProvider)
+}
+
 func parseBoolish(value string) (bool, error) {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true", "on", "yes", "y", "active":
@@ -184,6 +206,14 @@ func fnStatuskitShare(ce *commands.Event) {
 		return
 	}
 
+	// Prime GSA tokens via PET refresh so the sharedchannels.auth token that
+	// ensure_channel / share_status require is populated. Upstream only
+	// auto-refreshes when the whole token map is empty; a specific missing
+	// key otherwise returns None and share_status fails silently with
+	// StatusKitAuthMissing. This mirrors the prime already done in the
+	// announce path.
+	primeGsaTokensForStatuskit(ce)
+
 	// "on" path — no mode needed.
 	if active {
 		if err := sk.ShareStatus(true, nil); err != nil {
@@ -221,6 +251,8 @@ func fnStatuskitShare(ce *commands.Event) {
 			if !ok {
 				return
 			}
+			// Prime GSA tokens (see fnStatuskitShare comment above).
+			primeGsaTokensForStatuskit(ce)
 			if err := sk.ShareStatus(false, &mode); err != nil {
 				ce.Reply("Failed to publish StatusKit share status: %v", err)
 				return
