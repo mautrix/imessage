@@ -837,25 +837,47 @@ func (c *IMClient) subscribeToContactPresence(log zerolog.Logger) {
 	}
 }
 
-// inviteContactsToStatusSharing sends our StatusKit key to all known ghost
-// handles via IDS keysharing. When a contact's device receives our key, it
-// responds with its own key — without this exchange the bridge device never
-// gets any contact's channel key, no APNs channel exists, and OnStatusUpdate
-// never fires. Must run after InitStatuskit so shared_statuskit is populated.
+// statusKitInterInviteDelay paces per-handle StatusKit keysharing invites.
+// OB-Android's pattern is one invite per chat activation — implicitly
+// one-handle-at-a-time as the user opens chats. We approximate with a
+// paced sweep (startup + periodic), one handle per IDS send, with this
+// delay between sends so we don't recreate the all-at-once batch shape
+// that appears to trigger peer-side filtering / spam heuristics.
+const statusKitInterInviteDelay = 1500 * time.Millisecond
+
+// statusKitLastInviteKeyPrefix is the KV store prefix for per-ghost
+// last-invite timestamps (RFC3339). Enforces per-handle min-spacing
+// independent of sweep cadence, so bridge restart inside the periodic
+// window doesn't double-invite the same peer.
+const statusKitLastInviteKeyPrefix = "statuskit.last_invite."
+
+// statusKitPerHandleMinSpacing is the minimum time between re-invites to
+// the same handle. Matches the periodic tick cadence so a pending peer
+// gets at most one invite per tick worst case.
+const statusKitPerHandleMinSpacing = 4 * time.Hour
+
+// inviteContactsToStatusSharing sends our StatusKit key to ghost handles
+// that have not yet keyed us back, one handle per IDS message, with a
+// short delay between sends. Skips handles we've invited within
+// statusKitPerHandleMinSpacing so a restart-inside-the-window doesn't
+// re-hammer the same peer.
+//
+// Matches OB-Android's per-chat invite shape (one handle per
+// invite_to_channel call) rather than batching all participants into one
+// IDS message, and filters to pending peers so re-invites don't go to
+// contacts who already keyed us.
 func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
 	if c.client == nil || c.handle == "" {
 		log.Warn().Bool("client_nil", c.client == nil).Str("handle", c.handle).Msg("StatusKit invite: skipped (client or handle not ready)")
 		return
 	}
 	log.Info().Str("handle", c.handle).Msg("StatusKit invite: starting")
-	// Function-level panic guard. SetStatus/InviteToStatusSharing both
-	// cross into Rust and upstream has several reachable panic sites in
-	// the keysharing path (see audit).
 	defer func() {
 		if r := recover(); r != nil {
 			log.Warn().Interface("panic", r).Msg("inviteContactsToStatusSharing panicked — skipped")
 		}
 	}()
+
 	ctx := context.Background()
 	rows, err := c.Main.Bridge.DB.RawDB.QueryContext(ctx, "SELECT id FROM ghost WHERE bridge_id=$1", c.Main.Bridge.ID)
 	if err != nil {
@@ -866,7 +888,7 @@ func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
 	for _, h := range c.allHandles {
 		selfHandles[h] = struct{}{}
 	}
-	var handles []string
+	var allGhosts []string
 	var rawCount int
 	for rows.Next() {
 		var ghostID string
@@ -877,65 +899,80 @@ func (c *IMClient) inviteContactsToStatusSharing(log zerolog.Logger) {
 		if _, isSelf := selfHandles[ghostID]; isSelf {
 			continue
 		}
-		handles = append(handles, ghostID)
+		allGhosts = append(allGhosts, ghostID)
 	}
 	if err := rows.Err(); err != nil {
 		log.Warn().Err(err).Msg("StatusKit invite: ghost row iteration error")
 	}
 	rows.Close()
-	log.Info().Int("raw_count", rawCount).Int("after_self_filter", len(handles)).Msg("StatusKit invite: ghost query complete")
-	if len(handles) == 0 {
-		log.Warn().Int("raw_count", rawCount).Msg("StatusKit invite: zero ghost handles after self-filter — backfill likely incomplete, will retry on next periodic tick")
+	if len(allGhosts) == 0 {
+		log.Warn().Int("raw_count", rawCount).Msg("StatusKit invite: zero ghost handles — nothing to invite")
 		return
 	}
-	// Expand each ghost handle to all correlated aliases from the IDS cache.
-	// A contact's keysharing sub-service registration may live on only one of
-	// their handle forms (e.g. mailto: but not tel:). Passing the raw ghost
-	// list means invites only reach the form we happen to have rowed up;
-	// expanding via sender_correlation_identifier fans the invite out to every
-	// known alias so the device actually registered for keysharing is hit.
-	expanded := make(map[string]struct{}, len(handles))
-	for _, h := range handles {
-		expanded[h] = struct{}{}
+
+	// Subtract peers who've already keyed us back. GetKnownHandles reads
+	// from the in-memory StatusKit state, which is hydrated from
+	// statuskit-state.plist at startup.
+	knownSet := make(map[string]struct{})
+	if sk, skErr := c.client.GetStatuskitClient(); skErr == nil && sk != nil {
+		for _, h := range sk.GetKnownHandles() {
+			knownSet[h] = struct{}{}
+		}
 	}
-	var aliasAdded int
-	for _, h := range handles {
-		for _, alias := range c.client.ResolveHandleCached(h, handles) {
-			if _, isSelf := selfHandles[alias]; isSelf {
+
+	now := time.Now()
+	var pending []string
+	var skippedKnown, skippedSpacing int
+	for _, h := range allGhosts {
+		if _, known := knownSet[h]; known {
+			skippedKnown++
+			continue
+		}
+		last := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitLastInviteKeyPrefix+h))
+		if last != "" {
+			if ts, parseErr := time.Parse(time.RFC3339, last); parseErr == nil && now.Sub(ts) < statusKitPerHandleMinSpacing {
+				skippedSpacing++
 				continue
 			}
-			if _, exists := expanded[alias]; !exists {
-				expanded[alias] = struct{}{}
-				aliasAdded++
+		}
+		pending = append(pending, h)
+	}
+
+	log.Info().
+		Int("total_ghosts", len(allGhosts)).
+		Int("already_keyed", skippedKnown).
+		Int("spacing_skip", skippedSpacing).
+		Int("pending", len(pending)).
+		Msg("StatusKit invite: plan")
+
+	if len(pending) == 0 {
+		return
+	}
+
+	// One sender only — OB calls invite_to_channel with a single
+	// `ensureHandle()` result per chat, not with every registered handle.
+	sender := c.handle
+	var okCount, failCount int
+	nowStr := now.Format(time.RFC3339)
+	for i, h := range pending {
+		if err := c.client.InviteToStatusSharing(sender, []string{h}); err != nil {
+			failCount++
+			log.Warn().Err(err).Str("sender", sender).Str("handle", h).Msg("StatusKit invite failed for handle")
+		} else {
+			okCount++
+			c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+h), nowStr)
+		}
+		// Skip the delay after the last handle.
+		if i < len(pending)-1 {
+			select {
+			case <-time.After(statusKitInterInviteDelay):
+			case <-c.stopChan:
+				log.Info().Int("done", i+1).Int("total", len(pending)).Msg("StatusKit invite: bridge stopping, aborting sweep")
+				return
 			}
 		}
 	}
-	if aliasAdded > 0 {
-		handles = handles[:0]
-		for h := range expanded {
-			handles = append(handles, h)
-		}
-		log.Info().Int("aliases_added", aliasAdded).Int("total", len(handles)).Msg("StatusKit invite: expanded via IDS correlation")
-	}
-	// ensure_channel (called inside invite_to_channel) returns Ok immediately
-	// if my_key is already allocated from a prior session. Only the first-ever
-	// allocation needs the sharedchannels GSA token. Don't gate on SetStatus
-	// here — the GSA token may be stale (NeedsDevice2FA) while IDS invites
-	// still work fine.
-	senders := c.allHandles
-	if len(senders) == 0 && c.handle != "" {
-		senders = []string{c.handle}
-	}
-	var okCount, failCount int
-	for _, sender := range senders {
-		if err := c.client.InviteToStatusSharing(sender, handles); err != nil {
-			failCount++
-			log.Warn().Err(err).Str("sender", sender).Int("count", len(handles)).Msg("StatusKit invite failed for sender")
-		} else {
-			okCount++
-		}
-	}
-	log.Info().Int("count", len(handles)).Int("senders_ok", okCount).Int("senders_failed", failCount).Strs("senders", senders).Msg("Sent StatusKit key invites from all registered handles")
+	log.Info().Int("pending", len(pending)).Int("ok", okCount).Int("failed", failCount).Str("sender", sender).Msg("Sent StatusKit key invites one-per-handle (pending-only, paced)")
 }
 
 func (c *IMClient) refreshGhostNamesFromContacts(log zerolog.Logger) {

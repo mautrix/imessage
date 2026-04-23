@@ -664,6 +664,14 @@ func (c *IMClient) onForwardBackfillDone() {
 			go c.refreshGhostNamesFromContacts(log.Logger)
 		}
 
+		// Fresh-bridge path: ghosts only exist after backfill creates them.
+		// subscribeAfterInit runs at connect time with zero ghosts on a fresh
+		// install and returns without inviting. This post-backfill hook fires
+		// the sweep once ghosts exist. Warm restart already has ghosts and
+		// invites via subscribeAfterInit, so this is a no-op dup there — the
+		// per-handle invite is idempotent on peer's side (re-delivery just
+		// hits the server-side retry loop).
+		go c.inviteContactsToStatusSharing(log.Logger)
 	}
 }
 
@@ -999,14 +1007,16 @@ func (c *IMClient) Connect(ctx context.Context) {
 			// and failed with "StatusKit not initialized". Re-run it now that
 			// the StatusKit client is guaranteed to be ready.
 			c.subscribeToContactPresence(log)
-			// No automatic invite on startup — matches OB-Android, which only
-			// calls invite_to_channel on explicit per-chat user action (zen
-			// mode share toggle). Bulk startup invites appear to trip peer-side
-			// rate limiting / spam filtering that prevents reshares from
-			// arriving. Peer keys flow passively on peer-side status changes
-			// via the channel subscription subscribeToContactPresence holds.
-			// Manual invite is available via the !statuskit-invite-all admin
-			// command for when explicit fan-out is actually wanted.
+			// Fan-out StatusKit invites matching OB-Android's shape: one
+			// handle per IDS message, paced with a small inter-send delay.
+			// OB invites per-chat-activation (and on app resume); bridge
+			// approximates with a startup sweep. Empirically the batched
+			// 23-handles-in-one-invite call we used previously appeared to
+			// either trigger peer-side filtering or not propagate to each
+			// peer's distribution set the way one-at-a-time invites do —
+			// 12h on passive-only yielded zero real-iOS reshares, whereas
+			// OB (which invites one at a time) gets reshares fine.
+			go c.inviteContactsToStatusSharing(log)
 			// Best-effort status publish in the background. Non-fatal and
 			// potentially blocking on GSA/anisette — never let it gate presence
 			// subscription.
@@ -1051,6 +1061,7 @@ func (c *IMClient) Connect(ctx context.Context) {
 	c.msgBuffer = &messageBuffer{client: c}
 	go c.periodicStateSave(log)
 	go c.periodicPetRefresh(log)
+	go c.periodicStatusSharingReinvite(log)
 	go c.startSharedStreamsWatcher(log)
 
 	// Ensure shared-profile schema and hydrate the in-memory cache from the
@@ -7722,6 +7733,25 @@ func (c *IMClient) periodicPetRefresh(log zerolog.Logger) {
 			} else {
 				log.Debug().Msg("Periodic PET refresh completed")
 			}
+		case <-c.stopChan:
+			return
+		}
+	}
+}
+
+// periodicStatusSharingReinvite re-runs the pending-only StatusKit invite
+// sweep every 4h. Peers who've already keyed us are skipped inside
+// inviteContactsToStatusSharing. Per-ghost KV spacing inside that function
+// also prevents the tick from hammering the same unresponsive peer if the
+// bridge restarts mid-window. First tick fires after the full interval so
+// we don't pile on top of the startup sweep.
+func (c *IMClient) periodicStatusSharingReinvite(log zerolog.Logger) {
+	ticker := time.NewTicker(4 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			c.inviteContactsToStatusSharing(log)
 		case <-c.stopChan:
 			return
 		}
