@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	cryptoRand "crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"html"
 	"net/url"
@@ -293,7 +294,33 @@ func armBridgeFaceTimeCall(
 		}
 	}()
 
+	link = appendFaceTimeLinkName(link, stripIdentifierPrefix(callerHandle))
 	return link, sessionID, nil
+}
+
+// appendFaceTimeLinkName appends &n=<base64-name> to a FaceTime web join
+// link so Apple's join page pre-fills the display-name field, sparing the
+// user from typing their name before joining.
+//
+// Apple's web FT page base64-decodes the &n= value (matching the &k= and
+// &p= pattern — both are URL-safe base64 of binary data in
+// facetime.rs:102). Sending raw text caused the page to atob() it and
+// render gibberish (reverted in 8d9c8f2); base64-encoding here matches
+// what the page expects.
+//
+// This is the bridge's analogue of OpenBubbles' Android-native webview
+// name injection (rustpush_service.dart:3222 passes "name" separately
+// via MethodChannel). We can't inject JS into Apple's page from a
+// Matrix link, so we ride the URL-fragment path instead.
+func appendFaceTimeLinkName(link, name string) string {
+	if name == "" {
+		return link
+	}
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(name))
+	if strings.Contains(link, "#") {
+		return link + "&n=" + encoded
+	}
+	return link + "#n=" + encoded
 }
 
 // retryOnAPNsFlap retries an APNs-dependent operation up to three times

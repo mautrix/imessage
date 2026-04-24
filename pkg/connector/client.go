@@ -3182,6 +3182,12 @@ func (c *IMClient) handleFaceTimeRingNotice(log zerolog.Logger, msg rustpushgo.W
 				go func() {
 					_ = rotateIncomingLink(ft, c.handle)
 				}()
+				// Pre-fill the web page's display-name prompt with the
+				// user's own handle so tapping Answer lands in the call
+				// without the guest-name typing step (which otherwise
+				// creates a second participant distinct from the pseud
+				// bound to the user's handle).
+				link = appendFaceTimeLinkName(link, stripIdentifierPrefix(c.handle))
 			} else {
 				log.Warn().Err(genErr).Msg("FaceTimeRing: failed to generate bridge FaceTime link")
 			}
