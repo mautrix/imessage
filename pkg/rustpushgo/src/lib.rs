@@ -3217,13 +3217,15 @@ async fn maybe_fire_pending_ring(ft: &rustpush::facetime::FTClient, guid: &str, 
         // independently.
         let mut state = ft.state.write().await;
         if let Some(session) = state.sessions.get_mut(guid) {
-            if let Err(e) = ft.unprop_conv(session).await {
-                warn!("pending ring: unprop_conv failed for session {}: {:?}", guid, e);
-            } else {
-                info!(
-                    "pending ring: unpropped bridge from session {} — web client carries the call from here",
-                    guid
-                );
+            if session.is_propped {
+                if let Err(e) = ft.unprop_conv(session).await {
+                    warn!("pending ring: unprop_conv failed for session {}: {:?}", guid, e);
+                } else {
+                    info!(
+                        "pending ring: unpropped bridge from session {} — web client carries the call from here",
+                        guid
+                    );
+                }
             }
         }
     }
@@ -3552,19 +3554,7 @@ async fn auto_approve_bridge_letmein(
         (link.handle.clone(), linked_group, member_group, ringing_group, inbound_session)
     };
 
-    // Priority: linked > member > ringing. `linked` is a deliberate pin
-    // from bind_bridge_link_to_session (the bridge-originated outbound
-    // path); `member` covers cold outbound sessions where the requestor is
-    // a known session member. `ringing` alone (no linked, no member)
-    // means an unmatched ringing session.
-    //
-    // Regardless of which bucket matched, inbound_session=true means the
-    // candidate session is peer-initiated (mode=Incoming). Bridge-joined
-    // participants use upstream prop_up_conv which hardcodes
-    // video_enabled=Some(false), so a bridge-participated inbound call
-    // causes peer's FT UI to render the bridge's avatar instead of the
-    // user's real video stream. Skip auto-approve in that case and let
-    // the user's real device (iPhone/Mac) answer end-to-end.
+    // Priority: linked > member > ringing.
     let match_kind = if inbound_session {
         "inbound-peer-initiated"
     } else if linked_group.is_some() {
@@ -3580,24 +3570,6 @@ async fn auto_approve_bridge_letmein(
         "FaceTime letmein approve: match_kind={} pseud={} requestor={} link_handle={}",
         match_kind, request.pseud, request.requestor, link_handle,
     );
-
-    // Inbound (peer-initiated) session: don't hijack. User's native FT answers.
-    if inbound_session {
-        info!(
-            "FaceTime letmein: peer-initiated (Incoming) session (pseud={} requestor={}) — skipping auto-approve so user's real device answers with its own video stream",
-            request.pseud, request.requestor,
-        );
-        return Ok(());
-    }
-
-    // Ringing with no linked/member match — no session to join safely.
-    if linked_group.is_none() && member_group.is_none() && ringing_group.is_some() {
-        info!(
-            "FaceTime letmein: ringing session with no linked/member match (pseud={} requestor={}) — skipping auto-approve",
-            request.pseud, request.requestor,
-        );
-        return Ok(());
-    }
 
     let approved_group = if let Some(group) = linked_group.or(member_group).or(ringing_group) {
         group
@@ -3642,11 +3614,43 @@ async fn auto_approve_bridge_letmein(
         match facetime.respond_letmein(retry_request, Some(&approved_group)).await {
             Ok(()) => {
                 info!(
-                    "FaceTime auto-approved LetMeIn request for bridge link: requestor={} group={} usage=bridge",
+                    "FaceTime auto-approved LetMeIn request for bridge link: requestor={} group={} usage=bridge inbound={}",
                     request.requestor,
-                    approved_group
+                    approved_group,
+                    inbound_session,
                 );
                 suppress_own_device_ring(facetime, &approved_group).await;
+
+                // Leave the session immediately after approving. Upstream
+                // respond_letmein's needs_prop branch (facetime.rs:1078-
+                // 1084) props the bridge into the session to satisfy
+                // OneOnOne-mode exit; upstream's own comment says we
+                // should leave ASAP once the web client joins, but never
+                // wrote the leave. Staying propped causes peer's FT UI
+                // to render the bridge's participant with
+                // video_enabled=Some(false) alongside the user's real
+                // device — peer sees the bridge's avatar instead of the
+                // user's video (inbound) or the call shows "{peer} and
+                // one other person" on the user's Mac Continuity view
+                // (outbound). Leaving is safe because the approved
+                // requestor (user's device via Matrix "Answer" link, or
+                // callee via outbound link) is in the session as a
+                // participant by the time respond_letmein returns.
+                let mut state = facetime.state.write().await;
+                if let Some(session) = state.sessions.get_mut(&approved_group) {
+                    if session.is_propped {
+                        match facetime.unprop_conv(session).await {
+                            Ok(()) => info!(
+                                "FaceTime letmein: unpropped bridge from session {} — joiner carries the call",
+                                approved_group
+                            ),
+                            Err(e) => warn!(
+                                "FaceTime letmein: unprop_conv failed for session {}: {:?}",
+                                approved_group, e
+                            ),
+                        }
+                    }
+                }
                 return Ok(());
             }
             Err(e) => {
