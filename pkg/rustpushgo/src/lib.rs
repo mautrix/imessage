@@ -3594,48 +3594,6 @@ async fn auto_approve_bridge_letmein(
         }
     }
 
-    // On inbound peer-initiated sessions (session.mode=Incoming), do NOT
-    // call respond_letmein. User's real Apple devices (Mac, iPhone) are
-    // independently registered for FACETIME+VIDEO and ring natively off
-    // peer's Invitation — they handle the call end-to-end with full
-    // video.
-    //
-    // If the bridge responds to the web letmein here, upstream's flow
-    // injects two wire messages into peer's active ring:
-    //
-    //   1. respond_letmein's needs_prop branch (facetime.rs:1078-1084)
-    //      fires prop_up_conv(ring=false). cmd 207 to all session
-    //      members (peer included) with update_context.video=Some(true),
-    //      video_enabled=Some(false). Peer's FT UI reads this as
-    //      "the called party just joined, video disabled" — locking
-    //      peer's render of the called handle to no-video BEFORE the
-    //      user's real Mac has a chance to post its own cmd 207 with
-    //      video=true from its native FT daemon.
-    //
-    //   2. add_members (facetime.rs:1149) — because web's requestor is
-    //      a temp:<pseud> never in session.members, upstream takes the
-    //      add_members branch (NOT the ring() branch taken on outbound).
-    //      update_conversation sends cmd 209 AddMember with no video
-    //      context and u_plus_one=true. Peer's UI sees "a new member
-    //      is being added u_plus_one-style mid-ring" and doesn't
-    //      recover to video.
-    //
-    // Trade-off: web FT (Matrix "Answer" link) cannot join inbound
-    // calls — it waits forever for a LetMeInResponse that never comes.
-    // Outbound web-join is unaffected (needs_prop short-circuits because
-    // CreateSessionNoRing sets is_ringing_inaccurate=false, and target
-    // handle is in session.members so upstream takes ring() not
-    // add_members). The user's stated preference is to answer inbound
-    // calls natively on their real device; this trade-off is
-    // deliberate.
-    if inbound_session {
-        info!(
-            "FaceTime letmein: skipping respond_letmein for inbound peer-initiated session {} — user's real device will answer natively; bridge would otherwise inject cmd 207+209 into peer's active ring and downgrade video to audio-mode",
-            approved_group
-        );
-        return Ok(());
-    }
-
     // respond_letmein: sends LetMeInResponse then add_members/ring over APNs.
     // APNs can flap (early eof → SendTimedOut) especially right after boot.
     //
