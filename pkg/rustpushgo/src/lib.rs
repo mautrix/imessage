@@ -3621,36 +3621,16 @@ async fn auto_approve_bridge_letmein(
                 );
                 suppress_own_device_ring(facetime, &approved_group).await;
 
-                // Leave the session immediately after approving. Upstream
-                // respond_letmein's needs_prop branch (facetime.rs:1078-
-                // 1084) props the bridge into the session to satisfy
-                // OneOnOne-mode exit; upstream's own comment says we
-                // should leave ASAP once the web client joins, but never
-                // wrote the leave. Staying propped causes peer's FT UI
-                // to render the bridge's participant with
-                // video_enabled=Some(false) alongside the user's real
-                // device — peer sees the bridge's avatar instead of the
-                // user's video (inbound) or the call shows "{peer} and
-                // one other person" on the user's Mac Continuity view
-                // (outbound). Leaving is safe because the approved
-                // requestor (user's device via Matrix "Answer" link, or
-                // callee via outbound link) is in the session as a
-                // participant by the time respond_letmein returns.
-                let mut state = facetime.state.write().await;
-                if let Some(session) = state.sessions.get_mut(&approved_group) {
-                    if session.is_propped {
-                        match facetime.unprop_conv(session).await {
-                            Ok(()) => info!(
-                                "FaceTime letmein: unpropped bridge from session {} — joiner carries the call",
-                                approved_group
-                            ),
-                            Err(e) => warn!(
-                                "FaceTime letmein: unprop_conv failed for session {}: {:?}",
-                                approved_group, e
-                            ),
-                        }
-                    }
-                }
+                // Do NOT unprop after respond_letmein. OpenBubbles's
+                // reference client (openbubbles-app lib/services/rustpush/
+                // rustpush_service.dart:3347) calls answerFtRequest and
+                // stops — it never sends an unprop wire. Their inbound
+                // video works. Our prior "unprop to get out of peer's UI"
+                // (69b54dbaf) was premised on the exact symptom the user
+                // is still reporting, so its claim is falsified by the
+                // deployment. Staying propped matches OB; peer sees our
+                // participant alongside the joining web client, which
+                // carries the real video stream.
                 return Ok(());
             }
             Err(e) => {
