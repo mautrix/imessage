@@ -3592,29 +3592,6 @@ async fn auto_approve_bridge_letmein(
                 link.session_link = Some(approved_group.clone());
             }
         }
-        // On inbound (peer called us), clearing is_ringing_inaccurate here
-        // causes respond_letmein's needs_prop check (upstream
-        // facetime.rs:1078) to fail, so prop_up_conv never fires on the
-        // inbound session. That matters because the prop sends cmd 207 to
-        // peer stamped with our handle and video_enabled=Some(false) — peer
-        // renders a participant tile labeled as the user with no video, and
-        // the web client's media gets attributed to that tile. Wife sees a
-        // video-less "David" tile with audio but no video.
-        //
-        // The prop exists to force peer out of OneOnOne mode (upstream
-        // comment at facetime.rs:1071-1076). We rely on respond_letmein's
-        // subsequent add_members call (join_type=3, is_u_plus_one=true) to
-        // carry that signal instead — u+1 is itself the OneOnOne-exit
-        // trigger, and the bridge has no business appearing as an active
-        // participant on inbound calls since the web client is the one
-        // actually joining.
-        if inbound_session {
-            if let Some(session) = state.sessions.get_mut(&approved_group) {
-                if session.is_ringing_inaccurate {
-                    session.is_ringing_inaccurate = false;
-                }
-            }
-        }
     }
 
     // respond_letmein: sends LetMeInResponse then add_members/ring over APNs.
