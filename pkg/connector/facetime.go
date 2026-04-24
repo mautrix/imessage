@@ -237,6 +237,7 @@ func armBridgeFaceTimeCall(
 	callerHandle string,
 	targetHandle string,
 	ringTTLSecs uint64,
+	proxy *faceTimeProxy,
 ) (webLink string, sessionID string, err error) {
 	sessionID, err = newFaceTimeSessionID()
 	if err != nil {
@@ -295,6 +296,13 @@ func armBridgeFaceTimeCall(
 	}()
 
 	link = appendFaceTimeLinkName(link, stripIdentifierPrefix(callerHandle))
+	// Wrap the raw facetime.apple.com link with the bridge's proxy if the
+	// proxy endpoint is live. The proxy preserves the fragment and serves
+	// a patched main.js that auto-submits the name and clicks Join — OB's
+	// convention, see facetime_proxy.go. iOS/macOS UAs are 302-redirected
+	// back to the raw URL so native FaceTime.app Universal Link handling
+	// kicks in.
+	link = proxy.buildLink(link)
 	return link, sessionID, nil
 }
 
@@ -374,6 +382,8 @@ func fnFaceTime(ce *commands.Event) {
 			go func(h string) {
 				_ = rotateOutboundLink(ft, h)
 			}(handle)
+			link = appendFaceTimeLinkName(link, stripIdentifierPrefix(handle))
+			link = client.Main.ftProxy.buildLink(link)
 			ce.Reply("FaceTime link for **%s**: %s\n\nShare this link to start a FaceTime call. Use `!im facetime-clear` to revoke it.", handle, link)
 			return
 		}
@@ -477,7 +487,7 @@ func fnFaceTimeCallInPortal(ce *commands.Event) bool {
 		return true
 	}
 
-	webLink, sessionID, err := armBridgeFaceTimeCall(ft, client.handle, target, 60)
+	webLink, sessionID, err := armBridgeFaceTimeCall(ft, client.handle, target, 60, client.Main.ftProxy)
 	if err != nil {
 		switch {
 		case isNonRetryableResourceClosed(err):
@@ -562,6 +572,8 @@ func fnFaceTimeSend(ce *commands.Event) {
 	go func() {
 		_ = rotateOutboundLink(ft, client.handle)
 	}()
+	link = appendFaceTimeLinkName(link, stripIdentifierPrefix(client.handle))
+	link = client.Main.ftProxy.buildLink(link)
 
 	conv := client.portalToConversation(ce.Portal)
 	if _, sendErr := client.client.SendMessage(conv, link, nil, client.handle, nil, nil, nil); sendErr != nil {

@@ -17,6 +17,7 @@ import (
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
+	"maunium.net/go/mautrix/bridgev2/matrix"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/id"
@@ -31,6 +32,12 @@ func isRunningOnMacOS() bool {
 type IMConnector struct {
 	Bridge *bridgev2.Bridge
 	Config IMConfig
+
+	// ftProxy serves patched facetime.apple.com HTML + main.js so the
+	// webview auto-submits the user's name and auto-clicks Join. See
+	// facetime_proxy.go for rationale. Nil if the bridge lacks a public
+	// address (proxy falls back to bare apple.com links in that case).
+	ftProxy *faceTimeProxy
 }
 
 var _ bridgev2.NetworkConnector = (*IMConnector)(nil)
@@ -91,6 +98,26 @@ func (c *IMConnector) Start(ctx context.Context) error {
 	// state (session.json + keystore), create a user_login from the backup
 	// instead of requiring a full re-login.
 	c.tryAutoRestore(ctx)
+
+	// Register the FaceTime proxy endpoint if we have a bridge public
+	// address to put it behind. Without a public address the browser
+	// can't reach our proxy, so skip the route and the link builder
+	// will fall back to raw facetime.apple.com/join URLs.
+	if asConnector, ok := c.Bridge.Matrix.(*matrix.Connector); ok && c.Bridge.Matrix.GetCapabilities() != nil {
+		if publicAddr := asConnector.GetPublicAddress(); publicAddr != "" {
+			c.ftProxy = newFaceTimeProxy(c.Bridge.Log)
+			c.ftProxy.registerOnAS(asConnector)
+			// Warm the cache in the background so the first click
+			// doesn't pay the full Apple-CDN fetch latency.
+			go func() {
+				if _, warmErr := c.ftProxy.ensureFresh(); warmErr != nil {
+					c.Bridge.Log.Warn().Err(warmErr).Msg("FaceTime proxy initial cache warm failed; will retry on first request")
+				}
+			}()
+		} else {
+			c.Bridge.Log.Info().Msg("FaceTime proxy disabled: bridge has no public address (public_address unset)")
+		}
+	}
 
 	return nil
 }
