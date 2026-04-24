@@ -3196,6 +3196,36 @@ async fn maybe_fire_pending_ring(ft: &rustpush::facetime::FTClient, guid: &str, 
     };
     if rang {
         suppress_own_device_ring(ft, guid).await;
+
+        // Leave the session now that the user's device has joined AND the
+        // ring is on the wire. The bridge was only propped in the session
+        // to satisfy upstream's OneOnOne-mode exit requirement (see
+        // upstream facetime.rs:1071-1077 comment: "we solve this by
+        // 'joining' the call until the web client has an opportunity to
+        // join, and then leaving ASAP"). Staying propped makes peer's
+        // client and the user's Mac Continuity UI render the call as
+        // "{callee} and one other person" — that "other person" being
+        // the bridge's participant with video_enabled=Some(false). The
+        // user's device handles audio + video end-to-end; the bridge is
+        // only needed through session creation and ring dispatch.
+        //
+        // Safe to unprop here because the joiner that triggered
+        // maybe_fire_pending_ring is guaranteed to be a non-caller (filtered
+        // at line 3153), so at least one user-side participant is active
+        // before the bridge leaves. Callee's own join arrives over the
+        // wire when they answer and is processed by upstream handle()
+        // independently.
+        let mut state = ft.state.write().await;
+        if let Some(session) = state.sessions.get_mut(guid) {
+            if let Err(e) = ft.unprop_conv(session).await {
+                warn!("pending ring: unprop_conv failed for session {}: {:?}", guid, e);
+            } else {
+                info!(
+                    "pending ring: unpropped bridge from session {} — web client carries the call from here",
+                    guid
+                );
+            }
+        }
     }
 }
 
@@ -3503,19 +3533,24 @@ async fn auto_approve_bridge_letmein(
         (link.handle.clone(), linked_group, member_group, ringing_group)
     };
 
-    // Priority: ringing > linked > member. An actively-ringing session is
-    // always the user's immediate concern (inbound-call case); a stale
-    // session_link from a prior tap would otherwise win via `linked` and
-    // route the tap to the wrong session. `linked` is still preferred over
-    // `member` since it's a deliberate pin, and session-specific links
-    // (outbound !im facetime) always hit `linked` first because their
-    // session is fresh (is_ringing_inaccurate=false until the ring fires).
-    let match_kind = if ringing_group.is_some() {
-        "ringing"
-    } else if linked_group.is_some() {
+    // Priority: linked > member > ringing. `linked` is a deliberate pin
+    // from bind_bridge_link_to_session (the bridge-originated outbound
+    // path); `member` covers cold outbound sessions where the requestor is
+    // a known session member. `ringing` alone (no linked, no member)
+    // means an INBOUND-only session — peer called the user, the user's
+    // real devices are ringing natively, and the bridge has no legitimate
+    // role as a session participant. Bridge-joined participants use
+    // upstream prop_up_conv which hardcodes video_enabled=Some(false), so
+    // a bridge-participated inbound call causes peer's FT UI to render
+    // the bridge's avatar instead of the user's real video stream. Skip
+    // auto-approve in that case and let the user's real device (iPhone/
+    // Mac) answer end-to-end.
+    let match_kind = if linked_group.is_some() {
         "linked"
     } else if member_group.is_some() {
         "member"
+    } else if ringing_group.is_some() {
+        "ringing-inbound-only"
     } else {
         "cold-start"
     };
@@ -3524,7 +3559,16 @@ async fn auto_approve_bridge_letmein(
         match_kind, request.pseud, request.requestor, link_handle,
     );
 
-    let approved_group = if let Some(group) = ringing_group.or(linked_group).or(member_group) {
+    // Inbound-only: don't hijack the session. User's native FT answers.
+    if linked_group.is_none() && member_group.is_none() && ringing_group.is_some() {
+        info!(
+            "FaceTime letmein: inbound-only ringing session (pseud={} requestor={}) — skipping auto-approve so user's real device answers with its own video stream",
+            request.pseud, request.requestor,
+        );
+        return Ok(());
+    }
+
+    let approved_group = if let Some(group) = linked_group.or(member_group).or(ringing_group) {
         group
     } else {
         let group = uuid::Uuid::new_v4().to_string().to_uppercase();
