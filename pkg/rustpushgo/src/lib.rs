@@ -3602,37 +3602,6 @@ async fn auto_approve_bridge_letmein(
                 link.session_link = Some(approved_group.clone());
             }
         }
-        // Phantom-tile bypass: upstream's respond_letmein props the bridge
-        // into the session when `is_ringing_inaccurate && active==1` to
-        // force peer's callservicesd out of OneOnOne mode before the
-        // webview joins (facetime.rs:1078). That prop sends a
-        // ConversationParticipantDidJoinContext with video=Some(true),
-        // video_enabled=Some(false) — rendering a disconnected bridge
-        // tile on peer's UI that never clears cleanly (attempts 1-5 all
-        // failed to remove it after-the-fact).
-        //
-        // Pre-flipping is_ringing_inaccurate=false short-circuits the
-        // needs_prop check. respond_letmein still sends the LMI response
-        // and runs add_members(ring=true), which adds the webview pseud
-        // as a remote participant + rings it to join. The hypothesis is
-        // that add_members alone is enough to exit OneOnOne on peer's
-        // side (a new AddMember participant appears before the webview
-        // tries to join). If it isn't, the call will fail to establish
-        // — empirical test only.
-        //
-        // Safe side effect: the only other path reading this flag after
-        // letmein is facetime.rs:1407-1415 missed-call detection. By the
-        // time we're here the user tapped Answer, so "all participants
-        // inactive → mark Missed" isn't the relevant end state.
-        if let Some(session) = state.sessions.get_mut(&approved_group) {
-            if session.is_ringing_inaccurate {
-                info!(
-                    "FaceTime letmein: clearing is_ringing_inaccurate on session {} to skip upstream prop_up_conv (phantom-tile bypass)",
-                    approved_group
-                );
-                session.is_ringing_inaccurate = false;
-            }
-        }
     }
 
     // respond_letmein: sends LetMeInResponse then add_members/ring over APNs.
