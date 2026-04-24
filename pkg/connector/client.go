@@ -3125,23 +3125,36 @@ func (c *IMClient) handleFaceTimeRingNotice(log zerolog.Logger, msg rustpushgo.W
 
 	link := firstFaceTimeLinkInText(rawText)
 	if link == "" {
-		// Native FaceTime ring — no link embedded. Use the session guid
-		// from the marker text to mint a session-specific link that joins
-		// the caller's actual session (not a stale bridge link).
+		// Native FaceTime ring — no link embedded. Use the persistent
+		// bridge link + pin its session_link to this inbound session guid.
+		//
+		// Why not GetSessionLink: upstream's get_session_link calls
+		// message_session, which sends a LinkCreated wire message to
+		// every member of the session — including the peer whose call
+		// is currently ringing our handle. Injecting a LinkCreated into
+		// peer's active ring disrupts their FT UI and empirically
+		// downgrades peer's display to audio-mode ("peer sees avatar,
+		// hears audio, no video") even when the user answers natively
+		// on a video-capable device. GetSessionLink only avoids this
+		// when session.link is already set, which it isn't for native
+		// FT calls (no web link embedded in peer's Invitation).
+		//
+		// getFaceTimeLinkWithRecovery uses get_link_for_usage, which
+		// mints via new_link without sending message_session. Pinning
+		// the link's session_link to the inbound guid preserves the
+		// routing guarantee the GetSessionLink path was added for
+		// (f7ec3b8f): auto_approve_bridge_letmein's linked_group
+		// branch matches this session when web taps the Answer button.
 		if ft, ftErr := c.client.GetFacetimeClient(); ftErr == nil {
-			if guid := extractFaceTimeGuid(rawText); guid != "" {
-				if sessionLink, slErr := ft.GetSessionLink(guid); slErr == nil {
-					link = sessionLink
-				} else {
-					log.Debug().Err(slErr).Str("guid", guid).Msg("FaceTimeRing: GetSessionLink failed, falling back to bridge link")
+			if generated, genErr := getFaceTimeLinkWithRecovery(ft, c.handle); genErr == nil {
+				link = generated
+				if guid := extractFaceTimeGuid(rawText); guid != "" {
+					if bindErr := ft.BindBridgeLinkToSession(c.handle, bridgeFaceTimeLinkUsage, guid); bindErr != nil {
+						log.Warn().Err(bindErr).Str("guid", guid).Msg("FaceTimeRing: failed to pin bridge link to inbound session; web answer may route incorrectly")
+					}
 				}
-			}
-			if link == "" {
-				if generated, genErr := getFaceTimeLinkWithRecovery(ft, c.handle); genErr == nil {
-					link = generated
-				} else {
-					log.Warn().Err(genErr).Msg("FaceTimeRing: failed to generate fallback FaceTime link")
-				}
+			} else {
+				log.Warn().Err(genErr).Msg("FaceTimeRing: failed to generate bridge FaceTime link")
 			}
 		}
 	}
