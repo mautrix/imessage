@@ -3140,6 +3140,81 @@ fn pending_ft_rings() -> &'static tokio::sync::Mutex<HashMap<String, PendingFTRi
     PENDING_FT_RINGS.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
 }
 
+// Tracks inbound (peer-initiated) FaceTime sessions where the bridge has
+// been propped in by respond_letmein's needs_prop branch and needs to
+// unprop after the web client's JoinEvent arrives — not before.
+//
+// Why: on inbound the prop is load-bearing for OneOnOne-mode exit (upstream
+// facetime.rs:1071-1076), but staying propped forever leaves the bridge as
+// a video-less participant tile in peer's UI that swallows the web client's
+// media. Leaving too early (immediately after respond_letmein returns)
+// causes the session to collapse back to OneOnOne before the web client's
+// cmd 207 prop arrives, which empirically drops the call within seconds.
+//
+// Correct moment to unprop: when the web client sends its own cmd 207 to
+// the session. Bridge's receive loop parses that as FTMessage::JoinEvent
+// and calls maybe_fire_pending_inbound_unprop, which pops the entry and
+// fires unprop_conv.
+struct PendingInboundUnprop {
+    expires_at: std::time::Instant,
+}
+
+static PENDING_INBOUND_UNPROPS: std::sync::OnceLock<
+    tokio::sync::Mutex<HashMap<String, PendingInboundUnprop>>,
+> = std::sync::OnceLock::new();
+
+fn pending_inbound_unprops(
+) -> &'static tokio::sync::Mutex<HashMap<String, PendingInboundUnprop>> {
+    PENDING_INBOUND_UNPROPS.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
+}
+
+async fn maybe_fire_pending_inbound_unprop(
+    ft: &rustpush::facetime::FTClient,
+    guid: &str,
+    joiner_handle: &str,
+) {
+    {
+        let mut map = pending_inbound_unprops().lock().await;
+        let Some(entry) = map.get(guid) else {
+            return;
+        };
+        if entry.expires_at <= std::time::Instant::now() {
+            map.remove(guid);
+            return;
+        }
+        // Skip self-joins: bridge's own handle appearing as a joiner
+        // would be its own prop echoing back. The web client joins with
+        // a temp: or pseud: handle, never the bridge's tel:/mailto:.
+        let bridge_is_self = {
+            let state = ft.state.read().await;
+            state
+                .sessions
+                .get(guid)
+                .map(|s| s.my_handles.iter().any(|h| h == joiner_handle))
+                .unwrap_or(false)
+        };
+        if bridge_is_self {
+            return;
+        }
+        map.remove(guid);
+    }
+    let mut state = ft.state.write().await;
+    if let Some(session) = state.sessions.get_mut(guid) {
+        if session.is_propped {
+            match ft.unprop_conv(session).await {
+                Ok(()) => info!(
+                    "FaceTime inbound unprop: bridge left session {} after web client joined ({})",
+                    guid, joiner_handle
+                ),
+                Err(e) => warn!(
+                    "FaceTime inbound unprop: unprop_conv failed for session {}: {:?}",
+                    guid, e
+                ),
+            }
+        }
+    }
+}
+
 async fn maybe_fire_pending_ring(ft: &rustpush::facetime::FTClient, guid: &str, joiner_handle: &str) {
     let targets = {
         let mut map = pending_ft_rings().lock().await;
@@ -3592,29 +3667,6 @@ async fn auto_approve_bridge_letmein(
                 link.session_link = Some(approved_group.clone());
             }
         }
-        // On inbound (peer called us), clearing is_ringing_inaccurate here
-        // causes respond_letmein's needs_prop check (upstream
-        // facetime.rs:1078) to fail, so prop_up_conv never fires on the
-        // inbound session. That matters because the prop sends cmd 207 to
-        // peer stamped with our handle and video_enabled=Some(false) — peer
-        // renders a participant tile labeled as the user with no video, and
-        // the web client's media gets attributed to that tile. Wife sees a
-        // video-less "David" tile with audio but no video.
-        //
-        // The prop exists to force peer out of OneOnOne mode (upstream
-        // comment at facetime.rs:1071-1076). We rely on respond_letmein's
-        // subsequent add_members call (join_type=3, is_u_plus_one=true) to
-        // carry that signal instead — u+1 is itself the OneOnOne-exit
-        // trigger, and the bridge has no business appearing as an active
-        // participant on inbound calls since the web client is the one
-        // actually joining.
-        if inbound_session {
-            if let Some(session) = state.sessions.get_mut(&approved_group) {
-                if session.is_ringing_inaccurate {
-                    session.is_ringing_inaccurate = false;
-                }
-            }
-        }
     }
 
     // respond_letmein: sends LetMeInResponse then add_members/ring over APNs.
@@ -3644,16 +3696,29 @@ async fn auto_approve_bridge_letmein(
                 );
                 suppress_own_device_ring(facetime, &approved_group).await;
 
-                // Do NOT unprop after respond_letmein. OpenBubbles's
-                // reference client (openbubbles-app lib/services/rustpush/
-                // rustpush_service.dart:3347) calls answerFtRequest and
-                // stops — it never sends an unprop wire. Their inbound
-                // video works. Our prior "unprop to get out of peer's UI"
-                // (69b54dbaf) was premised on the exact symptom the user
-                // is still reporting, so its claim is falsified by the
-                // deployment. Staying propped matches OB; peer sees our
-                // participant alongside the joining web client, which
-                // carries the real video stream.
+                // On inbound sessions, register a deferred unprop keyed
+                // on the session guid. The receive loop fires
+                // maybe_fire_pending_inbound_unprop when the web client's
+                // JoinEvent arrives, which is the moment it's safe to
+                // leave the session without collapsing wife's call back
+                // to OneOnOne mode. See the PendingInboundUnprop doc for
+                // the full rationale (prop is needed for OneOnOne exit,
+                // but staying propped leaves a video-less bridge tile
+                // that swallows the web client's media in peer's UI).
+                if inbound_session {
+                    let mut map = pending_inbound_unprops().lock().await;
+                    map.insert(
+                        approved_group.clone(),
+                        PendingInboundUnprop {
+                            expires_at: std::time::Instant::now()
+                                + std::time::Duration::from_secs(60),
+                        },
+                    );
+                    info!(
+                        "FaceTime inbound unprop: registered pending unprop for session {} (fires on web client JoinEvent)",
+                        approved_group
+                    );
+                }
                 return Ok(());
             }
             Err(e) => {
@@ -6806,6 +6871,7 @@ pub async fn new_client(
                         }
                         if let rustpush::facetime::FTMessage::JoinEvent { guid, handle, .. } = &ft_message {
                             maybe_fire_pending_ring(ft_for_recv.as_ref(), guid, handle).await;
+                            maybe_fire_pending_inbound_unprop(ft_for_recv.as_ref(), guid, handle).await;
                         }
                         if let Some(wrapped) = facetime_event_to_wrapped(ft_for_recv.as_ref(), &ft_message).await {
                             callback.on_message(wrapped);
