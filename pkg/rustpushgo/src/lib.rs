@@ -3492,7 +3492,7 @@ async fn auto_approve_bridge_letmein(
     // (from get_link_for_usage) have usage=Some("bridge"); session-specific
     // links (from get_session_link) have usage=None but session_link=Some.
     // Both are bridge-created and safe to auto-approve.
-    let (link_handle, linked_group, member_group, ringing_group) = {
+    let (link_handle, linked_group, member_group, ringing_group, inbound_session) = {
         let state = facetime.state.read().await;
         let Some(link) = state.links.get(&request.pseud) else {
             return Ok(());
@@ -3530,22 +3530,44 @@ async fn auto_approve_bridge_letmein(
             }
         });
 
-        (link.handle.clone(), linked_group, member_group, ringing_group)
+        // Check the candidate session's mode. Peer-initiated (Incoming)
+        // sessions must not be joined by the bridge — even if `linked`
+        // matches, because get_session_link auto-creates a bridge-owned
+        // link pinned to the inbound session when Go's handleFaceTimeRingNotice
+        // builds the Matrix-side "Answer" link. That pins session_link →
+        // inbound session, which makes `linked_group` match on pure
+        // inbound calls. `session.mode` is the authoritative discriminator:
+        // upstream sets mode=Incoming on inbound Invitation wire handling
+        // (facetime.rs:1236) and mode=Outgoing when the bridge creates
+        // the session (facetime.rs:607).
+        let candidate_group = linked_group
+            .as_ref()
+            .or(member_group.as_ref())
+            .or(ringing_group.as_ref());
+        let inbound_session = candidate_group
+            .and_then(|g| state.sessions.get(g))
+            .map(|s| matches!(s.mode, Some(rustpush::facetime::FTMode::Incoming)))
+            .unwrap_or(false);
+
+        (link.handle.clone(), linked_group, member_group, ringing_group, inbound_session)
     };
 
     // Priority: linked > member > ringing. `linked` is a deliberate pin
     // from bind_bridge_link_to_session (the bridge-originated outbound
     // path); `member` covers cold outbound sessions where the requestor is
     // a known session member. `ringing` alone (no linked, no member)
-    // means an INBOUND-only session — peer called the user, the user's
-    // real devices are ringing natively, and the bridge has no legitimate
-    // role as a session participant. Bridge-joined participants use
-    // upstream prop_up_conv which hardcodes video_enabled=Some(false), so
-    // a bridge-participated inbound call causes peer's FT UI to render
-    // the bridge's avatar instead of the user's real video stream. Skip
-    // auto-approve in that case and let the user's real device (iPhone/
-    // Mac) answer end-to-end.
-    let match_kind = if linked_group.is_some() {
+    // means an unmatched ringing session.
+    //
+    // Regardless of which bucket matched, inbound_session=true means the
+    // candidate session is peer-initiated (mode=Incoming). Bridge-joined
+    // participants use upstream prop_up_conv which hardcodes
+    // video_enabled=Some(false), so a bridge-participated inbound call
+    // causes peer's FT UI to render the bridge's avatar instead of the
+    // user's real video stream. Skip auto-approve in that case and let
+    // the user's real device (iPhone/Mac) answer end-to-end.
+    let match_kind = if inbound_session {
+        "inbound-peer-initiated"
+    } else if linked_group.is_some() {
         "linked"
     } else if member_group.is_some() {
         "member"
@@ -3559,10 +3581,19 @@ async fn auto_approve_bridge_letmein(
         match_kind, request.pseud, request.requestor, link_handle,
     );
 
-    // Inbound-only: don't hijack the session. User's native FT answers.
+    // Inbound (peer-initiated) session: don't hijack. User's native FT answers.
+    if inbound_session {
+        info!(
+            "FaceTime letmein: peer-initiated (Incoming) session (pseud={} requestor={}) — skipping auto-approve so user's real device answers with its own video stream",
+            request.pseud, request.requestor,
+        );
+        return Ok(());
+    }
+
+    // Ringing with no linked/member match — no session to join safely.
     if linked_group.is_none() && member_group.is_none() && ringing_group.is_some() {
         info!(
-            "FaceTime letmein: inbound-only ringing session (pseud={} requestor={}) — skipping auto-approve so user's real device answers with its own video stream",
+            "FaceTime letmein: ringing session with no linked/member match (pseud={} requestor={}) — skipping auto-approve",
             request.pseud, request.requestor,
         );
         return Ok(());
