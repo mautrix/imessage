@@ -3490,16 +3490,26 @@ async fn auto_approve_bridge_letmein(
     facetime: &rustpush::facetime::FTClient,
     request: &rustpush::facetime::LetMeInRequest,
 ) -> Result<(), rustpush::PushError> {
-    // Only auto-approve for links owned by this bridge. Persistent links
-    // (from get_link_for_usage) have usage=Some("bridge"); session-specific
-    // links (from get_session_link) have usage=None but session_link=Some.
-    // Both are bridge-created and safe to auto-approve.
+    // Only auto-approve for links owned by this bridge. We now use the
+    // OpenBubbles-style rotating usage slots ("next" / "current" /
+    // "current-old" for outbound; "nextincomingcall" / "incomingcall" /
+    // "incomingcall-old" for inbound). Session-specific links (from
+    // get_session_link) have usage=None but session_link=Some. All are
+    // bridge-created and safe to auto-approve.
     let (link_handle, linked_group, member_group, ringing_group, inbound_session) = {
         let state = facetime.state.read().await;
         let Some(link) = state.links.get(&request.pseud) else {
             return Ok(());
         };
-        let is_bridge_usage = link.usage.as_deref() == Some("bridge");
+        let is_bridge_usage = matches!(
+            link.usage.as_deref(),
+            Some("next")
+                | Some("current")
+                | Some("current-old")
+                | Some("nextincomingcall")
+                | Some("incomingcall")
+                | Some("incomingcall-old")
+        );
         let is_session_link = link.session_link.is_some();
         if !is_bridge_usage && !is_session_link {
             return Ok(());
@@ -3614,43 +3624,18 @@ async fn auto_approve_bridge_letmein(
         match facetime.respond_letmein(retry_request, Some(&approved_group)).await {
             Ok(()) => {
                 info!(
-                    "FaceTime auto-approved LetMeIn request for bridge link: requestor={} group={} usage=bridge inbound={}",
+                    "FaceTime auto-approved LetMeIn request for bridge link: requestor={} group={} inbound={}",
                     request.requestor,
                     approved_group,
                     inbound_session,
                 );
                 suppress_own_device_ring(facetime, &approved_group).await;
-
-                // Leave the session immediately after approving. Upstream
-                // respond_letmein's needs_prop branch (facetime.rs:1078-
-                // 1084) props the bridge into the session to satisfy
-                // OneOnOne-mode exit; upstream's own comment says we
-                // should leave ASAP once the web client joins, but never
-                // wrote the leave. Staying propped causes peer's FT UI
-                // to render the bridge's participant with
-                // video_enabled=Some(false) alongside the user's real
-                // device — peer sees the bridge's avatar instead of the
-                // user's video (inbound) or the call shows "{peer} and
-                // one other person" on the user's Mac Continuity view
-                // (outbound). Leaving is safe because the approved
-                // requestor (user's device via Matrix "Answer" link, or
-                // callee via outbound link) is in the session as a
-                // participant by the time respond_letmein returns.
-                let mut state = facetime.state.write().await;
-                if let Some(session) = state.sessions.get_mut(&approved_group) {
-                    if session.is_propped {
-                        match facetime.unprop_conv(session).await {
-                            Ok(()) => info!(
-                                "FaceTime letmein: unpropped bridge from session {} — joiner carries the call",
-                                approved_group
-                            ),
-                            Err(e) => warn!(
-                                "FaceTime letmein: unprop_conv failed for session {}: {:?}",
-                                approved_group, e
-                            ),
-                        }
-                    }
-                }
+                // Match OpenBubbles' answerFtRequest
+                // (rustpush_service.dart:3347): approve the letmein and
+                // return. No unprop_conv, no RemoveMember. Previous
+                // attempts to strip the bridge post-letmein all regressed
+                // the call (see TPP _todo/TPP-facetime-bridge-participant.md
+                // failed approaches 1-5).
                 return Ok(());
             }
             Err(e) => {
@@ -5351,11 +5336,12 @@ impl WrappedFaceTimeClient {
 
     // Deterministically binds the FTLink (matched by handle + usage) to a
     // session group_id by setting link.session_link. Without this, the
-    // persistent "bridge" link has session_link=None until the first
-    // letmein-tap, and auto_approve_bridge_letmein falls through to
-    // member/ringing heuristics. Under cold-start or stale-state conditions
-    // those heuristics miss and the approver creates a fresh empty session,
-    // producing the "0 people" symptom.
+    // rotation-slot links (e.g. "next", "nextincomingcall") have
+    // session_link=None until the first letmein-tap, and
+    // auto_approve_bridge_letmein falls through to member/ringing heuristics.
+    // Under cold-start or stale-state conditions those heuristics miss and
+    // the approver creates a fresh empty session, producing the "0 people"
+    // symptom.
     pub async fn bind_bridge_link_to_session(
         &self,
         handle: String,

@@ -932,6 +932,25 @@ func (c *IMClient) Connect(ctx context.Context) {
 
 	log.Info().Str("selected_handle", c.handle).Strs("handles", handles).Msg("Connected to iMessage")
 
+	// Pre-mint the OpenBubbles-style rotating FaceTime link slots ("next"
+	// for outbound, "nextincomingcall" for inbound). Done in the
+	// background because it's network-dependent and not load-bearing for
+	// connect; a failed pre-mint means the first outbound/inbound call
+	// mints on-demand (same as legacy behavior). With the bridge's long
+	// uptime, pre-minting here gives Apple's FT server days of
+	// identity-propagation time before the link is actually used.
+	if c.handle != "" {
+		go func(handle string) {
+			ft, ftErr := c.client.GetFacetimeClient()
+			if ftErr != nil {
+				log.Warn().Err(ftErr).Msg("Pre-mint FaceTime links: GetFacetimeClient failed; links will be minted on demand")
+				return
+			}
+			premintFaceTimeLinks(ft, handle)
+			log.Info().Str("handle", handle).Msg("Pre-minted FaceTime link slots (next, nextincomingcall)")
+		}(c.handle)
+	}
+
 	if c.Main.Config.VideoTranscoding {
 		if ffmpeg.Supported() {
 			log.Info().Msg("Video transcoding enabled (ffmpeg found)")
@@ -3139,31 +3158,34 @@ func (c *IMClient) handleFaceTimeRingNotice(log zerolog.Logger, msg rustpushgo.W
 		// when session.link is already set, which it isn't for native
 		// FT calls (no web link embedded in peer's Invitation).
 		//
-		// getFaceTimeLinkWithRecovery uses get_link_for_usage, which
-		// mints via new_link without sending message_session. Pinning
-		// the link's session_link to the inbound guid preserves the
-		// routing guarantee the GetSessionLink path was added for
-		// (f7ec3b8f): auto_approve_bridge_letmein's linked_group
-		// branch matches this session when web taps the Answer button.
+		// Use the pre-minted "nextincomingcall" link slot (mirroring
+		// OpenBubbles' rotateIncomingLink pattern at
+		// rustpush_service.dart:2699-2702). The pseud has been on
+		// Apple's FT server since startup (or since the last inbound
+		// call's rotation), giving identity resolution time to fully
+		// propagate the pseud↔handle binding before the webview joins.
+		// The binding is pinned pre-rotation (while the link is still
+		// in "nextincomingcall" slot); rotation below renames it to
+		// "incomingcall" while preserving session_link.
 		if ft, ftErr := c.client.GetFacetimeClient(); ftErr == nil {
-			if generated, genErr := getFaceTimeLinkWithRecovery(ft, c.handle); genErr == nil {
+			if generated, genErr := getFaceTimeLinkWithRecovery(ft, c.handle, ftLinkUsageNextIncomingCall); genErr == nil {
 				link = generated
 				if guid := extractFaceTimeGuid(rawText); guid != "" {
-					if bindErr := ft.BindBridgeLinkToSession(c.handle, bridgeFaceTimeLinkUsage, guid); bindErr != nil {
+					if bindErr := ft.BindBridgeLinkToSession(c.handle, ftLinkUsageNextIncomingCall, guid); bindErr != nil {
 						log.Warn().Err(bindErr).Str("guid", guid).Msg("FaceTimeRing: failed to pin bridge link to inbound session; web answer may route incorrectly")
 					}
 				}
+				// Rotate asynchronously: nextincomingcall → incomingcall,
+				// mint fresh nextincomingcall for the next inbound ring.
+				// The rotation renames the bound link's slot to
+				// "incomingcall" while preserving its session_link.
+				go func() {
+					_ = rotateIncomingLink(ft, c.handle)
+				}()
 			} else {
 				log.Warn().Err(genErr).Msg("FaceTimeRing: failed to generate bridge FaceTime link")
 			}
 		}
-	}
-	if link != "" && c.handle != "" {
-		// Pre-fill the join page's display-name field with the bridge owner's
-		// handle — same transformation as the outbound !im facetime flow at
-		// facetime.go:391. Without this the user lands on the web FT join
-		// page with the name field blank and has to type it themselves.
-		link = appendFaceTimeLinkName(link, stripIdentifierPrefix(c.handle))
 	}
 
 	// Build the notice as markdown so the join link renders as a tappable

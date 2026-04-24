@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	cryptoRand "crypto/rand"
-	"encoding/base64"
 	"fmt"
 	"html"
 	"net/url"
@@ -204,10 +203,22 @@ var cmdFaceTimeRemoveMembers = &commands.FullHandler{
 	RequiresLogin: true,
 }
 
-// bridgeFaceTimeLinkUsage is the opaque usage tag stored in the FaceTime link
-// record on Apple's servers. Keeping this stable means repeated !facetime
-// calls return the same URL until it is explicitly cleared.
-const bridgeFaceTimeLinkUsage = "bridge"
+// FaceTime link usage slots, mirroring OpenBubbles' rotation taxonomy
+// (rustpush_service.dart:2699-2708). Each slot is an Apple-server-side usage
+// tag bound to a distinct pre-minted pseud. OB pre-mints "next" and
+// "nextincomingcall" at startup so Apple's identity-resolution layer has
+// time to fully propagate the pseud↔handle binding before the link is
+// actually used; using a freshly-minted link on-demand appears to leave
+// the binding incomplete and causes peer's UI to attribute media to the
+// bridge's IDS endpoint rather than the webview pseud.
+const (
+	ftLinkUsageNext             = "next"              // pre-minted outbound
+	ftLinkUsageCurrent          = "current"           // in-flight outbound
+	ftLinkUsageCurrentOld       = "current-old"       // prior outbound
+	ftLinkUsageNextIncomingCall = "nextincomingcall"  // pre-minted inbound
+	ftLinkUsageIncomingCall     = "incomingcall"      // in-flight inbound
+	ftLinkUsageIncomingCallOld  = "incomingcall-old"  // prior inbound
+)
 
 // armBridgeFaceTimeCall does the Rust-side dance shared by the outbound
 // !im facetime command and the missed-call callback notice: mint a session
@@ -242,17 +253,46 @@ func armBridgeFaceTimeCall(
 		return "", sessionID, fmt.Errorf("register_pending_ring: %w", pendErr)
 	}
 
+	// Use the pre-minted "next" outbound link rather than GetSessionLink.
+	// get_link_for_usage returns a link whose pseud has been on Apple's
+	// FT server long enough for identity-resolution propagation to complete
+	// (mirroring OpenBubbles' rotation model). GetSessionLink minted a
+	// session-specific pseud at call time, which appears to leave Apple's
+	// server with an incomplete pseud↔handle binding when the webview
+	// joins — causing peer's UI to attribute media to the bridge's IDS
+	// endpoint instead of the joining webview.
 	var link string
 	linkErr := retryOnAPNsFlap(func() error {
 		var innerErr error
-		link, innerErr = ft.GetSessionLink(sessionID)
+		link, innerErr = getFaceTimeLinkWithRecovery(ft, callerHandle, ftLinkUsageNext)
 		return innerErr
 	})
 	if linkErr != nil {
-		return "", sessionID, fmt.Errorf("get_session_link: %w", linkErr)
+		return "", sessionID, fmt.Errorf("get_link_for_usage(next): %w", linkErr)
 	}
 
-	link = appendFaceTimeLinkName(link, stripIdentifierPrefix(callerHandle))
+	// Pin the link's session_link to this outgoing session so
+	// auto_approve_bridge_letmein's linked_group branch matches when the
+	// webview's letmein arrives. Bind uses the pre-rotation usage name
+	// (the link is still in the "next" slot at this point); rotation
+	// below moves it to "current" but preserves session_link.
+	if bindErr := ft.BindBridgeLinkToSession(callerHandle, ftLinkUsageNext, sessionID); bindErr != nil {
+		return "", sessionID, fmt.Errorf("bind_bridge_link_to_session: %w", bindErr)
+	}
+
+	// Rotate asynchronously so the next outbound call has a freshly
+	// pre-minted "next" slot. The rotation itself isn't load-bearing for
+	// this call — it moves "next" → "current" + mints a new "next" —
+	// and its failure shouldn't block the ring we're about to emit.
+	go func() {
+		if err := rotateOutboundLink(ft, callerHandle); err != nil {
+			// Silenced: not load-bearing for the current call. Next
+			// call will retry via premintFaceTimeLinks-style
+			// fallback if needed.
+			_ = err
+		}
+	}()
+
 	return link, sessionID, nil
 }
 
@@ -302,8 +342,11 @@ func fnFaceTime(ce *commands.Event) {
 
 	var lastErr error
 	for _, handle := range handles {
-		link, linkErr := getFaceTimeLinkWithRecovery(ft, handle)
+		link, linkErr := getFaceTimeLinkWithRecovery(ft, handle, ftLinkUsageNext)
 		if linkErr == nil {
+			go func(h string) {
+				_ = rotateOutboundLink(ft, h)
+			}(handle)
 			ce.Reply("FaceTime link for **%s**: %s\n\nShare this link to start a FaceTime call. Use `!im facetime-clear` to revoke it.", handle, link)
 			return
 		}
@@ -326,9 +369,10 @@ func fnFaceTime(ce *commands.Event) {
 //  1. Generate a fresh session UUID.
 //  2. ft.CreateSession(uuid, bridge.handle, [target]) — rings the target
 //     via upstream's prop_up_conv(ring=true) Invitation push.
-//  3. ft.GetLinkForUsage(bridge.handle, "bridge") — fetch the bridge's
-//     persistent personal FaceTime web link (a stable
-//     https://facetime.apple.com/join URL that works in any browser:
+//  3. ft.GetLinkForUsage(bridge.handle, "next") — fetch the pre-minted
+//     outbound FaceTime web link from the "next" rotation slot
+//     (mirroring OpenBubbles rustpush_service.dart:2718). Works in any
+//     browser: a stable https://facetime.apple.com/join URL —
 //     Chrome on Android, Firefox on Linux, Edge on Windows, Safari on
 //     iOS/macOS).
 //  4. Post the web URL to the user. facetime.apple.com is an Apple
@@ -437,29 +481,6 @@ func fnFaceTimeCallInPortal(ce *commands.Event) bool {
 	return true
 }
 
-// appendFaceTimeLinkName appends &n=<base64-name> to a FaceTime web join
-// link so Apple's join page pre-fills the display-name field.
-//
-// Apple's web FT page base64-decodes the &n= value (matching the &k= and &p=
-// pattern, both of which are URL-safe base64 of binary data — see upstream
-// facetime.rs:100/557). Sending raw text caused the page to atob() it: e.g.
-// "+18454996730" base64-decodes to 9 bytes (0xFB 0x5F 0x38 0xE7 0x9E 0x3D
-// 0xF7 0xAE 0xF7) which renders as "?_8?[??" — exactly the gibberish the
-// previous attempt (commit f168c0d, reverted in 8d9c8f2) produced.
-//
-// Use URL-safe base64 with no padding to match the encoding upstream uses
-// for the other fragment params.
-func appendFaceTimeLinkName(link, name string) string {
-	if name == "" {
-		return link
-	}
-	encoded := base64.RawURLEncoding.EncodeToString([]byte(name))
-	if strings.Contains(link, "#") {
-		return link + "&n=" + encoded
-	}
-	return link + "#n=" + encoded
-}
-
 // newFaceTimeSessionID returns a random uppercase UUID v4 — Apple's FaceTime
 // session GUID wire format.
 func newFaceTimeSessionID() (string, error) {
@@ -506,11 +527,14 @@ func fnFaceTimeSend(ce *commands.Event) {
 		return
 	}
 
-	link, linkErr := getFaceTimeLinkWithRecovery(ft, client.handle)
+	link, linkErr := getFaceTimeLinkWithRecovery(ft, client.handle, ftLinkUsageNext)
 	if linkErr != nil {
 		ce.Reply("Failed to get FaceTime link: %v", linkErr)
 		return
 	}
+	go func() {
+		_ = rotateOutboundLink(ft, client.handle)
+	}()
 
 	conv := client.portalToConversation(ce.Portal)
 	if _, sendErr := client.client.SendMessage(conv, link, nil, client.handle, nil, nil, nil); sendErr != nil {
@@ -527,8 +551,8 @@ func fnFaceTimeSend(ce *commands.Event) {
 	ce.Reply("FaceTime link sent to **%s** via iMessage.", recipient)
 }
 
-func getFaceTimeLinkWithRecovery(ft *rustpushgo.WrappedFaceTimeClient, handle string) (string, error) {
-	link, err := safeFaceTimeGetLink(ft, handle)
+func getFaceTimeLinkWithRecovery(ft *rustpushgo.WrappedFaceTimeClient, handle, usage string) (string, error) {
+	link, err := safeFaceTimeGetLink(ft, handle, usage)
 	if err == nil {
 		return link, nil
 	}
@@ -538,16 +562,61 @@ func getFaceTimeLinkWithRecovery(ft *rustpushgo.WrappedFaceTimeClient, handle st
 	if clearErr := ft.ClearLinks(); clearErr != nil {
 		return "", fmt.Errorf("%w (failed to clear stale FaceTime links: %v)", err, clearErr)
 	}
-	return safeFaceTimeGetLink(ft, handle)
+	return safeFaceTimeGetLink(ft, handle, usage)
 }
 
-func safeFaceTimeGetLink(ft *rustpushgo.WrappedFaceTimeClient, handle string) (link string, err error) {
+// rotateOutboundLink mirrors OpenBubbles' rotateLink (rustpush_service.dart:2705):
+// "current" → "current-old", "next" → "current", mint new "next". The
+// first two UseLinkFor calls may fail with NotFound on first run (slots
+// don't exist yet); that's expected and the error is swallowed. The
+// trailing mint is the part we care about — it leaves a fresh pre-minted
+// link in "next" for the subsequent outbound call, giving Apple's server
+// time to propagate the pseud↔handle binding before that call actually
+// uses the link.
+func rotateOutboundLink(ft *rustpushgo.WrappedFaceTimeClient, handle string) error {
+	_ = ft.UseLinkFor(ftLinkUsageCurrent, ftLinkUsageCurrentOld)
+	_ = ft.UseLinkFor(ftLinkUsageNext, ftLinkUsageCurrent)
+	_, err := ft.GetLinkForUsage(handle, ftLinkUsageNext)
+	return err
+}
+
+// rotateIncomingLink mirrors OpenBubbles' rotateIncomingLink (rustpush_service.dart:2699):
+// "incomingcall" → "incomingcall-old", "nextincomingcall" → "incomingcall",
+// mint new "nextincomingcall". Called after an inbound call is answered
+// (peer-initiated FT ring dispatched to user via Matrix notice) so the
+// next inbound ring uses a freshly pre-minted link.
+func rotateIncomingLink(ft *rustpushgo.WrappedFaceTimeClient, handle string) error {
+	_ = ft.UseLinkFor(ftLinkUsageIncomingCall, ftLinkUsageIncomingCallOld)
+	_ = ft.UseLinkFor(ftLinkUsageNextIncomingCall, ftLinkUsageIncomingCall)
+	_, err := ft.GetLinkForUsage(handle, ftLinkUsageNextIncomingCall)
+	return err
+}
+
+// premintFaceTimeLinks fills the pre-minted slots ("next" and
+// "nextincomingcall") at FT-client initialization. Idempotent — if a slot
+// is already populated, GetLinkForUsage returns the existing link.
+// Intentionally fire-and-forget: transient network failures are tolerable
+// because rotateOutboundLink / rotateIncomingLink re-mint after each call.
+func premintFaceTimeLinks(ft *rustpushgo.WrappedFaceTimeClient, handle string) {
+	if handle == "" {
+		return
+	}
+	if _, err := ft.GetLinkForUsage(handle, ftLinkUsageNext); err != nil {
+		// Caller logs; we only signal via return values.
+		_ = err
+	}
+	if _, err := ft.GetLinkForUsage(handle, ftLinkUsageNextIncomingCall); err != nil {
+		_ = err
+	}
+}
+
+func safeFaceTimeGetLink(ft *rustpushgo.WrappedFaceTimeClient, handle, usage string) (link string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("facetime client panicked: %v", r)
 		}
 	}()
-	return ft.GetLinkForUsage(handle, bridgeFaceTimeLinkUsage)
+	return ft.GetLinkForUsage(handle, usage)
 }
 
 func isRecoverableFaceTimeStateError(err error) bool {
