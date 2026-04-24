@@ -870,26 +870,27 @@ func (c *IMClient) Connect(ctx context.Context) {
 	}
 	c.client = client
 
-	// Announce this endpoint as a new Apple Device via GSA /circle, once per
-	// persisted login (flag-guarded in Rust at subsystem_state_path("postdata-done.flag")).
-	// This matches OB-Android's restore_account call to update_postdata and is
-	// the only post-register side-effect that differs from the bridge — Apple
-	// propagates the device enrollment via iCloud account state, which peer
-	// iOS uses to decide which endpoints to proactively reshare Focus keys to.
-	// Runs in a goroutine so a slow GSA call can't block Connect.
-	if c.tokenProvider != nil && *c.tokenProvider != nil {
-		tp := *c.tokenProvider
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Warn().Interface("panic", r).Msg("GSA announce: panicked — skipped (non-fatal)")
-				}
-			}()
-			if err := tp.AnnounceAppleDeviceIfNeeded(); err != nil {
-				log.Warn().Err(err).Msg("GSA announce: failed (non-fatal, will retry on next start)")
-			}
-		}()
-	}
+	// GSA /circle "Apple Device" announce intentionally DISABLED.
+	//
+	// update_postdata("Apple Device", ["icloud","imessage","facetime"]) posts
+	// to gsas.apple.com/grandslam/GsService2/postdata declaring the bridge as
+	// a full Apple Device with FaceTime enrolled on the iCloud account.
+	// Empirically this hijacks the account's FT enrollment: the user's real
+	// Mac stopped receiving the "This Mac has access to FaceTime" confirmation,
+	// inbound calls connect but peer can't see the bridge's video, and outbound
+	// calls connect without media. Signaling (link tap, LetMeIn approve,
+	// JoinEvent) keeps working because that rides IDS, but Apple's server-side
+	// FT media negotiation routes to the announce-declared device profile
+	// which the bridge can't actually fulfill.
+	//
+	// The original motivation (StatusKit reshare eligibility on peer iOS) is
+	// carried by the 4-service IDS register bundle (MADRID+MULTIPLEX+FACETIME+
+	// VIDEO) landed in ce0c90bf — peer iOS gates reshare on the IDS identity
+	// shape, not on the GSA /circle enrollment.
+	//
+	// The Rust-side announce_apple_device_if_needed method is left in place
+	// (unused) so re-enabling is a one-line change if we ever find a safe
+	// device_name / services combination that doesn't disturb FT.
 
 	// Get our handle (precedence: config > login metadata > first handle)
 	handles := client.GetHandles()
