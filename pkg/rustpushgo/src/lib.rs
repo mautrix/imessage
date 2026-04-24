@@ -3593,17 +3593,52 @@ async fn auto_approve_bridge_letmein(
             }
         }
 
-        // Do NOT prune bridge from session.members before respond_letmein.
-        // Peer's callservicesd rejects / ignores a cmd 207 whose sender
-        // handle isn't in the update_context.members payload — outbound
-        // symptom is wife's phone not ringing at all; inbound symptom is
-        // the call connecting but the web client never actually joining.
+        // Prune bridge's own handle(s) from the approved session's members
+        // so that respond_letmein's prop_up_conv — which fires for inbound
+        // peer-initiated calls via the needs_prop branch (upstream
+        // facetime.rs:1078) — sends its cmd 207 wire with
+        // fanout_groupmembers / update_context.members that do NOT contain
+        // the bridge. Peer's callservicesd renders a tile per entry in
+        // that payload; omitting the bridge keeps our IDS endpoint out of
+        // wife's FT UI entirely. The subsequent add_members(pseud,
+        // u_plus_one=true) wire is also built from session.members, so
+        // the pseud arrives at wife paired only with herself.
         //
-        // Instead, let respond_letmein's prop_up_conv fire with the
-        // bridge present in members (so it's structurally valid and
-        // peer's OneOnOne-mode exit triggers), then send a cmd 209
-        // RemoveMember naming the bridge on the success path below to
-        // evict its tile via Apple's normal removal semantics.
+        // Safety: ensure_allocations must have been called with the bridge
+        // in members at least once so its participant entry (token,
+        // participant_id) is present. On inbound, upstream's handle()
+        // populates session.members from peer's initial cmd 207, and
+        // respond_letmein's needs_prop branch calls ensure_allocations
+        // internally before prop_up_conv. We pre-allocate here to be
+        // explicit about ordering and guarantee bridge has a participant
+        // by the time we prune — otherwise prop_up_conv's my-participant
+        // token lookup (facetime.rs:748) would fail with
+        // NoParticipantTokenIndex.
+        //
+        // needs_prop reads session.participants (not members), so pruning
+        // doesn't disturb its active-count check. Peer's OneOnOne-mode
+        // exit is still triggered by the cmd 207 arrival itself (bridge's
+        // handle is the IDS-envelope sender, visible to wife regardless
+        // of the update_context payload).
+        if let Some(session) = state.sessions.get_mut(&approved_group) {
+            if let Err(e) = facetime.ensure_allocations(session, &[]).await {
+                warn!(
+                    "FaceTime letmein: ensure_allocations pre-prune failed for session {}: {:?}",
+                    approved_group, e
+                );
+            } else {
+                let own_handles: Vec<String> = session.my_handles.clone();
+                let before = session.members.len();
+                session.members.retain(|m| !own_handles.contains(&m.handle));
+                let after = session.members.len();
+                if before != after {
+                    info!(
+                        "FaceTime letmein: pruned bridge from session {} members ({} → {})",
+                        approved_group, before, after
+                    );
+                }
+            }
+        }
     }
 
     // respond_letmein: sends LetMeInResponse then add_members/ring over APNs.
@@ -3633,50 +3668,15 @@ async fn auto_approve_bridge_letmein(
                 );
                 suppress_own_device_ring(facetime, &approved_group).await;
 
-                // Evict bridge from peer's roster via Apple's normal
-                // RemoveMember semantics (cmd 209). respond_letmein just
-                // fired prop_up_conv + add_members with the bridge still
-                // present in the session's members; peer's iPhone added
-                // a bridge tile. Sending RemoveMember immediately after
-                // takes the tile back out. Net: peer briefly sees a
-                // bridge tile during the APNs propagation window
-                // (normally sub-second), then only the pseud and herself.
-                //
-                // Upstream remove_members (facetime.rs:970) has a quirk:
-                // it clones session.members before/after and assigns the
-                // unchanged clone back, so it doesn't actually mutate
-                // members locally on success. Prune manually after so
-                // subsequent fanouts don't re-include the bridge.
-                let mut state = facetime.state.write().await;
-                if let Some(session) = state.sessions.get_mut(&approved_group) {
-                    let bridge_members: Vec<rustpush::facetime::FTMember> = session
-                        .my_handles
-                        .iter()
-                        .map(|h| rustpush::facetime::FTMember {
-                            nickname: None,
-                            handle: h.clone(),
-                        })
-                        .collect();
-                    match facetime
-                        .remove_members(session, bridge_members.clone())
-                        .await
-                    {
-                        Ok(()) => {
-                            info!(
-                                "FaceTime letmein: evicted bridge from session {} via RemoveMember",
-                                approved_group
-                            );
-                            let own_handles: Vec<String> = session.my_handles.clone();
-                            session
-                                .members
-                                .retain(|m| !own_handles.contains(&m.handle));
-                        }
-                        Err(e) => warn!(
-                            "FaceTime letmein: remove_members(bridge) failed for session {}: {:?}",
-                            approved_group, e
-                        ),
-                    }
-                }
+                // No unprop on the success path. The prune-before-respond_letmein
+                // step above removes the bridge from session.members, so the
+                // cmd 207 that upstream just emitted inside respond_letmein
+                // carried update_context.members without the bridge — peer
+                // never rendered a bridge tile in the first place. Sending
+                // an unprop cmd 208 now would only notify peer that a
+                // participant she never saw is leaving, which is noise at
+                // best. is_propped=true is internal bookkeeping, fine to
+                // leave set.
                 return Ok(());
             }
             Err(e) => {
@@ -5498,50 +5498,25 @@ impl WrappedFaceTimeClient {
                 msg: format!("ensure_allocations failed: {:?}", e),
             })?;
 
-        // prop_up_conv fires with the bridge still in session.members —
-        // this is required: peer's callservicesd rejects / ignores a
-        // cmd 207 whose sender handle isn't present in the
-        // update_context.members payload (symptoms: outbound Invitation
-        // never rings wife; inbound call never fully connects after web
-        // client's letmein). The prop must look structurally valid or
-        // the call doesn't connect at all.
+        // Prune bridge's own handle from session.members AFTER allocation
+        // and BEFORE prop_up_conv. Upstream prop_up_conv (facetime.rs:755
+        // and :799) builds update_context.members and fanout_groupmembers
+        // from session.members; peer's iPhone renders a tile for every
+        // handle in that payload. With bridge excluded, peer only sees
+        // tiles for the invited participants + (eventually) the web
+        // client's pseud — the bridge's IDS identity never surfaces as
+        // a ghost tile. prop_up_conv's my-participant lookup at
+        // facetime.rs:748 matches by token on session.participants (which
+        // ensure_allocations just populated), not by members, so pruning
+        // here is safe.
+        session.members.retain(|m| m.handle != handle);
+
         self.inner
             .prop_up_conv(session, false)
             .await
             .map_err(|e| WrappedError::GenericError {
                 msg: format!("prop_up_conv(ring=false) failed: {:?}", e),
             })?;
-
-        // Immediately follow the prop with a cmd 209 RemoveMember naming
-        // the bridge's own handle. Peer's iPhone evicts the bridge tile
-        // from its roster via Apple's normal member-removal semantics.
-        // Net visible effect: bridge appears in the session for the
-        // propagation window between cmd 207 and cmd 209 arriving at
-        // peer (usually << 1 second), then disappears. The web client's
-        // later pseud tile is what peer actually interacts with.
-        //
-        // Upstream remove_members (facetime.rs:970) has a known quirk:
-        // it doesn't mutate session.members locally (clones before/
-        // after, assigns unchanged clone back). Prune locally so our
-        // subsequent add_members/ring paths build their fanout without
-        // the bridge.
-        let bridge = rustpush::facetime::FTMember {
-            nickname: None,
-            handle: handle.clone(),
-        };
-        if let Err(e) = self.inner.remove_members(session, vec![bridge]).await {
-            warn!(
-                "FT create_session_no_ring: remove_members(bridge) failed for session {}: {:?}",
-                group_id, e
-            );
-        } else {
-            info!(
-                "FT create_session_no_ring: evicted bridge from session {} via RemoveMember",
-                group_id
-            );
-        }
-        session.members.retain(|m| m.handle != handle);
-
         Ok(())
     }
 
