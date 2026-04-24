@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -99,14 +100,33 @@ func (c *IMConnector) Start(ctx context.Context) error {
 	// instead of requiring a full re-login.
 	c.tryAutoRestore(ctx)
 
-	// Register the FaceTime proxy endpoint if we have a bridge public
-	// address to put it behind. Without a public address the browser
-	// can't reach our proxy, so skip the route and the link builder
-	// will fall back to raw facetime.apple.com/join URLs.
-	if asConnector, ok := c.Bridge.Matrix.(*matrix.Connector); ok && c.Bridge.Matrix.GetCapabilities() != nil {
-		if publicAddr := asConnector.GetPublicAddress(); publicAddr != "" {
-			c.ftProxy = newFaceTimeProxy(c.Bridge.Log)
-			c.ftProxy.registerOnAS(asConnector)
+	// Register the FaceTime proxy endpoint. Public base resolution order:
+	//   1. explicit `facetime_proxy_base` config value
+	//   2. appservice.public_address (bridgev2's standard hook)
+	// Register routes either way so the endpoint is reachable for debug
+	// even if we can't emit bridge-hosted links; the link builder falls
+	// back to raw facetime.apple.com URLs when publicBase is empty.
+	if asConnector, ok := c.Bridge.Matrix.(*matrix.Connector); ok {
+		c.ftProxy = newFaceTimeProxy(c.Bridge.Log)
+		c.ftProxy.registerOnAS(asConnector)
+
+		publicBase := strings.TrimRight(c.Config.FaceTimeProxyBase, "/")
+		source := "config.facetime_proxy_base"
+		if publicBase == "" {
+			publicBase = strings.TrimRight(asConnector.GetPublicAddress(), "/")
+			source = "appservice.public_address"
+		}
+		c.ftProxy.publicBase = publicBase
+
+		logEvt := c.Bridge.Log.Info().
+			Str("public_base", publicBase).
+			Str("source", source).
+			Str("html_route", facetimeProxyPath).
+			Str("js_route", facetimeProxyMainJS)
+		if publicBase == "" {
+			logEvt.Msg("FaceTime proxy: routes registered but no public_base configured — ring notices will fall back to raw facetime.apple.com URLs. Set facetime_proxy_base in bridge config to enable bridge-hosted links.")
+		} else {
+			logEvt.Msg("FaceTime proxy: bridge-hosted links enabled")
 			// Warm the cache in the background so the first click
 			// doesn't pay the full Apple-CDN fetch latency.
 			go func() {
@@ -114,9 +134,9 @@ func (c *IMConnector) Start(ctx context.Context) error {
 					c.Bridge.Log.Warn().Err(warmErr).Msg("FaceTime proxy initial cache warm failed; will retry on first request")
 				}
 			}()
-		} else {
-			c.Bridge.Log.Info().Msg("FaceTime proxy disabled: bridge has no public address (public_address unset)")
 		}
+	} else {
+		c.Bridge.Log.Warn().Msg("FaceTime proxy: Matrix connector is not *matrix.Connector; proxy disabled")
 	}
 
 	return nil

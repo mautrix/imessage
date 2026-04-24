@@ -94,17 +94,13 @@ func newFaceTimeProxy(log zerolog.Logger) *faceTimeProxy {
 }
 
 // registerOnAS attaches the proxy's routes to the appservice HTTP router.
-// Bridgev2-hosted setups (including Beeper) expose this router at the
-// bridge's public address — same mechanism publicmedia uses.
+// The caller is responsible for setting publicBase separately.
+// Bridgev2-hosted setups (including Beeper, self-hosted Matrix 2, etc.)
+// expose this router at the bridge's public_address — same mechanism
+// publicmedia uses.
 func (p *faceTimeProxy) registerOnAS(as *matrix.Connector) {
-	p.publicBase = strings.TrimRight(as.GetPublicAddress(), "/")
 	as.AS.Router.HandleFunc("GET "+facetimeProxyPath, p.serveHTML)
 	as.AS.Router.HandleFunc("GET "+facetimeProxyMainJS, p.serveMainJS)
-	p.log.Info().
-		Str("public_base", p.publicBase).
-		Str("html_route", facetimeProxyPath).
-		Str("js_route", facetimeProxyMainJS).
-		Msg("Registered FaceTime proxy routes")
 }
 
 // buildLink wraps a raw facetime.apple.com/join URL into a bridge-hosted
