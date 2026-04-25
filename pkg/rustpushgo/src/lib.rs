@@ -4015,56 +4015,90 @@ async fn auto_approve_bridge_letmein(
         }
     }
 
-    // Pre-empt upstream's video_enabled=false prop on inbound calls.
+    // Inbound parity with outbound: pre-allocate + pre-prop + pre-stamp
+    // bridge.active=Some BEFORE respond_letmein runs. Without this,
+    // respond_letmein's needs_prop branch (facetime.rs:1078) gates on
+    // `is_ringing_inaccurate && active_count==1` — true on inbound when only
+    // the peer is active — so it runs its own prop_up_conv. Upstream's
+    // prop_up_conv leaves our own .active=None locally (facetime.rs:820),
+    // then the immediate add_members(webview) fans cmd 209 with
+    // active_participants=[peer.active] only. Peer's unpack_participants
+    // (facetime.rs:245) wipes all participants and self-excludes by token
+    // (line 254), leaving ZERO active participants on her side — webview
+    // tile never registers, no video, classification falls back to audio.
     //
-    // Upstream's respond_letmein checks `is_ringing_inaccurate &&
-    // active_participants==1` and, if true, calls
-    // `prop_up_conv(session, false)` which hardcodes
-    // `video_enabled=Some(false)` (facetime.rs:775). Peer iOS reads that
-    // flag as the call's authoritative video state — wife's iPhone
-    // classifies the call as "FaceTime Audio" even when she dialed Video.
-    //
-    // We re-implement the same prop here with `video_enabled=true`. On
-    // success, we set `is_ringing_inaccurate=false` so upstream's
-    // needs_prop check fails and respond_letmein skips its own prop. On
-    // failure, we leave session state alone so upstream still props as
-    // a fallback (audio-only call > broken call).
-    //
-    // Outbound calls don't hit this path: the bridge creates the session
-    // via `create_session` which uses `prop_up_conv(session, true)`, the
-    // ring=true branch. That works because peer's iPhone classifies from
-    // the webview's video stream (joined via `&n=phonenumber`), not the
-    // bridge ghost's video_enabled flag.
+    // By pre-ensuring bridge is allocated + propped + stamped active here,
+    // needs_prop flips to false (count==2) → respond_letmein skips its
+    // internal prop → add_members fans with [peer.active, bridge.active].
+    // Peer's unpack_participants preserves bridge active after her self
+    // exclusion, and the later auto-unprop (cmd 208) flips bridge inactive
+    // cleanly once the webview joins. Mirrors the outbound path
+    // (create_session_no_ring) where the same pattern was already proved
+    // out in 9b9c5784. Port of e5381a48 (orphaned chain, never merged).
     if inbound_session {
-        let needs_prop = {
-            let state = facetime.state.read().await;
-            state.sessions.get(&approved_group).map(|s| {
-                s.is_ringing_inaccurate
-                    && s.participants.values().filter(|p| p.active.is_some()).count() == 1
-            }).unwrap_or(false)
-        };
-        if needs_prop {
-            // ensure_allocations needs &mut FTSession; mirror upstream's
-            // pattern: take a write lock, mutate, drop before our prop's
-            // own locking.
-            let allocate_result = {
-                let mut state = facetime.state.write().await;
-                if let Some(session) = state.sessions.get_mut(&approved_group) {
-                    facetime.ensure_allocations(session, &[]).await
+        use rustpush::facetime::facetimep::{ConversationParticipant, Handle, HandleType};
+        fn handle_from_ids(ids: &str) -> Handle {
+            let mut h = Handle::default();
+            if let Some(addr) = ids.strip_prefix("mailto:") {
+                h.set_type(HandleType::EmailAddress);
+                h.value = addr.to_string();
+            } else if let Some(phone) = ids.strip_prefix("tel:") {
+                h.set_type(HandleType::PhoneNumber);
+                h.value = phone.to_string();
+                h.iso_country_code = "us".to_string();
+            } else {
+                h.set_type(HandleType::Generic);
+                h.value = ids.to_string();
+            }
+            h
+        }
+
+        let my_token_b64 = base64_encode(&facetime.conn.get_token().await);
+        let mut state = facetime.state.write().await;
+        if let Some(session) = state.sessions.get_mut(&approved_group) {
+            if !session.is_propped {
+                if let Err(e) = facetime.ensure_allocations(session, &[]).await {
+                    warn!(
+                        "FaceTime inbound letmein: ensure_allocations failed for session {}: {:?} — falling through to respond_letmein's auto-prop",
+                        approved_group, e
+                    );
+                } else if let Err(e) = facetime.prop_up_conv(session, false).await {
+                    warn!(
+                        "FaceTime inbound letmein: prop_up_conv failed for session {}: {:?} — falling through to respond_letmein's auto-prop",
+                        approved_group, e
+                    );
                 } else {
-                    Ok(())
+                    if let Some(my_participant) = session
+                        .participants
+                        .values_mut()
+                        .find(|p| p.token.as_deref() == Some(my_token_b64.as_str()))
+                    {
+                        my_participant.active = Some(ConversationParticipant {
+                            version: 0,
+                            identifier: my_participant.participant_id,
+                            handle: Some(handle_from_ids(&my_participant.handle)),
+                            avc_data: include_bytes!(
+                                "../../../third_party/rustpush-upstream/src/sampleavcdata.bplist"
+                            )
+                            .to_vec(),
+                            is_moments_available: Some(true),
+                            is_screen_sharing_available: Some(true),
+                            is_gondola_calling_available: Some(true),
+                            is_mirage_available: None,
+                            is_lightweight: None,
+                            share_play_protocol_version: 4,
+                            options: 0,
+                            is_gft_downgrade_to_one_to_one_available: Some(false),
+                            guest_mode_enabled: None,
+                            association: None,
+                            is_u_plus_n_downgrade_available: Some(false),
+                        });
+                    }
+                    info!(
+                        "FaceTime inbound letmein: pre-propped + stamped bridge active locally for session {} so respond_letmein's add_members fans active_participants including bridge",
+                        approved_group,
+                    );
                 }
-            };
-            if let Err(e) = allocate_result {
-                warn!(
-                    "prop_up_conv_inbound_video_on: ensure_allocations failed for session {}: {:?} — falling back to upstream prop",
-                    approved_group, e
-                );
-            } else if let Err(e) = prop_up_conv_inbound_video_on(facetime, &approved_group).await {
-                warn!(
-                    "prop_up_conv_inbound_video_on failed for session {}: {:?} — falling back to upstream prop with video_enabled=false",
-                    approved_group, e
-                );
             }
         }
     }
