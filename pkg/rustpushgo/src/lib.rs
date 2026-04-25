@@ -9195,6 +9195,42 @@ impl Client {
         Ok(())
     }
 
+    /// Force a fresh `register()` against Apple's IDS for the bridge's current
+    /// identity bundle (MADRID + MULTIPLEX + FACETIME + VIDEO).
+    ///
+    /// This re-uploads the same NGM keys with refreshed registration metadata
+    /// (cert expiry, validation token, push token binding). It does NOT
+    /// generate new NGM keys — that's a relog-level operation. The use case
+    /// here is forcing Apple's IDS server to re-broadcast the bridge's
+    /// identity to recently-talking peers, in case peer-side caches got
+    /// stuck on stale routing or stale FaceTime call-type classification.
+    ///
+    /// Implementation: read current users, swap them in via `update_users`
+    /// (which internally calls `manager.refresh_now()` → `register()` against
+    /// the bundled services). Same path the resource manager takes when
+    /// registration expires; just triggered on demand.
+    pub async fn force_reregister_identity(&self) -> Result<u32, WrappedError> {
+        let current_users: Vec<rustpush::IDSUser> = self
+            .client
+            .identity
+            .users
+            .read()
+            .await
+            .clone();
+        let registered_count = current_users
+            .first()
+            .map(|u| u.registration.len() as u32)
+            .unwrap_or(0);
+        self.client
+            .identity
+            .update_users(current_users)
+            .await
+            .map_err(|e| WrappedError::GenericError {
+                msg: format!("force_reregister_identity failed: {:?}", e),
+            })?;
+        Ok(registered_count)
+    }
+
     pub async fn send_sms_activation(
         &self,
         conversation: WrappedConversation,

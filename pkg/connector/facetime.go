@@ -85,6 +85,44 @@ var cmdFaceTimeClear = &commands.FullHandler{
 	RequiresLogin: true,
 }
 
+// cmdFaceTimeInvalidatePeer broadcasts a PeerCacheInvalidate (cmd 130) to the
+// given peer handle so that peer's device drops its cached identity for the
+// bridge handle and re-resolves keys on the next call. Useful when a peer
+// iPhone has cached the bridge as audio-only after a prior FT call: the
+// invalidate forces a fresh identity lookup, after which the next inbound
+// FT call from that peer can re-classify with video.
+//
+// Cmd 130 sends on com.apple.madrid; whether peer iOS extends the
+// invalidation to its FT topic cache is empirical, but this is the only
+// peer-side cache-bust primitive iMessage exposes.
+var cmdFaceTimeInvalidatePeer = &commands.FullHandler{
+	Name: "facetime-invalidate-peer",
+	Func: fnFaceTimeInvalidatePeer,
+	Help: commands.HelpMeta{
+		Section:     HelpSectionFaceTime,
+		Description: "Force the peer's device to drop its cached bridge identity. Run inside a 1:1 portal, or pass the contact's handle. Use when calls intermittently come through as FaceTime Audio.",
+		Args:        "[handle]",
+	},
+	RequiresLogin: true,
+}
+
+// cmdFaceTimeRotateIdentity forces a fresh IDS register() call for the
+// bridge's 4-service bundle (MADRID + MULTIPLEX + FACETIME + VIDEO). Same
+// path the bridge takes on startup when the registration is expired, just
+// triggered on demand. The NGM identity keys do NOT rotate — that's a
+// relog-level operation — but Apple's IDS server gets a fresh registration
+// payload, which can shake loose stale peer-side routing or call-type
+// classification caches.
+var cmdFaceTimeRotateIdentity = &commands.FullHandler{
+	Name: "facetime-rotate-identity",
+	Func: fnFaceTimeRotateIdentity,
+	Help: commands.HelpMeta{
+		Section:     HelpSectionFaceTime,
+		Description: "Re-register the bridge's IDS identity (MADRID + MULTIPLEX + FACETIME + VIDEO) without a full logout. Heavier than `facetime-invalidate-peer`; use when the per-peer invalidate doesn't break the cache.",
+	},
+	RequiresLogin: true,
+}
+
 var cmdFaceTimeState = &commands.FullHandler{
 	Name: "facetime-state",
 	Func: fnFaceTimeState,
@@ -787,6 +825,67 @@ func fnFaceTimeClear(ce *commands.Event) {
 	}
 
 	ce.Reply("All FaceTime links have been revoked. Use `!facetime` to generate a new one.")
+}
+
+// fnFaceTimeInvalidatePeer sends a PeerCacheInvalidate to a single peer.
+// Resolves the peer handle from (a) an explicit arg, or (b) the only non-self
+// participant in the current portal.
+func fnFaceTimeInvalidatePeer(ce *commands.Event) {
+	client, ok := faceTimeClientOnly(ce)
+	if !ok {
+		return
+	}
+	if client.handle == "" {
+		ce.Reply("No iMessage handle configured. Please complete bridge setup first.")
+		return
+	}
+
+	var target string
+	if len(ce.Args) > 0 {
+		target = addIdentifierPrefix(strings.TrimSpace(ce.Args[0]))
+	} else if ce.Portal != nil {
+		conv := client.portalToConversation(ce.Portal)
+		for _, p := range conv.Participants {
+			if !client.isMyHandle(p) {
+				target = p
+				break
+			}
+		}
+	}
+	if target == "" {
+		ce.Reply("Usage: `!facetime-invalidate-peer <handle>` (or run inside a 1:1 portal).")
+		return
+	}
+
+	conv := rustpushgo.WrappedConversation{
+		Participants: []string{target, client.handle},
+	}
+	if err := client.client.SendPeerCacheInvalidate(conv, client.handle); err != nil {
+		ce.Reply("Failed to send PeerCacheInvalidate to %s: %v", stripIdentifierPrefix(target), err)
+		return
+	}
+	ce.Reply(
+		"Sent PeerCacheInvalidate to **%s**. Their device should refresh its identity cache for **%s** within seconds — try the call again.",
+		stripIdentifierPrefix(target), stripIdentifierPrefix(client.handle),
+	)
+}
+
+// fnFaceTimeRotateIdentity re-runs the 4-service IDS register(). Same NGM
+// keys; fresh registration metadata.
+func fnFaceTimeRotateIdentity(ce *commands.Event) {
+	client, ok := faceTimeClientOnly(ce)
+	if !ok {
+		return
+	}
+	count, err := client.client.ForceReregisterIdentity()
+	if err != nil {
+		ce.Reply("Failed to re-register IDS identity: %v", err)
+		return
+	}
+	ce.Reply(
+		"Re-registered bridge IDS identity (services in registration: %d). Peer iPhones should re-resolve **%s** on their next IDS query — try the call again.",
+		count, stripIdentifierPrefix(client.handle),
+	)
 }
 
 // faceTimeClientAndHandle resolves the IMClient and target handle from a

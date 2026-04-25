@@ -182,6 +182,11 @@ void* uniffi_rustpushgo_fn_method_client_findmy_phone_refresh_json(
 	RustCallStatus* out_status
 );
 
+void* uniffi_rustpushgo_fn_method_client_force_reregister_identity(
+	void* ptr,
+	RustCallStatus* out_status
+);
+
 void* uniffi_rustpushgo_fn_method_client_get_contacts_url(
 	void* ptr,
 	RustCallStatus* out_status
@@ -1647,6 +1652,10 @@ uint16_t uniffi_rustpushgo_checksum_method_client_findmy_friends_refresh_json(
 );
 
 uint16_t uniffi_rustpushgo_checksum_method_client_findmy_phone_refresh_json(
+	RustCallStatus* out_status
+);
+
+uint16_t uniffi_rustpushgo_checksum_method_client_force_reregister_identity(
 	RustCallStatus* out_status
 );
 

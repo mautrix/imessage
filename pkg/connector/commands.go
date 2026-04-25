@@ -58,6 +58,8 @@ func BridgeCommands() []*commands.FullHandler {
 		cmdFaceTime,
 		cmdFaceTimeSend,
 		cmdFaceTimeClear,
+		cmdFaceTimeInvalidatePeer,
+		cmdFaceTimeRotateIdentity,
 		cmdFaceTimeState,
 		cmdFaceTimeSessionLink,
 		cmdFaceTimeUseLink,
