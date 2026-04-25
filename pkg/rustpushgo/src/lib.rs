@@ -3701,12 +3701,7 @@ async fn prop_up_conv_inbound_video_on(
         Value::Dictionary(uri_to_pid_dict),
     );
 
-    // Apple's FT cmd 207 wire is a binary plist (matches upstream's
-    // `plist_to_bin(&wire_message)` at facetime.rs:805). util::plist_to_buf
-    // writes XML — peer iOS silently drops the message and the call ends up
-    // classified as "FaceTime Audio" because no video_enabled flag arrives.
-    let mut wire_payload: Vec<u8> = Vec::new();
-    plist::to_writer_binary(&mut wire_payload, &Value::Dictionary(wire_dict))
+    let wire_payload = util::plist_to_buf(&Value::Dictionary(wire_dict))
         .map_err(|_| rustpush::PushError::BadMsg)?;
 
     let mut extras = Dictionary::new();
