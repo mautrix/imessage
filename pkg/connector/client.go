@@ -3158,10 +3158,15 @@ func (c *IMClient) handleFaceTimeRingNotice(log zerolog.Logger, msg rustpushgo.W
 		// when session.link is already set, which it isn't for native
 		// FT calls (no web link embedded in peer's Invitation).
 		//
-		// Use the pre-minted "nextincomingcall" link slot. The pseud
-		// minted at startup is reused for every inbound call so peer's
-		// call history sees one stable host pseud instead of N different
-		// temp pseuds.
+		// Use the pre-minted "nextincomingcall" link slot (mirroring
+		// OpenBubbles' rotateIncomingLink pattern at
+		// rustpush_service.dart:2699-2702). The pseud has been on
+		// Apple's FT server since startup (or since the last inbound
+		// call's rotation), giving identity resolution time to fully
+		// propagate the pseud↔handle binding before the webview joins.
+		// The binding is pinned pre-rotation (while the link is still
+		// in "nextincomingcall" slot); rotation below renames it to
+		// "incomingcall" while preserving session_link.
 		if ft, ftErr := c.client.GetFacetimeClient(); ftErr == nil {
 			if generated, genErr := getFaceTimeLinkWithRecovery(ft, c.handle, ftLinkUsageNextIncomingCall); genErr == nil {
 				link = generated
@@ -3170,6 +3175,13 @@ func (c *IMClient) handleFaceTimeRingNotice(log zerolog.Logger, msg rustpushgo.W
 						log.Warn().Err(bindErr).Str("guid", guid).Msg("FaceTimeRing: failed to pin bridge link to inbound session; web answer may route incorrectly")
 					}
 				}
+				// Rotate asynchronously: nextincomingcall → incomingcall,
+				// mint fresh nextincomingcall for the next inbound ring.
+				// The rotation renames the bound link's slot to
+				// "incomingcall" while preserving its session_link.
+				go func() {
+					_ = rotateIncomingLink(ft, c.handle)
+				}()
 				// Pre-fill the web page's display-name prompt with the
 				// user's own handle so tapping Answer lands in the call
 				// without the guest-name typing step (which otherwise
