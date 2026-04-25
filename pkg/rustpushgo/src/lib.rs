@@ -3413,9 +3413,21 @@ async fn suppress_own_device_ring(ft: &rustpush::facetime::FTClient, guid: &str)
 //    session, so upstream's respond_letmein needs_prop check fails and it
 //    skips. On failure: leaves session state untouched so upstream's
 //    auto-prop runs as a fallback (audio-only call > broken call).
+// Hand-rolled cmd 207 prop with video_enabled=Some(true) instead of upstream's
+// hardcoded Some(false) (facetime.rs:775). Mirrors upstream prop_up_conv's
+// ring=false branch byte-for-byte except for the video_enabled flag and the
+// fact that we operate on &mut FTSession (caller's lock) so we can compose
+// with auto_approve_bridge_letmein's bridge+webview pre-stamp logic without
+// fighting locks.
+//
+// Originally added in 0f0cd0f3 (then encoded XML by mistake; the XML-vs-binary
+// fix landed in 7c41baf2; both were reverted in df77da71 after a falsified
+// theory). User's empirical recall: this manual construction was what made
+// inbound classify as Video on peer's end. Restored here on top of the
+// active-stamping work in 3842e830 / 8818ecdc.
 async fn prop_up_conv_inbound_video_on(
     facetime: &rustpush::facetime::FTClient,
-    group_id: &str,
+    session: &mut rustpush::facetime::FTSession,
 ) -> Result<(), rustpush::PushError> {
     use prost::Message as _;
     use rustpush::facetime::facetimep::{
@@ -3445,69 +3457,43 @@ async fn prop_up_conv_inbound_video_on(
         handle
     }
 
-    // Snapshot the session state we need, drop the read lock before any
-    // network calls (cache_keys / send_message can be slow).
-    let (
-        handle,
-        my_participant_id,
-        members,
-        link,
-        report_data,
-        participants_map,
-        is_ringing_inaccurate,
-    ) = {
-        let state = facetime.state.read().await;
-        let Some(session) = state.sessions.get(group_id) else {
-            warn!("prop_up_conv_inbound_video_on: session {} not found", group_id);
-            return Ok(());
-        };
-        let handle = session
-            .my_handles
-            .first()
-            .ok_or(rustpush::PushError::NoHandle)?
-            .clone();
-        let self_token = facetime.conn.get_token().await;
-        let base64_self_token = Some(base64_encode(&self_token));
-        let my_participant = session
-            .participants
-            .values()
-            .find(|p| &p.token == &base64_self_token)
-            .ok_or(rustpush::PushError::NoParticipantTokenIndex)?;
-        let my_participant_id = my_participant.participant_id;
+    let group_id = session.group_id.clone();
+    let handle = session
+        .my_handles
+        .first()
+        .ok_or(rustpush::PushError::NoHandle)?
+        .clone();
+    let self_token = facetime.conn.get_token().await;
+    let base64_self_token = Some(base64_encode(&self_token));
+    let my_participant = session
+        .participants
+        .values()
+        .find(|p| &p.token == &base64_self_token)
+        .ok_or(rustpush::PushError::NoParticipantTokenIndex)?;
+    let my_participant_id = my_participant.participant_id;
 
-        let members: Vec<rustpush::facetime::FTMember> =
-            session.members.iter().cloned().collect();
-        let link = session.link.clone();
-        let start_time_ms = session
-            .start_time
-            .ok_or(rustpush::PushError::NoParticipantTokenIndex)?;
-        let timebase_secs =
-            (start_time_ms as f64 - UNIX_TO_2001_MS as f64) / 1000.0;
-        let report_data = ConversationReport {
-            conversation_id: session.report_id.clone(),
-            timebase: timebase_secs,
-        };
-
-        let mut participants_map: HashMap<String, Vec<u64>> = HashMap::new();
-        for p in session.participants.values() {
-            participants_map
-                .entry(p.handle.clone())
-                .or_default()
-                .push(p.participant_id);
-        }
-
-        let is_ringing_inaccurate = session.is_ringing_inaccurate;
-
-        (
-            handle,
-            my_participant_id,
-            members,
-            link,
-            report_data,
-            participants_map,
-            is_ringing_inaccurate,
-        )
+    let members: Vec<rustpush::facetime::FTMember> =
+        session.members.iter().cloned().collect();
+    let link = session.link.clone();
+    let start_time_ms = session
+        .start_time
+        .ok_or(rustpush::PushError::NoParticipantTokenIndex)?;
+    let timebase_secs =
+        (start_time_ms as f64 - UNIX_TO_2001_MS as f64) / 1000.0;
+    let report_data = ConversationReport {
+        conversation_id: session.report_id.clone(),
+        timebase: timebase_secs,
     };
+
+    let mut participants_map: HashMap<String, Vec<u64>> = HashMap::new();
+    for p in session.participants.values() {
+        participants_map
+            .entry(p.handle.clone())
+            .or_default()
+            .push(p.participant_id);
+    }
+
+    let is_ringing_inaccurate = session.is_ringing_inaccurate;
 
     let topic = "com.apple.private.alloy.facetime.multi";
 
@@ -3517,7 +3503,7 @@ async fn prop_up_conv_inbound_video_on(
     if is_ringing_inaccurate {
         let mut message = ConversationMessage::default();
         message.set_type(rustpush::facetime::facetimep::ConversationMessageType::RespondedElsewhere);
-        message.conversation_group_uuid_string = group_id.to_string();
+        message.conversation_group_uuid_string = group_id.clone();
         message.disconnected_reason = 4;
 
         let relevant_people = vec![handle.clone()];
@@ -3643,10 +3629,10 @@ async fn prop_up_conv_inbound_video_on(
     let is_u_plus_one = false;
 
     let mut wire_dict = Dictionary::new();
-    wire_dict.insert("s".to_string(), Value::String(group_id.to_string()));
+    wire_dict.insert("s".to_string(), Value::String(group_id.clone()));
     wire_dict.insert(
         "fanout-groupID-key".to_string(),
-        Value::String(group_id.to_string()),
+        Value::String(group_id.clone()),
     );
     wire_dict.insert(
         "client-context-data-key".to_string(),
@@ -3701,7 +3687,11 @@ async fn prop_up_conv_inbound_video_on(
         Value::Dictionary(uri_to_pid_dict),
     );
 
-    let wire_payload = util::plist_to_buf(&Value::Dictionary(wire_dict))
+    // Apple's FT cmd 207 wire is a binary plist (matches upstream's
+    // plist_to_bin at facetime.rs:805). util::plist_to_buf writes XML —
+    // peer iOS silently drops it, classification falls back to audio.
+    let mut wire_payload: Vec<u8> = Vec::new();
+    plist::to_writer_binary(&mut wire_payload, &Value::Dictionary(wire_dict))
         .map_err(|_| rustpush::PushError::BadMsg)?;
 
     let mut extras = Dictionary::new();
@@ -3730,14 +3720,10 @@ async fn prop_up_conv_inbound_video_on(
 
     // Send succeeded — mark session as propped and clear
     // is_ringing_inaccurate so upstream's respond_letmein needs_prop check
-    // fails and it skips its own video_enabled=false prop.
-    {
-        let mut state = facetime.state.write().await;
-        if let Some(session) = state.sessions.get_mut(group_id) {
-            session.is_propped = true;
-            session.is_ringing_inaccurate = false;
-        }
-    }
+    // fails and it skips its own video_enabled=false prop. Caller already
+    // holds a write lock on facetime.state; just mutate session in place.
+    session.is_propped = true;
+    session.is_ringing_inaccurate = false;
 
     info!(
         "prop_up_conv_inbound_video_on: cmd 207 sent for session {} with video_enabled=true",
@@ -4081,7 +4067,13 @@ async fn auto_approve_bridge_letmein(
             if !session.is_propped {
                 let prop_outcome = async {
                     facetime.ensure_allocations(session, &[]).await?;
-                    facetime.prop_up_conv(session, false).await?;
+                    // Hand-rolled prop with video_enabled=Some(true) instead of
+                    // upstream's hardcoded Some(false). User's empirical recall:
+                    // this manual construction was what made inbound classify
+                    // as Video on peer's end. Restored from 0f0cd0f3 + 7c41baf2
+                    // (XML→binary plist fix), this time with the active-stamping
+                    // from 3842e830 / 8818ecdc layered on top.
+                    prop_up_conv_inbound_video_on(facetime, session).await?;
                     Ok::<(), rustpush::PushError>(())
                 }
                 .await;
