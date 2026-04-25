@@ -2039,6 +2039,29 @@ impl WrappedTokenProvider {
     pub(crate) fn get_os_config(&self) -> Arc<dyn OSConfig> {
         self.os_config.clone()
     }
+
+    /// Read the logged-in user's full name ("First Last") from the SPD dict
+    /// ("fn" + "ln", populated during GSA login — the canonical "first last"
+    /// Apple stores for this Apple ID). Returns an empty string when the SPD
+    /// is missing (user not fully logged in) or when both fields are blank.
+    /// Used by the FaceTime link builder to pre-fill the web join page's
+    /// display-name field so peer sees a real name instead of a phone number.
+    pub(crate) async fn get_apple_account_full_name(&self) -> String {
+        let account = self.account.lock().await;
+        let Some(spd) = account.spd.as_ref() else { return String::new(); };
+        let first = spd
+            .get("fn")
+            .and_then(|v| v.as_string())
+            .unwrap_or("")
+            .trim();
+        let last = spd
+            .get("ln")
+            .and_then(|v| v.as_string())
+            .unwrap_or("")
+            .trim();
+        let combined = format!("{} {}", first, last);
+        combined.trim().to_string()
+    }
 }
 
 // Second uniffi-exported impl block: the iCloud Keychain clique methods that
@@ -2047,6 +2070,16 @@ impl WrappedTokenProvider {
 // call them.
 #[uniffi::export(async_runtime = "tokio")]
 impl WrappedTokenProvider {
+    /// Read the logged-in user's full name ("First Last") from the cached
+    /// Apple Account SPD. Sourced from Apple's GSA login response (spd.fn /
+    /// spd.ln — what Apple has on file for this Apple ID), so it matches
+    /// what the user already sees on their iMessage account. Returns an
+    /// empty string if the account isn't fully logged in or the name
+    /// fields are blank (older accounts may lack them).
+    pub async fn apple_account_full_name(&self) -> String {
+        self.get_apple_account_full_name().await
+    }
+
     /// List devices that have escrow bottles in the iCloud Keychain trust circle.
     /// Returns device info (name, model, serial, timestamp) for each bottle.
     /// Call this before join_keychain_clique_for_device to let the user choose.

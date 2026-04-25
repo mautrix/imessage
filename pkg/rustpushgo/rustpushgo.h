@@ -1098,6 +1098,11 @@ void* uniffi_rustpushgo_fn_method_wrappedtokenprovider_announce_apple_device_if_
 	RustCallStatus* out_status
 );
 
+void* uniffi_rustpushgo_fn_method_wrappedtokenprovider_apple_account_full_name(
+	void* ptr,
+	RustCallStatus* out_status
+);
+
 void* uniffi_rustpushgo_fn_method_wrappedtokenprovider_get_contacts_url(
 	void* ptr,
 	RustCallStatus* out_status
@@ -2142,6 +2147,10 @@ uint16_t uniffi_rustpushgo_checksum_method_wrappedstatuskitclient_share_status(
 );
 
 uint16_t uniffi_rustpushgo_checksum_method_wrappedtokenprovider_announce_apple_device_if_needed(
+	RustCallStatus* out_status
+);
+
+uint16_t uniffi_rustpushgo_checksum_method_wrappedtokenprovider_apple_account_full_name(
 	RustCallStatus* out_status
 );
 

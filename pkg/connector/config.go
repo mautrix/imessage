@@ -54,6 +54,13 @@ type IMConfig struct {
 	// If empty, the handle chosen during login is used.
 	PreferredHandle string `yaml:"preferred_handle"`
 
+	// FaceTimeDisplayName overrides the display name pre-filled on the
+	// FaceTime web join page (the value attached to `#n=…` in the ring-
+	// notice link). If empty, the bridge reads the user's "First Last"
+	// from the cached Apple Account SPD; if that's also unavailable it
+	// falls back to the bare iMessage handle.
+	FaceTimeDisplayName string `yaml:"facetime_display_name"`
+
 	// StatusKitShareOnStartup publishes share_status(available) once after
 	// StatusKit init completes. Peer iOS reciprocates with a reshare (which
 	// carries the key material needed to decrypt its subsequent presence
@@ -154,6 +161,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Bool, "heic_conversion")
 	helper.Copy(up.Int, "heic_jpeg_quality")
 	helper.Copy(up.Str, "preferred_handle")
+	helper.Copy(up.Str, "facetime_display_name")
 	helper.Copy(up.Bool, "statuskit_share_on_startup")
 	helper.Copy(up.Str, "carddav", "email")
 	helper.Copy(up.Str, "carddav", "url")
