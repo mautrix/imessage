@@ -313,25 +313,15 @@ func armBridgeFaceTimeCall(
 
 	// Pin the link's session_link to this outgoing session so
 	// auto_approve_bridge_letmein's linked_group branch matches when the
-	// webview's letmein arrives. Bind uses the pre-rotation usage name
-	// (the link is still in the "next" slot at this point); rotation
-	// below moves it to "current" but preserves session_link.
+	// webview's letmein arrives. Each outbound call overwrites
+	// session_link on the same "next"-slot link.
 	if bindErr := ft.BindBridgeLinkToSession(callerHandle, ftLinkUsageNext, sessionID); bindErr != nil {
 		return "", sessionID, fmt.Errorf("bind_bridge_link_to_session: %w", bindErr)
 	}
 
-	// Rotate asynchronously so the next outbound call has a freshly
-	// pre-minted "next" slot. The rotation itself isn't load-bearing for
-	// this call — it moves "next" → "current" + mints a new "next" —
-	// and its failure shouldn't block the ring we're about to emit.
-	go func() {
-		if err := rotateOutboundLink(ft, callerHandle); err != nil {
-			// Silenced: not load-bearing for the current call. Next
-			// call will retry via premintFaceTimeLinks-style
-			// fallback if needed.
-			_ = err
-		}
-	}()
+	// No per-call rotation. The pseud minted at startup is reused across
+	// every outbound call so peer's call history sees one stable host
+	// pseud instead of N different temp pseuds.
 
 	link = appendFaceTimeLinkName(link, displayName)
 	return link, sessionID, nil
@@ -431,9 +421,6 @@ func fnFaceTime(ce *commands.Event) {
 	for _, handle := range handles {
 		link, linkErr := getFaceTimeLinkWithRecovery(ft, handle, ftLinkUsageNext)
 		if linkErr == nil {
-			go func(h string) {
-				_ = rotateOutboundLink(ft, h)
-			}(handle)
 			link = appendFaceTimeLinkName(link, client.resolveFaceTimeDisplayName(ce.Ctx))
 			ce.Reply("FaceTime link for **%s**: %s\n\nShare this link to start a FaceTime call. Use `!im facetime-clear` to revoke it.", handle, link)
 			return
@@ -620,9 +607,6 @@ func fnFaceTimeSend(ce *commands.Event) {
 		ce.Reply("Failed to get FaceTime link: %v", linkErr)
 		return
 	}
-	go func() {
-		_ = rotateOutboundLink(ft, client.handle)
-	}()
 	link = appendFaceTimeLinkName(link, client.resolveFaceTimeDisplayName(ce.Ctx))
 
 	conv := client.portalToConversation(ce.Portal)
@@ -654,38 +638,10 @@ func getFaceTimeLinkWithRecovery(ft *rustpushgo.WrappedFaceTimeClient, handle, u
 	return safeFaceTimeGetLink(ft, handle, usage)
 }
 
-// rotateOutboundLink mirrors OpenBubbles' rotateLink (rustpush_service.dart:2705):
-// "current" → "current-old", "next" → "current", mint new "next". The
-// first two UseLinkFor calls may fail with NotFound on first run (slots
-// don't exist yet); that's expected and the error is swallowed. The
-// trailing mint is the part we care about — it leaves a fresh pre-minted
-// link in "next" for the subsequent outbound call, giving Apple's server
-// time to propagate the pseud↔handle binding before that call actually
-// uses the link.
-func rotateOutboundLink(ft *rustpushgo.WrappedFaceTimeClient, handle string) error {
-	_ = ft.UseLinkFor(ftLinkUsageCurrent, ftLinkUsageCurrentOld)
-	_ = ft.UseLinkFor(ftLinkUsageNext, ftLinkUsageCurrent)
-	_, err := ft.GetLinkForUsage(handle, ftLinkUsageNext)
-	return err
-}
-
-// rotateIncomingLink mirrors OpenBubbles' rotateIncomingLink (rustpush_service.dart:2699):
-// "incomingcall" → "incomingcall-old", "nextincomingcall" → "incomingcall",
-// mint new "nextincomingcall". Called after an inbound call is answered
-// (peer-initiated FT ring dispatched to user via Matrix notice) so the
-// next inbound ring uses a freshly pre-minted link.
-func rotateIncomingLink(ft *rustpushgo.WrappedFaceTimeClient, handle string) error {
-	_ = ft.UseLinkFor(ftLinkUsageIncomingCall, ftLinkUsageIncomingCallOld)
-	_ = ft.UseLinkFor(ftLinkUsageNextIncomingCall, ftLinkUsageIncomingCall)
-	_, err := ft.GetLinkForUsage(handle, ftLinkUsageNextIncomingCall)
-	return err
-}
-
 // premintFaceTimeLinks fills the pre-minted slots ("next" and
 // "nextincomingcall") at FT-client initialization. Idempotent — if a slot
-// is already populated, GetLinkForUsage returns the existing link.
-// Intentionally fire-and-forget: transient network failures are tolerable
-// because rotateOutboundLink / rotateIncomingLink re-mint after each call.
+// is already populated, GetLinkForUsage returns the existing link, so
+// the same pseud is reused across every call (no per-call rotation).
 func premintFaceTimeLinks(ft *rustpushgo.WrappedFaceTimeClient, handle string) {
 	if handle == "" {
 		return
