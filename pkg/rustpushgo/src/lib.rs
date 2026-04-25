@@ -4150,10 +4150,18 @@ async fn facetime_event_to_wrapped(
         .sessions
         .get(&guid)
         .map(|session| {
+            // Mirror OpenBubbles' temp-pseud filter
+            // (intents_service.dart:68): the webview joins under a fresh
+            // temp:UUID generated client-side by Apple's main.js. Surfacing
+            // those to Matrix creates a ghost-per-call in the user's room.
+            // Drop them before they reach bridgev2's portal-membership
+            // pipeline; peer-side state is unaffected (this is purely a
+            // local rendering filter).
             let participants = session
                 .members
                 .iter()
                 .map(|member| member.handle.clone())
+                .filter(|handle| !handle.starts_with("temp:"))
                 .collect::<Vec<_>>();
             let my_handles: std::collections::HashSet<String> =
                 session.my_handles.iter().cloned().collect();
