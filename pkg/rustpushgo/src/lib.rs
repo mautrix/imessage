@@ -4052,53 +4052,139 @@ async fn auto_approve_bridge_letmein(
             }
             h
         }
+        fn synthesize_active(handle: &str, participant_id: u64) -> ConversationParticipant {
+            ConversationParticipant {
+                version: 0,
+                identifier: participant_id,
+                handle: Some(handle_from_ids(handle)),
+                avc_data: include_bytes!(
+                    "../../../third_party/rustpush-upstream/src/sampleavcdata.bplist"
+                )
+                .to_vec(),
+                is_moments_available: Some(true),
+                is_screen_sharing_available: Some(true),
+                is_gondola_calling_available: Some(true),
+                is_mirage_available: None,
+                is_lightweight: None,
+                share_play_protocol_version: 4,
+                options: 0,
+                is_gft_downgrade_to_one_to_one_available: Some(false),
+                guest_mode_enabled: None,
+                association: None,
+                is_u_plus_n_downgrade_available: Some(false),
+            }
+        }
 
         let my_token_b64 = base64_encode(&facetime.conn.get_token().await);
         let mut state = facetime.state.write().await;
         if let Some(session) = state.sessions.get_mut(&approved_group) {
             if !session.is_propped {
-                if let Err(e) = facetime.ensure_allocations(session, &[]).await {
-                    warn!(
-                        "FaceTime inbound letmein: ensure_allocations failed for session {}: {:?} — falling through to respond_letmein's auto-prop",
-                        approved_group, e
-                    );
-                } else if let Err(e) = facetime.prop_up_conv(session, false).await {
-                    warn!(
-                        "FaceTime inbound letmein: prop_up_conv failed for session {}: {:?} — falling through to respond_letmein's auto-prop",
-                        approved_group, e
-                    );
-                } else {
-                    if let Some(my_participant) = session
-                        .participants
-                        .values_mut()
-                        .find(|p| p.token.as_deref() == Some(my_token_b64.as_str()))
-                    {
-                        my_participant.active = Some(ConversationParticipant {
-                            version: 0,
-                            identifier: my_participant.participant_id,
-                            handle: Some(handle_from_ids(&my_participant.handle)),
-                            avc_data: include_bytes!(
-                                "../../../third_party/rustpush-upstream/src/sampleavcdata.bplist"
-                            )
-                            .to_vec(),
-                            is_moments_available: Some(true),
-                            is_screen_sharing_available: Some(true),
-                            is_gondola_calling_available: Some(true),
-                            is_mirage_available: None,
-                            is_lightweight: None,
-                            share_play_protocol_version: 4,
-                            options: 0,
-                            is_gft_downgrade_to_one_to_one_available: Some(false),
-                            guest_mode_enabled: None,
-                            association: None,
-                            is_u_plus_n_downgrade_available: Some(false),
-                        });
-                    }
-                    info!(
-                        "FaceTime inbound letmein: pre-propped + stamped bridge active locally for session {} so respond_letmein's add_members fans active_participants including bridge",
-                        approved_group,
-                    );
+                let prop_outcome = async {
+                    facetime.ensure_allocations(session, &[]).await?;
+                    facetime.prop_up_conv(session, false).await?;
+                    Ok::<(), rustpush::PushError>(())
                 }
+                .await;
+                match prop_outcome {
+                    Ok(()) => {
+                        if let Some(my_participant) = session
+                            .participants
+                            .values_mut()
+                            .find(|p| p.token.as_deref() == Some(my_token_b64.as_str()))
+                        {
+                            let pid = my_participant.participant_id;
+                            let h = my_participant.handle.clone();
+                            my_participant.active = Some(synthesize_active(&h, pid));
+                        }
+                        info!(
+                            "FaceTime inbound letmein: pre-propped + stamped bridge active locally for session {} so respond_letmein's add_members fans active_participants including bridge",
+                            approved_group,
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "FaceTime inbound letmein: pre-prop failed for session {} ({:?}) — falling through to respond_letmein's internal prop",
+                            approved_group, e,
+                        );
+                    }
+                }
+            }
+
+            // Pre-allocate the webview participant + stamp .active=Some.
+            // Without this, respond_letmein's add_members fans cmd 209
+            // with active_participants=[bridge, wife] only (webview's
+            // .active is None — it's just allocated by add_members'
+            // internal ensure_allocations, never stamped). Wife's
+            // unpack_participants ends with bridge active but webview
+            // inactive. Her UI shows "waiting for others" — webview is
+            // in roster but not media-active. On outbound this isn't a
+            // problem because Apple's HTTPS relay synthesizes a cmd 207
+            // from webview to the session host (bridge). On inbound,
+            // wife is the host; the synthesized cmd 207 only goes to
+            // the bridge (link minter), so wife never sees webview
+            // self-announce. Force-include webview in cmd 209's active
+            // list so her UI proceeds to media negotiation.
+            //
+            // ensure_allocations adds the participant to session.participants
+            // but NOT to session.members (facetime.rs:392-462) — so
+            // respond_letmein's session.members.contains(&member) check
+            // at facetime.rs:1146 still picks the add_members branch
+            // (not ring), and add_members' internal ensure_allocations
+            // finds the participant already present and short-circuits.
+            //
+            // Port of cfa24999 (orphaned chain).
+            let webview_member = rustpush::facetime::FTMember {
+                handle: request.requestor.clone(),
+                nickname: request.nickname.clone(),
+            };
+            let already_allocated = session
+                .participants
+                .values()
+                .any(|p| p.handle == request.requestor);
+            if !already_allocated {
+                match facetime
+                    .ensure_allocations(session, std::slice::from_ref(&webview_member))
+                    .await
+                {
+                    Ok(()) => {
+                        if let Some(webview_p) = session
+                            .participants
+                            .values_mut()
+                            .find(|p| p.handle == request.requestor)
+                        {
+                            let pid = webview_p.participant_id;
+                            let h = webview_p.handle.clone();
+                            webview_p.active = Some(synthesize_active(&h, pid));
+                            info!(
+                                "FaceTime inbound letmein: pre-allocated + stamped webview active locally (handle={}) so respond_letmein's add_members fans active_participants including webview",
+                                request.requestor,
+                            );
+                        } else {
+                            warn!(
+                                "FaceTime inbound letmein: ensure_allocations succeeded but webview {} not found in participants",
+                                request.requestor,
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!(
+                            "FaceTime inbound letmein: webview pre-allocation failed for {} ({:?}) — falling through to respond_letmein",
+                            request.requestor, e,
+                        );
+                    }
+                }
+            } else if let Some(webview_p) = session
+                .participants
+                .values_mut()
+                .find(|p| p.handle == request.requestor && p.active.is_none())
+            {
+                let pid = webview_p.participant_id;
+                let h = webview_p.handle.clone();
+                webview_p.active = Some(synthesize_active(&h, pid));
+                info!(
+                    "FaceTime inbound letmein: webview {} already allocated; stamped active locally",
+                    request.requestor,
+                );
             }
         }
     }
