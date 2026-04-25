@@ -4069,6 +4069,61 @@ async fn auto_approve_bridge_letmein(
         }
     }
 
+    // Suppress the temp:UUID participant from peer's call history.
+    //
+    // The webview can't authenticate as a real Apple ID (no AppleID at the
+    // browser layer), so it generates an ephemeral pseud — `temp:<uuid>`
+    // — and sends the LetMeIn under that. Upstream's respond_letmein then
+    // calls `add_members(session, [temp_member], letmein=true, None)`. With
+    // `to_members=None`, upstream's `update_conversation` fans the resulting
+    // cmd 209 (AddMember) to *every* current session member, including the
+    // peer who placed the call. Peer's iPhone receives "this temp:UUID
+    // joined the call" and dutifully logs it in the call history as a
+    // separate entry from the user.
+    //
+    // Workaround: pre-insert the temp member into session.members ourselves
+    // before respond_letmein runs. Upstream's add-or-ring branch
+    // (facetime.rs:1141-1151) checks `session.members.contains(&member)`
+    // and, if true, takes the `ring` path instead of `add_members`. `ring`
+    // sends a single cmd 242 Invitation scoped only to the explicit
+    // targets list — `[temp_handle]` — so the peer never receives any
+    // wire message announcing the temp participant. The webview still
+    // receives the encrypted LetMeInResponse (sent earlier in
+    // respond_letmein), which is the only thing it actually needs to
+    // proceed with the join; the relay-side audio/video stream connects
+    // independently of IDS membership.
+    //
+    // We also have to do `ensure_allocations` ourselves: the ring path
+    // skips it, but the temp handle still needs a quickrelay allocation
+    // for the webview's media to flow. Upstream's prop branch did this
+    // for the existing roster; the new member needs its own.
+    if inbound_session {
+        let temp_member = rustpush::facetime::FTMember {
+            handle: request.requestor.clone(),
+            nickname: request.nickname.clone(),
+        };
+        let mut state = facetime.state.write().await;
+        if let Some(session) = state.sessions.get_mut(&approved_group) {
+            if !session.members.contains(&temp_member) {
+                match facetime.ensure_allocations(session, &[temp_member.clone()]).await {
+                    Ok(()) => {
+                        session.members.insert(temp_member);
+                        info!(
+                            "Pre-inserted temp member {} into session {} so respond_letmein takes the ring path (no cmd 209 fanout to peer)",
+                            request.requestor, approved_group
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "ensure_allocations for temp member {} in session {} failed: {:?} — falling back to upstream add_members (will fanout cmd 209 to peer)",
+                            request.requestor, approved_group, e
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     // respond_letmein: sends LetMeInResponse then add_members/ring over APNs.
     // APNs can flap (early eof → SendTimedOut) especially right after boot.
     //
