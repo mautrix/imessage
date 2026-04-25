@@ -4001,26 +4001,33 @@ async fn auto_approve_bridge_letmein(
         }
     }
 
-    // Inbound parity with outbound: pre-allocate + pre-prop + pre-stamp
-    // bridge.active=Some BEFORE respond_letmein runs. Without this,
-    // respond_letmein's needs_prop branch (facetime.rs:1078) gates on
-    // `is_ringing_inaccurate && active_count==1` — true on inbound when only
-    // the peer is active — so it runs its own prop_up_conv. Upstream's
-    // prop_up_conv leaves our own .active=None locally (facetime.rs:820),
-    // then the immediate add_members(webview) fans cmd 209 with
-    // active_participants=[peer.active] only. Peer's unpack_participants
-    // (facetime.rs:245) wipes all participants and self-excludes by token
-    // (line 254), leaving ZERO active participants on her side — webview
-    // tile never registers, no video, classification falls back to audio.
+    // Inbound parity with outbound: pre-prop + pre-stamp bridge.active=Some
+    // BEFORE respond_letmein runs. Without this, respond_letmein's needs_prop
+    // branch (facetime.rs:1078) gates on `is_ringing_inaccurate && active_count==1`
+    // — true on inbound when only the peer is active — so it runs its own
+    // prop_up_conv. Upstream's prop_up_conv leaves our own .active=None
+    // locally (facetime.rs:820), then the immediate add_members(webview)
+    // fans cmd 209 with active_participants=[peer.active] only. By
+    // pre-ensuring bridge is propped + stamped active here, needs_prop flips
+    // to false → respond_letmein skips its internal prop → add_members fans
+    // with [bridge.active, peer.active]. Mirrors outbound's create_session_no_ring
+    // bridge stamp (9b9c5784).
     //
-    // By pre-ensuring bridge is allocated + propped + stamped active here,
-    // needs_prop flips to false (count==2) → respond_letmein skips its
-    // internal prop → add_members fans with [peer.active, bridge.active].
-    // Peer's unpack_participants preserves bridge active after her self
-    // exclusion, and the later auto-unprop (cmd 208) flips bridge inactive
-    // cleanly once the webview joins. Mirrors the outbound path
-    // (create_session_no_ring) where the same pattern was already proved
-    // out in 9b9c5784. Port of e5381a48 (orphaned chain, never merged).
+    // We deliberately do NOT pre-stamp webview.active here. The synthetic
+    // avc_data (sampleavcdata.bplist = iMac19,2 hardware H.264 codec
+    // descriptors) declares Mac-style media capabilities. Bridge's own
+    // pseud is registered for the full FT topic bundle including
+    // `facetime.video`, so peer's CallKit can negotiate media against it;
+    // the webview's `temp:UUID` pseud is registered ONLY for `facetime.multi`.
+    // Stamping webview.active with synthetic Mac avc_data on inbound caused
+    // peer's unpack_participants (facetime.rs:245) to write that synthetic
+    // blob into peer's `participants[webview_pid].active`. Peer's CallKit
+    // then attempted Mac-style negotiation on the webview pseud, failed
+    // (temp:UUID not on .video topic), and downgraded the call display
+    // to "FaceTime Audio." Letting webview's own subsequent cmd 207
+    // populate peer's webview entry — with real WebRTC-shaped avc_data —
+    // is what keeps peer's classification on Video. (Outbound has never
+    // pre-stamped webview for the same reason; that path works.)
     if inbound_session {
         use rustpush::facetime::facetimep::{ConversationParticipant, Handle, HandleType};
         fn handle_from_ids(ids: &str) -> Handle {
@@ -4100,83 +4107,6 @@ async fn auto_approve_bridge_letmein(
                         );
                     }
                 }
-            }
-
-            // Pre-allocate the webview participant + stamp .active=Some.
-            // Without this, respond_letmein's add_members fans cmd 209
-            // with active_participants=[bridge, wife] only (webview's
-            // .active is None — it's just allocated by add_members'
-            // internal ensure_allocations, never stamped). Wife's
-            // unpack_participants ends with bridge active but webview
-            // inactive. Her UI shows "waiting for others" — webview is
-            // in roster but not media-active. On outbound this isn't a
-            // problem because Apple's HTTPS relay synthesizes a cmd 207
-            // from webview to the session host (bridge). On inbound,
-            // wife is the host; the synthesized cmd 207 only goes to
-            // the bridge (link minter), so wife never sees webview
-            // self-announce. Force-include webview in cmd 209's active
-            // list so her UI proceeds to media negotiation.
-            //
-            // ensure_allocations adds the participant to session.participants
-            // but NOT to session.members (facetime.rs:392-462) — so
-            // respond_letmein's session.members.contains(&member) check
-            // at facetime.rs:1146 still picks the add_members branch
-            // (not ring), and add_members' internal ensure_allocations
-            // finds the participant already present and short-circuits.
-            //
-            // Port of cfa24999 (orphaned chain).
-            let webview_member = rustpush::facetime::FTMember {
-                handle: request.requestor.clone(),
-                nickname: request.nickname.clone(),
-            };
-            let already_allocated = session
-                .participants
-                .values()
-                .any(|p| p.handle == request.requestor);
-            if !already_allocated {
-                match facetime
-                    .ensure_allocations(session, std::slice::from_ref(&webview_member))
-                    .await
-                {
-                    Ok(()) => {
-                        if let Some(webview_p) = session
-                            .participants
-                            .values_mut()
-                            .find(|p| p.handle == request.requestor)
-                        {
-                            let pid = webview_p.participant_id;
-                            let h = webview_p.handle.clone();
-                            webview_p.active = Some(synthesize_active(&h, pid));
-                            info!(
-                                "FaceTime inbound letmein: pre-allocated + stamped webview active locally (handle={}) so respond_letmein's add_members fans active_participants including webview",
-                                request.requestor,
-                            );
-                        } else {
-                            warn!(
-                                "FaceTime inbound letmein: ensure_allocations succeeded but webview {} not found in participants",
-                                request.requestor,
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        warn!(
-                            "FaceTime inbound letmein: webview pre-allocation failed for {} ({:?}) — falling through to respond_letmein",
-                            request.requestor, e,
-                        );
-                    }
-                }
-            } else if let Some(webview_p) = session
-                .participants
-                .values_mut()
-                .find(|p| p.handle == request.requestor && p.active.is_none())
-            {
-                let pid = webview_p.participant_id;
-                let h = webview_p.handle.clone();
-                webview_p.active = Some(synthesize_active(&h, pid));
-                info!(
-                    "FaceTime inbound letmein: webview {} already allocated; stamped active locally",
-                    request.requestor,
-                );
             }
         }
     }
