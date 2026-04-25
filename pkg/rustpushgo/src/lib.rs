@@ -3368,6 +3368,384 @@ async fn suppress_own_device_ring(ft: &rustpush::facetime::FTClient, guid: &str)
     }
 }
 
+// Wrapper-side replacement for upstream's prop_up_conv on the inbound
+// letmein path, with `video_enabled = Some(true)` instead of upstream's
+// hardcoded `Some(false)` (facetime.rs:775).
+//
+// The bug: when the bridge approves an inbound LetMeIn, upstream's
+// respond_letmein detects the OneOnOne-mode condition and calls
+// prop_up_conv(session, false). That sends a cmd 207 announcing the
+// bridge participant with video=Some(true), video_enabled=Some(false).
+// Wife's iPhone has no other IDS-visible participant for this call (the
+// webview joins through Apple's HTTPS relay, invisible at IDS), so it
+// reads the bridge ghost's video_enabled=false as the call's authoritative
+// video state and renders the call as "FaceTime Audio" — even though
+// she dialed FaceTime Video. The call connects, audio flows both ways,
+// but the webview's video stream never gets classified.
+//
+// Why post-letmein RequestVideoUpgrade didn't work: peer iOS caches the
+// first prop's classification on first-sighting (see memory:
+// project_relog_required_after_identity_changes); after-the-fact
+// upgrades are fragile against that cache. The fix has to land in the
+// first prop peer sees.
+//
+// We can't change line 775 without modifying upstream rustpush source
+// (which the project's no-patch rule forbids). Instead: emit the same
+// cmd 207 ourselves with the corrected flag, then mark
+// `session.is_ringing_inaccurate = false` so upstream's respond_letmein
+// skips its own auto-prop.
+//
+// Implementation notes:
+//  - Builds the wire payload as a raw plist::Dictionary instead of going
+//    through upstream's `FTWireMessage` struct, because two of FTWireMessage's
+//    fields are typed Option<ParticipantID> and the ParticipantID enum is
+//    private to the upstream facetime module. The kebab-case keys here mirror
+//    FTWireMessage's `#[serde(rename_all = "kebab-case")]` plus its explicit
+//    `#[serde(rename = ...)]` overrides for s / fanout-groupID-key /
+//    fanout-groupMembers-key. ParticipantID itself is `#[serde(untagged)]`
+//    so its wire form is just the integer — Value::Integer((u64).into()) is
+//    the same bytes the typed path produces.
+//  - sampleavcdata.bplist (participant-data-key) is included from
+//    third_party/ at compile time; upstream uses include_bytes! against the
+//    same file from inside its own module. CARGO_MANIFEST_DIR is stable
+//    (relative to pkg/rustpushgo/Cargo.toml).
+//  - On success: sets is_propped=true and is_ringing_inaccurate=false on the
+//    session, so upstream's respond_letmein needs_prop check fails and it
+//    skips. On failure: leaves session state untouched so upstream's
+//    auto-prop runs as a fallback (audio-only call > broken call).
+async fn prop_up_conv_inbound_video_on(
+    facetime: &rustpush::facetime::FTClient,
+    group_id: &str,
+) -> Result<(), rustpush::PushError> {
+    use prost::Message as _;
+    use rustpush::facetime::facetimep::{
+        ConversationInvitationPreference, ConversationMember, ConversationMessage,
+        ConversationParticipantDidJoinContext, ConversationReport, Handle, HandleType,
+    };
+    use rustpush::ids::identity_manager::{IDSSendMessage, Raw};
+    use rustpush::ids::user::QueryOptions;
+    use plist::{Dictionary, Value};
+
+    const UNIX_TO_2001_MS: u64 = 978_307_200_000;
+
+    // handle_from_ids reimplemented from upstream facetime.rs:55-70 (private fn).
+    fn handle_from_ids(ids: &str) -> Handle {
+        let mut handle = Handle::default();
+        if let Some(rest) = ids.strip_prefix("mailto:") {
+            handle.set_type(HandleType::EmailAddress);
+            handle.value = rest.to_string();
+        } else if let Some(rest) = ids.strip_prefix("tel:") {
+            handle.set_type(HandleType::PhoneNumber);
+            handle.value = rest.to_string();
+            handle.iso_country_code = "us".to_string();
+        } else if ids.starts_with("temp:") {
+            handle.set_type(HandleType::Generic);
+            handle.value = ids.to_string();
+        }
+        handle
+    }
+
+    // Snapshot the session state we need, drop the read lock before any
+    // network calls (cache_keys / send_message can be slow).
+    let (
+        handle,
+        my_participant_id,
+        members,
+        link,
+        report_data,
+        participants_map,
+        is_ringing_inaccurate,
+    ) = {
+        let state = facetime.state.read().await;
+        let Some(session) = state.sessions.get(group_id) else {
+            warn!("prop_up_conv_inbound_video_on: session {} not found", group_id);
+            return Ok(());
+        };
+        let handle = session
+            .my_handles
+            .first()
+            .ok_or(rustpush::PushError::NoHandle)?
+            .clone();
+        let self_token = facetime.conn.get_token().await;
+        let base64_self_token = Some(base64_encode(&self_token));
+        let my_participant = session
+            .participants
+            .values()
+            .find(|p| &p.token == &base64_self_token)
+            .ok_or(rustpush::PushError::NoParticipantTokenIndex)?;
+        let my_participant_id = my_participant.participant_id;
+
+        let members: Vec<rustpush::facetime::FTMember> =
+            session.members.iter().cloned().collect();
+        let link = session.link.clone();
+        let start_time_ms = session
+            .start_time
+            .ok_or(rustpush::PushError::NoParticipantTokenIndex)?;
+        let timebase_secs =
+            (start_time_ms as f64 - UNIX_TO_2001_MS as f64) / 1000.0;
+        let report_data = ConversationReport {
+            conversation_id: session.report_id.clone(),
+            timebase: timebase_secs,
+        };
+
+        let mut participants_map: HashMap<String, Vec<u64>> = HashMap::new();
+        for p in session.participants.values() {
+            participants_map
+                .entry(p.handle.clone())
+                .or_default()
+                .push(p.participant_id);
+        }
+
+        let is_ringing_inaccurate = session.is_ringing_inaccurate;
+
+        (
+            handle,
+            my_participant_id,
+            members,
+            link,
+            report_data,
+            participants_map,
+            is_ringing_inaccurate,
+        )
+    };
+
+    let topic = "com.apple.private.alloy.facetime.multi";
+
+    // Mirrors upstream prop_up_conv lines 707-726: when picking up an
+    // incoming call, fan a RespondedElsewhere out to our own handle so any
+    // other devices registered to it stop ringing.
+    if is_ringing_inaccurate {
+        let mut message = ConversationMessage::default();
+        message.set_type(rustpush::facetime::facetimep::ConversationMessageType::RespondedElsewhere);
+        message.conversation_group_uuid_string = group_id.to_string();
+        message.disconnected_reason = 4;
+
+        let relevant_people = vec![handle.clone()];
+        facetime
+            .identity
+            .cache_keys(
+                topic,
+                &relevant_people,
+                &handle,
+                false,
+                &QueryOptions {
+                    required_for_message: true,
+                    result_expected: true,
+                },
+            )
+            .await?;
+
+        let targets = facetime
+            .identity
+            .cache
+            .lock()
+            .await
+            .get_participants_targets(topic, &handle, &relevant_people);
+
+        let _ = facetime
+            .identity
+            .send_message(
+                topic,
+                IDSSendMessage {
+                    sender: handle.clone(),
+                    raw: Raw::Body(message.encode_to_vec()),
+                    send_delivered: false,
+                    command: 242,
+                    no_response: false,
+                    id: uuid::Uuid::new_v4().to_string().to_uppercase(),
+                    scheduled_ms: None,
+                    queue_id: None,
+                    relay: None,
+                    extras: Default::default(),
+                },
+                targets,
+            )
+            .await;
+    }
+
+    // Cache keys for the prop fan-out (the actual peers).
+    let member_handles: Vec<String> =
+        members.iter().map(|m| m.handle.clone()).collect();
+    facetime
+        .identity
+        .cache_keys(
+            topic,
+            &member_handles,
+            &handle,
+            false,
+            &QueryOptions {
+                required_for_message: true,
+                result_expected: true,
+            },
+        )
+        .await?;
+
+    let prop_targets = facetime
+        .identity
+        .cache
+        .lock()
+        .await
+        .get_participants_targets(topic, &handle, &member_handles);
+
+    // Inner ConversationMessage: no Invitation here (upstream's `ring=false`
+    // branch also skips Invitation; this is the post-letmein prop).
+    let mut inner_message = ConversationMessage::default();
+    inner_message.link = link;
+    inner_message.report_data = Some(report_data);
+    inner_message.invitation_preferences = vec![
+        ConversationInvitationPreference {
+            version: 0,
+            handle_type: HandleType::PhoneNumber as i32,
+            notification_styles: 1,
+        },
+        ConversationInvitationPreference {
+            version: 0,
+            handle_type: HandleType::Generic as i32,
+            notification_styles: 1,
+        },
+        ConversationInvitationPreference {
+            version: 0,
+            handle_type: HandleType::EmailAddress as i32,
+            notification_styles: 1,
+        },
+    ];
+
+    // The whole point of this function: video_enabled = Some(true).
+    let mut update_context = ConversationParticipantDidJoinContext::default();
+    update_context.members = members
+        .iter()
+        .map(|m| ConversationMember {
+            version: 0,
+            handle: Some(handle_from_ids(&m.handle)),
+            nickname: m.nickname.clone(),
+            lightweight_primary: None,
+            lightweight_primary_participant_id: 0,
+            validation_source: 0,
+        })
+        .collect();
+    update_context.message = Some(inner_message);
+    update_context.is_moments_available = true;
+    update_context.provider_identifier =
+        "com.apple.telephonyutilities.callservicesd.FaceTimeProvider".to_string();
+    update_context.video = Some(true);
+    update_context.video_enabled = Some(true);
+    update_context.is_gft_downgrade_to_one_to_one_available = Some(false);
+    update_context.is_u_plus_n_downgrade_available = Some(false);
+    update_context.is_u_plus_one_av_less_available = Some(false);
+    update_context.is_screen_sharing_available = true;
+    update_context.is_gondola_calling_available = true;
+    update_context.share_play_protocol_version = 4;
+
+    // Build the cmd 207 wire payload as a raw plist Dictionary. Field names
+    // match upstream FTWireMessage: kebab-case for everything except the
+    // explicit serde renames.
+    let is_initiator = true;
+    let is_u_plus_one = false;
+
+    let mut wire_dict = Dictionary::new();
+    wire_dict.insert("s".to_string(), Value::String(group_id.to_string()));
+    wire_dict.insert(
+        "fanout-groupID-key".to_string(),
+        Value::String(group_id.to_string()),
+    );
+    wire_dict.insert(
+        "client-context-data-key".to_string(),
+        Value::Data(update_context.encode_to_vec()),
+    );
+    wire_dict.insert(
+        "participant-data-key".to_string(),
+        Value::Data(
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../third_party/rustpush-upstream/src/sampleavcdata.bplist"
+            ))
+            .to_vec(),
+        ),
+    );
+    wire_dict.insert(
+        "is-initiator-key".to_string(),
+        Value::Boolean(is_initiator),
+    );
+    wire_dict.insert(
+        "fanout-groupMembers-key".to_string(),
+        Value::Array(
+            members
+                .iter()
+                .map(|m| Value::String(m.handle.clone()))
+                .collect(),
+        ),
+    );
+    wire_dict.insert(
+        "is-u-plus-one-key".to_string(),
+        Value::Boolean(is_u_plus_one),
+    );
+    wire_dict.insert(
+        "join-notification-key".to_string(),
+        Value::Integer(1u32.into()),
+    );
+    wire_dict.insert(
+        "participant-id-key".to_string(),
+        Value::Integer(my_participant_id.into()),
+    );
+
+    let mut uri_to_pid_dict = Dictionary::new();
+    for (h, ids) in participants_map.iter() {
+        let arr: Vec<Value> = ids
+            .iter()
+            .map(|id| Value::Integer((*id).into()))
+            .collect();
+        uri_to_pid_dict.insert(h.clone(), Value::Array(arr));
+    }
+    wire_dict.insert(
+        "uri-to-participant-id-key".to_string(),
+        Value::Dictionary(uri_to_pid_dict),
+    );
+
+    let wire_payload = util::plist_to_buf(&Value::Dictionary(wire_dict))
+        .map_err(|_| rustpush::PushError::BadMsg)?;
+
+    let mut extras = Dictionary::new();
+    extras.insert("is-initiator-key".to_string(), Value::Boolean(is_initiator));
+    extras.insert("up1".to_string(), Value::Boolean(is_u_plus_one));
+
+    facetime
+        .identity
+        .send_message(
+            topic,
+            IDSSendMessage {
+                sender: handle.clone(),
+                raw: Raw::Body(wire_payload),
+                send_delivered: false,
+                command: 207,
+                no_response: false,
+                id: uuid::Uuid::new_v4().to_string().to_uppercase(),
+                scheduled_ms: None,
+                queue_id: None,
+                relay: None,
+                extras,
+            },
+            prop_targets,
+        )
+        .await?;
+
+    // Send succeeded — mark session as propped and clear
+    // is_ringing_inaccurate so upstream's respond_letmein needs_prop check
+    // fails and it skips its own video_enabled=false prop.
+    {
+        let mut state = facetime.state.write().await;
+        if let Some(session) = state.sessions.get_mut(group_id) {
+            session.is_propped = true;
+            session.is_ringing_inaccurate = false;
+        }
+    }
+
+    info!(
+        "prop_up_conv_inbound_video_on: cmd 207 sent for session {} with video_enabled=true",
+        group_id
+    );
+    Ok(())
+}
+
 // Overlay around FTClient::handle that tolerates Apple sending cmd 207/209
 // wire messages with `ConversationParticipantDidJoinContext.message = None`.
 // Upstream's handler at facetime.rs:1272/1344 hard-requires that field and
@@ -3633,6 +4011,60 @@ async fn auto_approve_bridge_letmein(
         if let Some(link) = state.links.get_mut(&request.pseud) {
             if link.session_link.as_deref() != Some(approved_group.as_str()) {
                 link.session_link = Some(approved_group.clone());
+            }
+        }
+    }
+
+    // Pre-empt upstream's video_enabled=false prop on inbound calls.
+    //
+    // Upstream's respond_letmein checks `is_ringing_inaccurate &&
+    // active_participants==1` and, if true, calls
+    // `prop_up_conv(session, false)` which hardcodes
+    // `video_enabled=Some(false)` (facetime.rs:775). Peer iOS reads that
+    // flag as the call's authoritative video state — wife's iPhone
+    // classifies the call as "FaceTime Audio" even when she dialed Video.
+    //
+    // We re-implement the same prop here with `video_enabled=true`. On
+    // success, we set `is_ringing_inaccurate=false` so upstream's
+    // needs_prop check fails and respond_letmein skips its own prop. On
+    // failure, we leave session state alone so upstream still props as
+    // a fallback (audio-only call > broken call).
+    //
+    // Outbound calls don't hit this path: the bridge creates the session
+    // via `create_session` which uses `prop_up_conv(session, true)`, the
+    // ring=true branch. That works because peer's iPhone classifies from
+    // the webview's video stream (joined via `&n=phonenumber`), not the
+    // bridge ghost's video_enabled flag.
+    if inbound_session {
+        let needs_prop = {
+            let state = facetime.state.read().await;
+            state.sessions.get(&approved_group).map(|s| {
+                s.is_ringing_inaccurate
+                    && s.participants.values().filter(|p| p.active.is_some()).count() == 1
+            }).unwrap_or(false)
+        };
+        if needs_prop {
+            // ensure_allocations needs &mut FTSession; mirror upstream's
+            // pattern: take a write lock, mutate, drop before our prop's
+            // own locking.
+            let allocate_result = {
+                let mut state = facetime.state.write().await;
+                if let Some(session) = state.sessions.get_mut(&approved_group) {
+                    facetime.ensure_allocations(session, &[]).await
+                } else {
+                    Ok(())
+                }
+            };
+            if let Err(e) = allocate_result {
+                warn!(
+                    "prop_up_conv_inbound_video_on: ensure_allocations failed for session {}: {:?} — falling back to upstream prop",
+                    approved_group, e
+                );
+            } else if let Err(e) = prop_up_conv_inbound_video_on(facetime, &approved_group).await {
+                warn!(
+                    "prop_up_conv_inbound_video_on failed for session {}: {:?} — falling back to upstream prop with video_enabled=false",
+                    approved_group, e
+                );
             }
         }
     }
