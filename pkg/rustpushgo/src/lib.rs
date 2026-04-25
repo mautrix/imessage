@@ -3368,126 +3368,6 @@ async fn suppress_own_device_ring(ft: &rustpush::facetime::FTClient, guid: &str)
     }
 }
 
-// Send ConversationMessageType::RequestVideoUpgrade (proto enum 22) to peer
-// after we approve a letmein on an inbound call.
-//
-// Problem: when wife places a FaceTime Video call to the user via bridge,
-// upstream's prop_up_conv (facetime.rs:774-775) hardcodes
-// `update_context.video_enabled = Some(false)` on the bridge's cmd 207
-// prop. Wife's iPhone classifies the call as "FaceTime Audio" because
-// the only IDS-visible participant (the bridge ghost) advertised
-// videoEnabled=false. The webview joins via Apple's HTTPS relay and is
-// invisible at the IDS layer, so its real video stream never gets
-// reflected in the call's category.
-//
-// Fix: emit Apple's documented "request video upgrade" signal as a
-// cmd 242 ConversationMessage to peer handles only. This is the same
-// wire pattern Apple uses when a user mid-call taps "Switch to Video"
-// in the FT UI — peer's callservicesd should re-classify the call from
-// FaceTime Audio to FaceTime Video without touching the participant
-// roster.
-//
-// Upstream defines the enum value but never sends or handles it; this
-// is novel territory. Best-effort: log + return on any failure rather
-// than poison the letmein flow. No upstream patching.
-async fn request_video_upgrade(ft: &rustpush::facetime::FTClient, guid: &str) {
-    use prost::Message as _;
-    use rustpush::facetime::facetimep::{ConversationMessage, ConversationMessageType};
-    use rustpush::ids::identity_manager::{IDSSendMessage, Raw};
-    use rustpush::ids::user::QueryOptions;
-
-    let (handle, peers) = {
-        let state = ft.state.read().await;
-        let Some(session) = state.sessions.get(guid) else {
-            warn!("request_video_upgrade: session {} not found", guid);
-            return;
-        };
-        let Some(handle) = session.my_handles.first().cloned() else {
-            warn!("request_video_upgrade: session {} has no my_handles", guid);
-            return;
-        };
-        let my_handles: std::collections::HashSet<&String> =
-            session.my_handles.iter().collect();
-        let peers: Vec<String> = session
-            .members
-            .iter()
-            .map(|m| m.handle.clone())
-            .filter(|h| !my_handles.contains(h))
-            .collect();
-        (handle, peers)
-    };
-
-    if peers.is_empty() {
-        info!(
-            "request_video_upgrade: no peer in session {} — skipping",
-            guid
-        );
-        return;
-    }
-
-    let mut message = ConversationMessage::default();
-    message.set_type(ConversationMessageType::RequestVideoUpgrade);
-    message.conversation_group_uuid_string = guid.to_string();
-
-    let topic = "com.apple.private.alloy.facetime.multi";
-
-    if let Err(e) = ft
-        .identity
-        .cache_keys(
-            topic,
-            &peers,
-            &handle,
-            false,
-            &QueryOptions { required_for_message: true, result_expected: true },
-        )
-        .await
-    {
-        warn!(
-            "request_video_upgrade: cache_keys failed for session {}: {:?}",
-            guid, e
-        );
-        return;
-    }
-
-    let targets = ft
-        .identity
-        .cache
-        .lock()
-        .await
-        .get_participants_targets(topic, &handle, &peers);
-    if targets.is_empty() {
-        warn!(
-            "request_video_upgrade: no targets resolved for peers={:?} in session {}",
-            peers, guid
-        );
-        return;
-    }
-
-    let ids_send = IDSSendMessage {
-        sender: handle.clone(),
-        raw: Raw::Body(message.encode_to_vec()),
-        send_delivered: false,
-        command: 242,
-        no_response: false,
-        id: uuid::Uuid::new_v4().to_string().to_uppercase(),
-        scheduled_ms: None,
-        queue_id: None,
-        relay: None,
-        extras: Default::default(),
-    };
-
-    match ft.identity.send_message(topic, ids_send, targets).await {
-        Ok(_) => info!(
-            "request_video_upgrade: sent RequestVideoUpgrade to peer(s) {:?} for session {} — call should re-categorize as FaceTime Video",
-            peers, guid
-        ),
-        Err(e) => warn!(
-            "request_video_upgrade: send_message failed for session {}: {:?}",
-            guid, e
-        ),
-    }
-}
-
 // Overlay around FTClient::handle that tolerates Apple sending cmd 207/209
 // wire messages with `ConversationParticipantDidJoinContext.message = None`.
 // Upstream's handler at facetime.rs:1272/1344 hard-requires that field and
@@ -3783,7 +3663,6 @@ async fn auto_approve_bridge_letmein(
                     inbound_session,
                 );
                 suppress_own_device_ring(facetime, &approved_group).await;
-                request_video_upgrade(facetime, &approved_group).await;
                 // Match OpenBubbles' answerFtRequest
                 // (rustpush_service.dart:3347): approve the letmein and
                 // return. No unprop_conv, no RemoveMember. Previous
