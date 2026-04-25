@@ -61,16 +61,6 @@ type IMConfig struct {
 	// falls back to the bare iMessage handle.
 	FaceTimeDisplayName string `yaml:"facetime_display_name"`
 
-	// FaceTimeProxyBase is the external base URL under which the bridge's
-	// FaceTime web-join proxy is reachable from user browsers, e.g.
-	// "https://imessage.bridges.beeper.com". Falls back to
-	// appservice.public_address if unset. Setting this to empty string
-	// (or leaving both unset) disables the proxy — ring notices will
-	// embed raw facetime.apple.com/join URLs, which work everywhere but
-	// leave the user clicking through a name form + Join button (see
-	// facetime_proxy.go for the full story).
-	FaceTimeProxyBase string `yaml:"facetime_proxy_base"`
-
 	// StatusKitShareOnStartup publishes share_status(available) once after
 	// StatusKit init completes. Peer iOS reciprocates with a reshare (which
 	// carries the key material needed to decrypt its subsequent presence
@@ -172,7 +162,6 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Int, "heic_jpeg_quality")
 	helper.Copy(up.Str, "preferred_handle")
 	helper.Copy(up.Str, "facetime_display_name")
-	helper.Copy(up.Str, "facetime_proxy_base")
 	helper.Copy(up.Bool, "statuskit_share_on_startup")
 	helper.Copy(up.Str, "carddav", "email")
 	helper.Copy(up.Str, "carddav", "url")

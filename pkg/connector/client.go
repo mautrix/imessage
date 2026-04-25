@@ -3188,12 +3188,6 @@ func (c *IMClient) handleFaceTimeRingNotice(log zerolog.Logger, msg rustpushgo.W
 				// creates a second participant distinct from the pseud
 				// bound to the user's handle).
 				link = appendFaceTimeLinkName(link, c.resolveFaceTimeDisplayName(ctx))
-				// Route through the bridge's FT proxy so the webview
-				// auto-submits the name and auto-clicks Join (matches
-				// OB's WebView MITM pattern). iOS/macOS UAs are
-				// redirected to the raw facetime.apple.com URL for
-				// native FaceTime app handoff.
-				link = c.Main.ftProxy.buildLink(link)
 			} else {
 				log.Warn().Err(genErr).Msg("FaceTimeRing: failed to generate bridge FaceTime link")
 			}
@@ -3275,7 +3269,7 @@ func (c *IMClient) handleFaceTimeMissedNotice(log zerolog.Logger, msg rustpushgo
 	noticeMarkdown := "📞 **Missed FaceTime call from " + name + ".**"
 	if senderHandle != "" && c.handle != "" {
 		if ft, ftErr := c.client.GetFacetimeClient(); ftErr == nil {
-			if webLink, _, armErr := armBridgeFaceTimeCall(ft, c.handle, senderHandle, 3600, c.Main.ftProxy, c.resolveFaceTimeDisplayName(ctx)); armErr == nil {
+			if webLink, _, armErr := armBridgeFaceTimeCall(ft, c.handle, senderHandle, 3600, c.resolveFaceTimeDisplayName(ctx)); armErr == nil {
 				noticeMarkdown += "\n\n[**📞 Call back " + name + "**](" + webLink + ")"
 				noticeMarkdown += "\n\n⚠️ **Tapping this link will ring " + name + "'s phone.** The ring fires the moment you join — open the link when you're ready to be on camera. Works on iOS, macOS, Android, Windows, and Linux.\n\nRaw URL: " + webLink
 			} else {
