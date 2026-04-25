@@ -363,17 +363,22 @@ func appendFaceTimeLinkName(link, name string) string {
 }
 
 // resolveFaceTimeDisplayName returns the value to stamp into the FaceTime
-// web join link's `n=` fragment.
-//
-// We default to the bare iMessage handle (phone number / email): when the
-// caller's handle is in `&n=`, Apple's web client recognizes the joiner as
-// the call's actual originator and grants video; substituting a "First
-// Last" name made the web client treat the join as a guest with audio-only
-// default — confirmed to break outbound video in production. Config
-// override remains for users who explicitly accept that tradeoff.
+// web join link's `n=` fragment so the recipient sees a real name instead
+// of a raw phone number on the peer's incoming-call UI. Preference order:
+//  1. `facetime_display_name` config override (per-user escape hatch),
+//  2. Apple ID "First Last" read from the cached SPD dict (the name Apple
+//     has on file for this account — same name iMessage and FaceTime
+//     already show everywhere else),
+//  3. the bare iMessage handle as a last-resort fallback.
 func (c *IMClient) resolveFaceTimeDisplayName(ctx context.Context) string {
 	if override := strings.TrimSpace(c.Main.Config.FaceTimeDisplayName); override != "" {
 		return override
+	}
+	if c.tokenProvider != nil && *c.tokenProvider != nil {
+		if name := strings.TrimSpace((*c.tokenProvider).AppleAccountFullName()); name != "" {
+			return name
+		}
+		c.UserLogin.Log.Debug().Msg("FaceTime display-name: Apple Account SPD lookup returned empty; set facetime_display_name in config to override")
 	}
 	return stripIdentifierPrefix(c.handle)
 }
