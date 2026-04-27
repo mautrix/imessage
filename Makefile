@@ -221,10 +221,6 @@ ensure-rustpush-source:
 			echo "Re-exporting FetchedToken from icloud_auth crate root..."; \
 			sed -i.bak 's/^pub use client::{AppleAccount, LoginState,/pub use client::{AppleAccount, FetchedToken, LoginState,/' $(RUSTPUSH_DIR)/apple-private-apis/icloud-auth/src/lib.rs && rm -f $(RUSTPUSH_DIR)/apple-private-apis/icloud-auth/src/lib.rs.bak; \
 		fi; \
-		if ! grep -q "REGISTER body XML" $(RUSTPUSH_DIR)/src/ids/user.rs 2>/dev/null; then \
-			echo "Adding RUSTPUSH_LOG_REGISTER_BODY-gated XML dump of IDS register body (StatusKit reshare investigation)..."; \
-			sed -i.bak 's#    let mut request = SignedRequest::new("id-register", Method::POST)#    if std::env::var("RUSTPUSH_LOG_REGISTER_BODY").is_ok() { info!("REGISTER body XML: {}", plist_to_string(\&body).unwrap_or_default()); } let mut request = SignedRequest::new("id-register", Method::POST)#' $(RUSTPUSH_DIR)/src/ids/user.rs && rm -f $(RUSTPUSH_DIR)/src/ids/user.rs.bak; \
-		fi; \
 	fi
 
 # `ensure-rustpush-source` is an order-only prereq (the `|` separator):
