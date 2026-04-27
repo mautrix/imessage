@@ -553,6 +553,7 @@ func fnFaceTimeCallInPortal(ce *commands.Event) bool {
 	_ = sessionID
 
 	bare := stripIdentifierPrefix(target)
+	if g, _ := ce.Bridge.GetGhostByID(ce.Ctx, networkid.UserID(target)); g != nil && g.Name != "" { bare = g.Name }
 
 	// One URL for everyone. facetime.apple.com is an Apple Universal Link:
 	// iOS / macOS intercept the domain and hand the URL off to the FaceTime
