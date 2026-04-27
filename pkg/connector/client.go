@@ -152,6 +152,14 @@ type IMClient struct {
 	// when StatusKit re-delivers the same presence state on reconnect.
 	statusKitPresence sync.Map // map[string]bool
 
+	// statusKitPresenceByPortal mirrors statusKitPresence but keyed by the
+	// resolved DM portal ID — i.e. canonical-per-peer regardless of which
+	// alias (mailto: vs tel:) StatusKit routed the notification through.
+	// Peer iOS publishes status to every alias of the same Apple ID, so
+	// without this canonical dedup the bridge fires N notices per state
+	// change for a peer with N registered handles.
+	statusKitPresenceByPortal sync.Map // map[networkid.PortalID]string
+
 	// statusKitPortalCache memoizes the resolved DM portal ID for a StatusKit
 	// presence handle. Populated after a successful IDS correlation lookup
 	// (see resolveStatusPortalViaIDS) so we only pay the IDS round trip once
@@ -1485,6 +1493,35 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 				Msg("StatusKit: no DM portal found for presence notice")
 			return
 		}
+
+		// Canonical (portal-keyed) dedup. The early dedup at the top of
+		// OnStatusUpdate keys by raw alias, so a peer with N registered
+		// handles produces N goroutines that all reach this point and
+		// resolve to the same portal. Collapse them here using portal ID
+		// as the canonical key so only the first alias of each state
+		// change actually sends the notice. Persisted to KV under a
+		// distinct prefix so the dedup survives bridge restarts.
+		portalKey := database.Key("statuskit.presence.portal." + string(portal.ID))
+		if prev, loaded := c.statusKitPresenceByPortal.Load(portal.ID); loaded {
+			if prev.(string) == modeKey {
+				log.Debug().
+					Str("portal_id", string(portal.ID)).
+					Str("alias", user).
+					Str("mode", modeKey).
+					Msg("StatusKit: presence unchanged for canonical portal, skipping duplicate alias notice")
+				return
+			}
+		} else if c.Main.Bridge.DB.KV.Get(ctx, portalKey) == modeKey {
+			c.statusKitPresenceByPortal.Store(portal.ID, modeKey)
+			log.Debug().
+				Str("portal_id", string(portal.ID)).
+				Str("alias", user).
+				Str("mode", modeKey).
+				Msg("StatusKit: presence unchanged for canonical portal (restored from DB), skipping duplicate alias notice")
+			return
+		}
+		c.statusKitPresenceByPortal.Store(portal.ID, modeKey)
+		c.Main.Bridge.DB.KV.Set(ctx, portalKey, modeKey)
 
 		// Use the ghost keyed to the portal's handle — for a tel: portal this
 		// is the tel: ghost which has an MXID and is a member of the room.
