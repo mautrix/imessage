@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use futures::FutureExt;
-use log::warn;
+use log::{error, info, warn};
 use omnisette::remote_anisette_v3::RemoteAnisetteProviderV3;
 use omnisette::{AnisetteError, AnisetteProvider, LoginClientInfo};
 
@@ -62,8 +62,17 @@ impl AnisetteProvider for BridgeAnisetteProvider {
     {
         async move {
             let mut last_err = None;
+            let call_start = std::time::Instant::now();
 
             for attempt in 0..MAX_RETRIES {
+                let attempt_start = std::time::Instant::now();
+                info!(
+                    "anisette: starting attempt {}/{} (total elapsed {:?})",
+                    attempt + 1,
+                    MAX_RETRIES,
+                    call_start.elapsed()
+                );
+
                 // Fresh upstream provider each attempt — it reads state from
                 // disk so a cleared state.plist forces re-provisioning.
                 let mut upstream = RemoteAnisetteProviderV3::new(
@@ -84,7 +93,16 @@ impl AnisetteProvider for BridgeAnisetteProvider {
                 // upstream errors below don't correlate with genuine state
                 // corruption, so we leave state alone and just retry.
                 match tokio::time::timeout(PROVISION_TIMEOUT, inner).await {
-                    Ok(Ok(Ok(headers))) => return Ok(headers),
+                    Ok(Ok(Ok(headers))) => {
+                        info!(
+                            "anisette: attempt {}/{} succeeded in {:?} (total {:?})",
+                            attempt + 1,
+                            MAX_RETRIES,
+                            attempt_start.elapsed(),
+                            call_start.elapsed()
+                        );
+                        return Ok(headers);
+                    }
                     Ok(Ok(Err(AnisetteError::SerdeError(ref e)))) => {
                         warn!(
                             "anisette: upstream serde error on attempt {}/{} (state preserved): {}",
@@ -151,6 +169,11 @@ impl AnisetteProvider for BridgeAnisetteProvider {
                 }
             }
 
+            error!(
+                "anisette: all {} attempts exhausted in {:?} — returning error to caller (lock will be released)",
+                MAX_RETRIES,
+                call_start.elapsed()
+            );
             Err(last_err.unwrap_or_else(|| {
                 AnisetteError::InvalidArgument("Anisette provisioning failed".into())
             }))
