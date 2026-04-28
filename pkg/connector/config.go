@@ -170,6 +170,7 @@ func upgradeConfig(helper up.Helper) {
 	helper.Copy(up.Int, "heic_jpeg_quality")
 	helper.Copy(up.Str, "preferred_handle")
 	helper.Copy(up.Str, "facetime_display_name")
+	helper.Copy(up.Bool, "disable_facetime")
 	helper.Copy(up.Bool, "statuskit_share_on_startup")
 	helper.Copy(up.Str, "carddav", "email")
 	helper.Copy(up.Str, "carddav", "url")
