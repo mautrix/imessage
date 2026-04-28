@@ -705,46 +705,46 @@ if ! grep -q 'disable_facetime:' "$CONFIG" 2>/dev/null; then
     sed -i '/video_transcoding:/a\    disable_facetime: false' "$CONFIG"
 fi
 
-# ── Disable bridge FaceTime (use native Apple FT instead) ────────
+# ── Disable FaceTime Bridge (use native Apple FT instead) ────────
 CURRENT_DISABLE_FT=$(grep 'disable_facetime:' "$CONFIG" 2>/dev/null | head -1 | sed 's/.*disable_facetime: *//' || true)
 if [ -n "${DISABLE_FACETIME:-}" ]; then
     case "$DISABLE_FACETIME" in
         1|true|TRUE|yes|YES)
             sed -i "s/disable_facetime: .*/disable_facetime: true/" "$CONFIG"
-            echo "✓ Bridge FaceTime disabled (DISABLE_FACETIME env)"
+            echo "✓ FaceTime Bridge disabled (DISABLE_FACETIME env)"
             ;;
         *)
             sed -i "s/disable_facetime: .*/disable_facetime: false/" "$CONFIG"
-            echo "✓ Bridge FaceTime enabled (DISABLE_FACETIME env)"
+            echo "✓ FaceTime Bridge enabled (DISABLE_FACETIME env)"
             ;;
     esac
 elif [ -t 0 ]; then
     echo ""
-    echo "Bridge FaceTime:"
+    echo "FaceTime Bridge:"
     echo "  If you have an Apple device that already handles FaceTime, the"
     echo "  bridge's FT wrapper just clutters your chat. Disable it to skip"
     echo "  !im facetime commands and inbound FT notices."
     echo ""
     if [ "$CURRENT_DISABLE_FT" = "true" ]; then
-        read -p "Keep bridge FaceTime disabled? [Y/n]: " DIS_FT
+        read -p "Disable FaceTime Bridge? [Y/n]:" DIS_FT
         case "$DIS_FT" in
             [nN]*)
                 sed -i "s/disable_facetime: .*/disable_facetime: false/" "$CONFIG"
-                echo "✓ Bridge FaceTime enabled"
+                echo "✓ FaceTime Bridge enabled"
                 ;;
             *)
-                echo "✓ Bridge FaceTime disabled"
+                echo "✓ FaceTime Bridge disabled"
                 ;;
         esac
     else
-        read -p "Disable bridge FaceTime (use native Apple FT)? [y/N]: " DIS_FT
+        read -p "Disable FaceTime Bridge (use native Apple FT)? [y/N]: " DIS_FT
         case "$DIS_FT" in
             [yY]*)
                 sed -i "s/disable_facetime: .*/disable_facetime: true/" "$CONFIG"
-                echo "✓ Bridge FaceTime disabled"
+                echo "✓ FaceTime Bridge disabled"
                 ;;
             *)
-                echo "✓ Bridge FaceTime enabled"
+                echo "✓ FaceTime Bridge enabled"
                 ;;
         esac
     fi
