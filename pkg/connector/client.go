@@ -3237,8 +3237,12 @@ func (c *IMClient) handleFaceTimeRingNotice(log zerolog.Logger, msg rustpushgo.W
 	// <a> tag reaches the client.
 	noticeMarkdown := "📞 **Incoming FaceTime call from " + name + ".**"
 	if link != "" {
-		noticeMarkdown += "\n\n[**Answer FaceTime call**](" + link + ")"
-		noticeMarkdown += "\n\nRaw link (if the button above doesn't open): " + link
+		noticeMarkdown += "\n\n[**🌐 Answer FaceTime Call from Non-Apple Device**](" + link + ")"
+		if appleLink := faceTimeAppleSchemeLink(link); appleLink != "" {
+			noticeMarkdown += "\n[**🍎 Answer FaceTime Call from Apple Device**](" + appleLink + ")"
+		} else {
+			noticeMarkdown += "\n\nRaw link (if the button above doesn't open): " + link
+		}
 	}
 
 	sendNotice := func(roomID id.RoomID) error {
@@ -3307,8 +3311,12 @@ func (c *IMClient) handleFaceTimeMissedNotice(log zerolog.Logger, msg rustpushgo
 	if senderHandle != "" && c.handle != "" {
 		if ft, ftErr := c.client.GetFacetimeClient(); ftErr == nil {
 			if webLink, _, armErr := armBridgeFaceTimeCall(ft, c.handle, senderHandle, 3600, c.resolveFaceTimeDisplayName(ctx)); armErr == nil {
-				noticeMarkdown += "\n\n[**📞 Call back " + name + "**](" + webLink + ")"
-				noticeMarkdown += "\n\n⚠️ **Tapping this link will ring " + name + "'s phone.** The ring fires the moment you join — open the link when you're ready to be on camera. Works on iOS, macOS, Android, Windows, and Linux.\n\nRaw URL: " + webLink
+				appleLink := faceTimeAppleSchemeLink(webLink)
+				noticeMarkdown += "\n\n[**🌐 Call back " + name + " from Non-Apple Device**](" + webLink + ")"
+				if appleLink != "" {
+					noticeMarkdown += "\n[**🍎 Call back " + name + " from Apple Device**](" + appleLink + ")"
+				}
+				noticeMarkdown += "\n\n⚠️ **Tapping either link will ring " + name + "'s phone.** The ring fires the moment you join — open the link when you're ready to be on camera. Works on iOS, macOS, Android, Windows, and Linux."
 			} else {
 				log.Warn().Err(armErr).Str("caller", senderHandle).Msg("FaceTimeMissed: bridge-link callback arm failed; notice posted without callback button")
 			}
