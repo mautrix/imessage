@@ -45,32 +45,41 @@ var (
 )
 
 // BridgeCommands returns the custom slash commands for the iMessage bridge.
+// Pass disableFaceTime=true to skip every !facetime* handler — used by
+// IMConfig.DisableFaceTime to give Apple-native FaceTime users a way to
+// keep the bridge's FT wrapper out of their chat.
+//
 // Register these in main.go's PostInit hook:
 //
-//	m.Bridge.Commands.(*commands.Processor).AddHandlers(connector.BridgeCommands()...)
-func BridgeCommands() []*commands.FullHandler {
+//	m.Bridge.Commands.(*commands.Processor).AddHandlers(connector.BridgeCommands(...)...)
+func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 	cmds := []*commands.FullHandler{
 		cmdRestoreChat,
 		cmdRestoreDebug,
 		cmdMsgDebug,
 		cmdContacts,
-		// Apple service integrations
-		cmdFaceTime,
-		cmdFaceTimeSend,
-		cmdFaceTimeClear,
-		cmdFaceTimeInvalidatePeer,
-		cmdFaceTimeRotateIdentity,
-		cmdFaceTimeState,
-		cmdFaceTimeSessionLink,
-		cmdFaceTimeUseLink,
-		cmdFaceTimeDeleteLink,
-		cmdFaceTimeLetMeIn,
-		cmdFaceTimeLetMeInApprove,
-		cmdFaceTimeLetMeInDeny,
-		cmdFaceTimeCreateSession,
-		cmdFaceTimeRing,
-		cmdFaceTimeAddMembers,
-		cmdFaceTimeRemoveMembers,
+	}
+	if !disableFaceTime {
+		cmds = append(cmds,
+			cmdFaceTime,
+			cmdFaceTimeSend,
+			cmdFaceTimeClear,
+			cmdFaceTimeInvalidatePeer,
+			cmdFaceTimeRotateIdentity,
+			cmdFaceTimeState,
+			cmdFaceTimeSessionLink,
+			cmdFaceTimeUseLink,
+			cmdFaceTimeDeleteLink,
+			cmdFaceTimeLetMeIn,
+			cmdFaceTimeLetMeInApprove,
+			cmdFaceTimeLetMeInDeny,
+			cmdFaceTimeCreateSession,
+			cmdFaceTimeRing,
+			cmdFaceTimeAddMembers,
+			cmdFaceTimeRemoveMembers,
+		)
+	}
+	cmds = append(cmds,
 		cmdFindMy,
 		cmdFindMyAcceptShare,
 		cmdFindMyDeleteItem,
@@ -95,7 +104,7 @@ func BridgeCommands() []*commands.FullHandler {
 		cmdStatuskitClearInterest,
 		cmdStatuskitInviteToChannel,
 		cmdStatuskitInviteAll,
-	}
+	)
 	return cmds
 }
 

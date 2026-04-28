@@ -3113,16 +3113,20 @@ func (c *IMClient) handleNotifyAnyways(log zerolog.Logger, msg rustpushgo.Wrappe
 	}
 
 	rawText := strings.TrimSpace(ptrStringOr(msg.Text, ""))
-	if strings.HasPrefix(rawText, faceTimeRingMarker) {
-		c.handleFaceTimeRingNotice(log, msg, rawText)
-		return
-	}
-	if strings.HasPrefix(rawText, faceTimeMissedMarker) {
-		c.handleFaceTimeMissedNotice(log, msg)
-		return
-	}
-	if strings.HasPrefix(rawText, faceTimeAnsweredElsewhereMarker) {
-		c.handleFaceTimeAnsweredElsewhereNotice(log, msg)
+	if strings.HasPrefix(rawText, faceTimeRingMarker) ||
+		strings.HasPrefix(rawText, faceTimeMissedMarker) ||
+		strings.HasPrefix(rawText, faceTimeAnsweredElsewhereMarker) {
+		if c.Main.Config.DisableFaceTime {
+			return
+		}
+		switch {
+		case strings.HasPrefix(rawText, faceTimeRingMarker):
+			c.handleFaceTimeRingNotice(log, msg, rawText)
+		case strings.HasPrefix(rawText, faceTimeMissedMarker):
+			c.handleFaceTimeMissedNotice(log, msg)
+		case strings.HasPrefix(rawText, faceTimeAnsweredElsewhereMarker):
+			c.handleFaceTimeAnsweredElsewhereNotice(log, msg)
+		}
 		return
 	}
 

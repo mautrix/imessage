@@ -51,7 +51,9 @@ var m = mxmain.BridgeMain{
 func init() {
 	m.PostInit = func() {
 		proc := m.Bridge.Commands.(*commands.Processor)
-		for _, h := range connector.BridgeCommands() {
+		conn, _ := m.Connector.(*connector.IMConnector)
+		disableFT := conn != nil && conn.Config.DisableFaceTime
+		for _, h := range connector.BridgeCommands(disableFT) {
 			proc.AddHandler(h)
 		}
 	}

@@ -61,6 +61,14 @@ type IMConfig struct {
 	// falls back to the bare iMessage handle.
 	FaceTimeDisplayName string `yaml:"facetime_display_name"`
 
+	// DisableFaceTime turns off all bridge FaceTime integration: the
+	// !facetime* slash commands aren't registered, inbound ring / missed /
+	// answered-elsewhere notices aren't posted, and inbound peer-invite
+	// notices are suppressed. Intended for users who own an Apple device
+	// and answer FaceTime calls natively — the bridge wrapper adds nothing
+	// in that case and just clutters the chat.
+	DisableFaceTime bool `yaml:"disable_facetime"`
+
 	// StatusKitShareOnStartup publishes share_status(available) once after
 	// StatusKit init completes. Peer iOS reciprocates with a reshare (which
 	// carries the key material needed to decrypt its subsequent presence
