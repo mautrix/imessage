@@ -337,36 +337,6 @@ func armBridgeFaceTimeCall(
 	return link, sessionID, nil
 }
 
-// faceTimeAppleSchemeLink rewrites a https://facetime.apple.com/join URL to
-// facetime://facetime.apple.com/join so iOS / macOS hand the URL straight to
-// the FaceTime app via the custom-scheme handler instead of relying on
-// Safari's Universal Link interception. The FT app accepts the same path +
-// fragment under either scheme; this is the standard fallback when the
-// https Universal Link tap doesn't fire — typically because the link is
-// tapped from inside a third-party app's in-app webview (e.g. Beeper's
-// chat view), where UL interception is unreliable.
-//
-// Returned URL joins the same bridge session as the input web URL — same
-// pseud, same `&k=` decryption key, same letmein flow. It's a transport
-// alternative for the tap, not a separate session.
-//
-// Returns "" for inputs that don't match the FT join URL shape.
-func faceTimeAppleSchemeLink(webURL string) string {
-	if webURL == "" {
-		return ""
-	}
-	lower := strings.ToLower(webURL)
-	const httpsPrefix = "https://"
-	const wwwPrefix = "https://www."
-	switch {
-	case strings.HasPrefix(lower, "https://facetime.apple.com/"):
-		return "facetime://" + webURL[len(httpsPrefix):]
-	case strings.HasPrefix(lower, "https://www.facetime.apple.com/"):
-		return "facetime://" + webURL[len(wwwPrefix):]
-	}
-	return ""
-}
-
 // appendFaceTimeLinkName appends &n=<base64-name> to a FaceTime web join
 // link so Apple's join page pre-fills the display-name field, sparing the
 // user from typing their name before joining.
@@ -585,19 +555,17 @@ func fnFaceTimeCallInPortal(ce *commands.Event) bool {
 	bare := stripIdentifierPrefix(target)
 	if g, _ := ce.Bridge.GetGhostByID(ce.Ctx, networkid.UserID(target)); g != nil && g.Name != "" { bare = g.Name }
 
-	// Two labeled links so the recipient picks the form their device honors.
-	// Both URLs join the same bridge session — same pseud, same key, same
-	// letmein flow. Only the URL scheme differs: https:// for non-Apple
-	// browsers; facetime:// for Mac/iOS so the FT app opens directly via
-	// custom-scheme handler when Universal Link interception doesn't fire
-	// (typical when the link is tapped from inside another app's webview).
-	appleLink := faceTimeAppleSchemeLink(webLink)
+	// One URL for everyone. facetime.apple.com is an Apple Universal Link:
+	// iOS / macOS intercept the domain and hand the URL off to the FaceTime
+	// app directly (no browser round-trip). Android / Windows / Linux just
+	// open the web FaceTime client in the default browser. Same link,
+	// platform-appropriate handling.
 	ce.Reply(
 		"📞 **FaceTime call ready for %s.**\n\n"+
-			"[**🌐 Join FaceTime Call from Non-Apple Device**](%s)\n"+
-			"[**🍎 Join FaceTime Call from Apple Device**](%s)\n\n"+
-			"⚠️ **Tapping either link will ring %s's phone.** The ring fires the moment you join — open the link when you're ready to be on camera. If you don't tap within 60 seconds the session is dropped and nothing rings.",
-		bare, webLink, appleLink, bare,
+			"[**🌐 Join FaceTime call**](%s)\n\n"+
+			"⚠️ **Tapping this link will ring %s's phone.** The ring fires the moment you join — open the link when you're ready to be on camera. If you don't tap within 60 seconds the session is dropped and nothing rings. Works on iOS, macOS, Android, Windows, and Linux.\n\n"+
+			"Raw URL: %s",
+		bare, webLink, bare, webLink,
 	)
 	return true
 }
@@ -980,13 +948,7 @@ func (c *IMClient) maybeNotifyIncomingFaceTimeInvite(log zerolog.Logger, msg *ru
 
 func (c *IMClient) sendFaceTimeInviteNotice(log zerolog.Logger, portalKey networkid.PortalKey, sender string, link string, createPortal bool) {
 	ctx := context.Background()
-	appleLink := faceTimeAppleSchemeLink(link)
-	var markdown string
-	if appleLink != "" {
-		markdown = fmt.Sprintf("📞 **Incoming FaceTime invite** from **%s**\\n\\n[**🌐 Join FaceTime Call from Non-Apple Device**](%s)\\n[**🍎 Join FaceTime Call from Apple Device**](%s)", sender, link, appleLink)
-	} else {
-		markdown = fmt.Sprintf("📞 **Incoming FaceTime invite** from **%s**\\n\\n[**🌐 Join FaceTime Call from Non-Apple Device**](%s)", sender, link)
-	}
+	markdown := fmt.Sprintf("📞 **Incoming FaceTime invite** from **%s**\\n\\n[Join FaceTime](%s)", sender, link)
 	content := format.RenderMarkdown(markdown, true, false)
 
 	attempts := 1
