@@ -964,13 +964,6 @@ enum ValidationCtxInner {
         // used from a single task — the `unsafe impl Send` below mirrors
         // that invariant.
         ctx: UnsafeCell<nac_validation::NacContext>,
-        /// Pre-computed result from the one-shot `generate_validation_data()`.
-        /// When Some, `sign()` returns this directly — the one-shot already
-        /// completed the full NACInit → POST → NACKeyEstablishment → NACSign
-        /// sequence internally. The 3-step `ctx` is still driven for the
-        /// upstream HTTP flow (so MacOSConfig's POST succeeds), but its
-        /// NACSign result is discarded in favour of this authoritative bytes.
-        final_data: Option<Vec<u8>>,
     },
     /// Relay mode: single-shot POST to a `tools/nac-relay` server running
     /// on a real Mac. The relay does the full NACInit → Apple POST →
@@ -1050,40 +1043,17 @@ impl ValidationCtx {
         // irrelevant because Apple's native framework reads real hardware
         // identifiers from IOKit itself.
         //
-        // Strategy: try the one-shot first. It runs the full protocol
-        // internally (fetch cert → NACInit → POST → NACKeyEstablishment →
-        // NACSign) and is the most reliable path. We then ALSO run
-        // NacContext::init to get valid NACInit request bytes for the
-        // upstream MacOSConfig HTTP flow (POST to id-initialize-validation).
-        // sign() returns the pre-computed one-shot result, making the
-        // 3-step ctx's NACSign call unnecessary.
-        //
-        // If the one-shot fails (rare), we fall back to using the 3-step
-        // ctx result from NACSign — same behaviour as before.
+        // True 3-step path: NacContext::init produces NACInit request bytes
+        // for upstream MacOSConfig's POST to `id-initialize-validation`,
+        // key_establishment() consumes Apple's response on the SAME context,
+        // and sign() returns the validation data correlated with that
+        // exchange. Apple's signin/v2/login correlates the validation data
+        // with the session_info we just exchanged — using a one-shot result
+        // (which runs its own internal exchange) breaks that correlation
+        // and triggers `MobileMeError`.
         // ====================================================================
         #[cfg(all(target_os = "macos", feature = "native-nac"))]
         {
-            info!(
-                "NAC native path: attempting one-shot via \
-                 nac_validation::generate_validation_data() …"
-            );
-            let one_shot_result = match nac_validation::generate_validation_data() {
-                Ok(data) => {
-                    info!(
-                        "NAC one-shot succeeded: {} bytes (will use as final result)",
-                        data.len()
-                    );
-                    Some(data)
-                }
-                Err(e) => {
-                    warn!(
-                        "NAC one-shot failed (will fall back to 3-step result): {}",
-                        e
-                    );
-                    None
-                }
-            };
-
             match nac_validation::NacContext::init(cert_chain) {
                 Ok((ctx, request_bytes)) => {
                     info!(
@@ -1094,7 +1064,6 @@ impl ValidationCtx {
                     return Ok(ValidationCtx {
                         inner: ValidationCtxInner::Native {
                             ctx: UnsafeCell::new(ctx),
-                            final_data: one_shot_result,
                         },
                     });
                 }
@@ -1309,18 +1278,10 @@ impl ValidationCtx {
                 return Ok(validation_data.clone());
             }
             #[cfg(all(target_os = "macos", feature = "native-nac"))]
-            ValidationCtxInner::Native { ctx, final_data } => {
-                // If the one-shot pre-computed the result, return it directly —
-                // it already ran the full NACInit→POST→KeyEst→Sign sequence
-                // internally and is more reliable than the 3-step path.
-                if let Some(data) = final_data {
-                    debug!(
-                        "NAC sign: returning pre-computed one-shot result ({} bytes)",
-                        data.len()
-                    );
-                    return Ok(data.clone());
-                }
-                // No pre-computed data — use the 3-step NACSign result.
+            ValidationCtxInner::Native { ctx } => {
+                // 3-step NACSign on the context whose key_establishment was
+                // driven by the upstream HTTP flow — produces validation
+                // data correlated with this connection's session_info.
                 // Safety: single-task use; see ValidationCtx struct doc.
                 let ctx = unsafe { &mut *ctx.get() };
                 let bytes = ctx
