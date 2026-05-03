@@ -1218,6 +1218,48 @@ echo ""
 DOMAIN=$(grep '^\s*domain:' "$CONFIG" | head -1 | awk '{print $2}' || true)
 DOMAIN="${DOMAIN:-beeper.local}"
 
+offer_shell_shortcuts() {
+    echo ""
+    echo "Want easy commands you can type from any terminal to control the bridge?"
+    echo "  start-imessage     stop-imessage     restart-imessage     imessage-log"
+    read -r -p "Add them? [y/N]: " _shortcut_ans
+    case "$_shortcut_ans" in
+        [yY]|[yY][eE][sS]) ;;
+        *) echo "  Skipped — you can re-run this installer later to add them." ; return ;;
+    esac
+    case "$SHELL" in
+        */zsh)  RC_FILE="$HOME/.zshrc" ;;
+        */bash) RC_FILE="$HOME/.bashrc" ;;
+        *)      echo "  Couldn't detect your shell from \$SHELL ($SHELL) — skipping. (Bash and Zsh are supported.)" ; return ;;
+    esac
+    MARKER_START="# >>> mautrix-imessage shortcuts (managed) >>>"
+    MARKER_END="# <<< mautrix-imessage shortcuts (managed) <<<"
+    if [ -f "$RC_FILE" ] && grep -qF "$MARKER_START" "$RC_FILE"; then
+        awk -v s="$MARKER_START" -v e="$MARKER_END" '
+            $0 == s { skip = 1; next }
+            $0 == e { skip = 0; next }
+            !skip   { print }
+        ' "$RC_FILE" > "$RC_FILE.tmp" && mv "$RC_FILE.tmp" "$RC_FILE"
+    fi
+    cat >> "$RC_FILE" <<EOF
+$MARKER_START
+alias start-imessage='launchctl bootstrap $GUI_DOMAIN $PLIST'
+alias stop-imessage='launchctl bootout $GUI_DOMAIN/$BUNDLE_ID'
+alias restart-imessage='launchctl kickstart -k $GUI_DOMAIN/$BUNDLE_ID'
+alias imessage-log='tail -f $LOG_OUT'
+$MARKER_END
+EOF
+    echo ""
+    echo "  ✓ All set! Open a new terminal window and you can now type:"
+    echo ""
+    echo "      start-imessage      — start the bridge"
+    echo "      stop-imessage       — stop the bridge"
+    echo "      restart-imessage    — restart the bridge"
+    echo "      imessage-log        — show live bridge logs"
+    echo ""
+    echo "  (For this current terminal: run \`source $RC_FILE\`.)"
+}
+
 echo "Waiting for bridge to start..."
 for i in $(seq 1 15); do
     if grep -q "Bridge started\|UNCONFIGURED\|Backfill queue starting" "$LOG_OUT" 2>/dev/null; then
@@ -1231,6 +1273,7 @@ for i in $(seq 1 15); do
         echo "  Stop:    launchctl bootout $GUI_DOMAIN/$BUNDLE_ID"
         echo "  Start:   launchctl bootstrap $GUI_DOMAIN $PLIST"
         echo "  Restart: launchctl kickstart -k $GUI_DOMAIN/$BUNDLE_ID"
+        offer_shell_shortcuts
         exit 0
     fi
     sleep 1
@@ -1241,3 +1284,4 @@ echo "Bridge is starting up (check logs for status):"
 echo "  tail -f $LOG_OUT"
 echo ""
 echo "Once running, DM @${BRIDGE_NAME}bot:$DOMAIN and send: login"
+offer_shell_shortcuts

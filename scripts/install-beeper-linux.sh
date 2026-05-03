@@ -1242,18 +1242,74 @@ echo ""
 echo "  Binary: $BINARY"
 echo "  Config: $CONFIG"
 echo ""
+SYSTEMCTL_PREFIX=""
+JOURNALCTL_PREFIX=""
 if [ "$SYSTEMD_MODE" = "user" ] && [ -f "$USER_SERVICE_FILE" ]; then
     echo "  Status:  systemctl --user status mautrix-imessage"
     echo "  Logs:    journalctl --user -u mautrix-imessage -f"
     echo "  Stop:    systemctl --user stop mautrix-imessage"
     echo "  Restart: systemctl --user restart mautrix-imessage"
+    SYSTEMCTL_PREFIX="systemctl --user"
+    JOURNALCTL_PREFIX="journalctl --user"
 elif [ "$SYSTEMD_MODE" = "system" ] && [ -f "$SYSTEM_SERVICE_FILE" ]; then
     echo "  Status:  systemctl status mautrix-imessage"
     echo "  Logs:    journalctl -u mautrix-imessage -f"
     echo "  Stop:    systemctl stop mautrix-imessage"
     echo "  Restart: systemctl restart mautrix-imessage"
+    SYSTEMCTL_PREFIX="sudo systemctl"
+    JOURNALCTL_PREFIX="sudo journalctl"
 else
     echo "  Run manually:"
     echo "    cd $(dirname "$CONFIG") && $BINARY -c $CONFIG"
 fi
 echo ""
+
+# ── Optional shell shortcuts ────────────────────────────────────
+# Offer to add four aliases wrapping the systemctl commands so the user
+# doesn't have to memorize them.
+if [ -n "$SYSTEMCTL_PREFIX" ]; then
+    echo "Want easy commands you can type from any terminal to control the bridge?"
+    echo "  start-imessage     stop-imessage     restart-imessage     imessage-log"
+    read -r -p "Add them? [y/N]: " _shortcut_ans
+    case "$_shortcut_ans" in
+        [yY]|[yY][eE][sS])
+            case "$SHELL" in
+                */zsh)  RC_FILE="$HOME/.zshrc" ;;
+                */bash) RC_FILE="$HOME/.bashrc" ;;
+                *)      RC_FILE="" ;;
+            esac
+            if [ -z "$RC_FILE" ]; then
+                echo "  Couldn't detect your shell from \$SHELL ($SHELL) — skipping. (Bash and Zsh are supported.)"
+            else
+                MARKER_START="# >>> mautrix-imessage shortcuts (managed) >>>"
+                MARKER_END="# <<< mautrix-imessage shortcuts (managed) <<<"
+                if [ -f "$RC_FILE" ] && grep -qF "$MARKER_START" "$RC_FILE"; then
+                    awk -v s="$MARKER_START" -v e="$MARKER_END" '
+                        $0 == s { skip = 1; next }
+                        $0 == e { skip = 0; next }
+                        !skip   { print }
+                    ' "$RC_FILE" > "$RC_FILE.tmp" && mv "$RC_FILE.tmp" "$RC_FILE"
+                fi
+                cat >> "$RC_FILE" <<EOF
+$MARKER_START
+alias start-imessage='$SYSTEMCTL_PREFIX start mautrix-imessage'
+alias stop-imessage='$SYSTEMCTL_PREFIX stop mautrix-imessage'
+alias restart-imessage='$SYSTEMCTL_PREFIX restart mautrix-imessage'
+alias imessage-log='$JOURNALCTL_PREFIX -u mautrix-imessage -f'
+$MARKER_END
+EOF
+                echo ""
+                echo "  ✓ All set! Open a new terminal window and you can now type:"
+                echo ""
+                echo "      start-imessage      — start the bridge"
+                echo "      stop-imessage       — stop the bridge"
+                echo "      restart-imessage    — restart the bridge"
+                echo "      imessage-log        — show live bridge logs"
+                echo ""
+                echo "  (For this current terminal: run \`source $RC_FILE\`.)"
+            fi
+            ;;
+        *) echo "  Skipped — you can re-run this installer later to add them." ;;
+    esac
+    echo ""
+fi
