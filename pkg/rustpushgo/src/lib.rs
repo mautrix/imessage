@@ -1443,6 +1443,13 @@ pub struct WrappedTokenProvider {
         Arc<rustpush::keychain::KeychainClient<BridgeDefaultAnisetteProvider>>,
         Arc<rustpush::cloudkit::CloudKitClient<BridgeDefaultAnisetteProvider>>,
     )>>,
+    // Serializes concurrent callers into `ensure_mme_delegate_bytes_seeded`
+    // so a cold start with empty `mme_delegate_bytes` produces ONE
+    // login_apple_delegates POST regardless of how many CloudKit/contacts
+    // call sites raced into self-heal at the same time. The actual storage
+    // is still `mme_delegate_bytes`; this lock just guards the populate
+    // path.
+    mme_self_heal_lock: tokio::sync::Mutex<()>,
 }
 
 /// Helper: create CloudKit + Keychain clients from a WrappedTokenProvider.
@@ -1796,6 +1803,14 @@ impl WrappedTokenProvider {
     /// up the URL on a single canonical shape regardless of which of the
     /// three persisted shapes is on disk (see normalize comment for details).
     pub async fn get_contacts_url(&self) -> Result<Option<String>, WrappedError> {
+        // Try self-heal first; if it fails (no PET / Apple omitted the
+        // delegate / network error), don't propagate — get_contacts_url's
+        // contract is "Ok(None) when we don't have a CardDAV URL", and a
+        // contacts lookup with no URL is recoverable. The self-heal logs
+        // the failure mode itself.
+        if let Err(e) = self.ensure_mme_delegate_bytes_seeded().await {
+            debug!("get_contacts_url: self-heal did not populate bytes: {:?}", e);
+        }
         let bytes_guard = self.mme_delegate_bytes.lock().await;
         let Some(bytes) = bytes_guard.as_ref() else {
             return Ok(None);
@@ -2006,6 +2021,98 @@ impl WrappedTokenProvider {
         Ok(adsid)
     }
 
+    /// Lazily fetch the MobileMe delegate from Apple if our wrapper's bytes
+    /// are not seeded yet. Recovers from the "switched from master to
+    /// refactor with persisted credentials but no persisted MmeDelegateJSON"
+    /// path — restore_token_provider stores `None`, and without this
+    /// self-heal the first CloudKit / contacts call errors out with
+    /// "MobileMe delegate not seeded" until the user manually re-logs in.
+    ///
+    /// Concurrency: serialized by `mme_self_heal_lock` with a check-lock-
+    /// recheck. First caller acquires the heal lock and does the network
+    /// round-trip; concurrent callers wait, then take the populated bytes
+    /// and short-circuit on the recheck.
+    ///
+    /// Diagnostic logging distinguishes `delegates.mobileme = None` (Apple
+    /// returned a response that omitted the com.apple.mobileme entry) from
+    /// `login_apple_delegates errored` so the bridge logs make it clear
+    /// which way the self-heal went sideways.
+    ///
+    /// Persistence: this method only populates the in-memory cache. The
+    /// existing `persistMmeDelegate` ticker in pkg/connector/client.go
+    /// picks up the new bytes on its next tick and writes them to
+    /// UserLoginMetadata, so subsequent restarts skip self-heal.
+    async fn ensure_mme_delegate_bytes_seeded(&self) -> Result<(), WrappedError> {
+        if self.mme_delegate_bytes.lock().await.is_some() {
+            return Ok(());
+        }
+
+        let _heal_guard = self.mme_self_heal_lock.lock().await;
+
+        if self.mme_delegate_bytes.lock().await.is_some() {
+            return Ok(());
+        }
+
+        info!("Self-healing MobileMe delegate: cached bytes empty, fetching fresh from Apple");
+
+        // login_apple_delegates panics on no-PET (auth.rs:361
+        // `panic!("No pet!")`), so guard against a cold/expired PET
+        // with get_gsa_token, which auto-refreshes via login_email_pass
+        // when the cached PET is stale.
+        if self.inner.get_gsa_token("com.apple.gs.idms.pet").await.is_none() {
+            return Err(WrappedError::GenericError {
+                msg: "MobileMe self-heal: no PET token available (Apple may require re-login)".into(),
+            });
+        }
+
+        let delegates = {
+            let account = self.account.lock().await;
+            login_apple_delegates(
+                &*account,
+                None,
+                &*self.os_config,
+                &[LoginDelegate::MobileMe],
+            )
+            .await
+            .map_err(|e| WrappedError::GenericError {
+                msg: format!("MobileMe self-heal: login_apple_delegates errored: {}", e),
+            })?
+        };
+
+        let Some(mobileme) = delegates.mobileme else {
+            warn!(
+                "MobileMe self-heal: login_apple_delegates returned delegates.mobileme = None \
+                 (Apple did not include com.apple.mobileme in the response). CloudKit/contacts \
+                 services remain unavailable until re-login."
+            );
+            return Err(WrappedError::GenericError {
+                msg: "MobileMe self-heal: Apple omitted com.apple.mobileme delegate".into(),
+            });
+        };
+
+        // Match the serialization shape produced by the login path
+        // (lib.rs login.finish: `{"tokens": {...}, "com.apple.mobileme": {...}}`).
+        let mut tokens_dict = plist::Dictionary::new();
+        for (k, v) in &mobileme.tokens {
+            tokens_dict.insert(k.clone(), plist::Value::String(v.clone()));
+        }
+        let mut root = plist::Dictionary::new();
+        root.insert("tokens".to_string(), plist::Value::Dictionary(tokens_dict));
+        root.insert(
+            "com.apple.mobileme".to_string(),
+            plist::Value::Dictionary(mobileme.config.clone()),
+        );
+        let mut buf = Vec::new();
+        plist::Value::Dictionary(root).to_writer_xml(&mut buf)
+            .map_err(|e| WrappedError::GenericError {
+                msg: format!("MobileMe self-heal: serialize delegate to plist: {}", e),
+            })?;
+
+        *self.mme_delegate_bytes.lock().await = Some(buf);
+        info!("MobileMe self-heal: delegate fetched and cached in-memory; persistMmeDelegate ticker will save to disk");
+        Ok(())
+    }
+
     /// Parse the stored MobileMe delegate plist bytes into whatever typed form
     /// the caller context expects (usually `rustpush::auth::MobileMeDelegateResponse`).
     /// `T` is inferred from the receiving function's signature at the call site —
@@ -2017,6 +2124,7 @@ impl WrappedTokenProvider {
     /// etc.) regardless of which shape was stored. See `normalize_mme_delegate_dict`
     /// below for the three shapes we accept.
     pub(crate) async fn parse_mme_delegate<T: serde::de::DeserializeOwned>(&self) -> Result<T, WrappedError> {
+        self.ensure_mme_delegate_bytes_seeded().await?;
         let bytes_guard = self.mme_delegate_bytes.lock().await;
         let bytes = bytes_guard.as_ref().ok_or(WrappedError::GenericError {
             msg: "MobileMe delegate not seeded — call seed_mme_delegate_json first".into(),
@@ -2265,6 +2373,7 @@ pub async fn restore_token_provider(
         os_config,
         mme_delegate_bytes: tokio::sync::Mutex::new(None),
         keychain_clients_cache: tokio::sync::Mutex::new(None),
+        mme_self_heal_lock: tokio::sync::Mutex::new(()),
     }))
 }
 
@@ -5415,6 +5524,7 @@ impl LoginSession {
                 os_config: os_config.clone(),
                 mme_delegate_bytes: tokio::sync::Mutex::new(mme_delegate_bytes),
                 keychain_clients_cache: tokio::sync::Mutex::new(None),
+                mme_self_heal_lock: tokio::sync::Mutex::new(()),
             })),
             account_persist: Some(account_persist),
         })
