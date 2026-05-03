@@ -221,6 +221,26 @@ ensure-rustpush-source:
 			echo "Re-exporting FetchedToken from icloud_auth crate root..."; \
 			sed -i.bak 's/^pub use client::{AppleAccount, LoginState,/pub use client::{AppleAccount, FetchedToken, LoginState,/' $(RUSTPUSH_DIR)/apple-private-apis/icloud-auth/src/lib.rs && rm -f $(RUSTPUSH_DIR)/apple-private-apis/icloud-auth/src/lib.rs.bak; \
 		fi; \
+		if grep -q '^            for excluded in &trust.excludeds {$$' $(RUSTPUSH_DIR)/src/icloud/keychain.rs 2>/dev/null && \
+		   ! grep -q 'Ignoring exclusion of ourselves' $(RUSTPUSH_DIR)/src/icloud/keychain.rs 2>/dev/null; then \
+			echo "Patching keychain.rs to ignore self-exclusion in fast_forward_trust (Clique self-eviction fix; ports 9f29ff1)..."; \
+			KEYCHAIN_SED=$$(mktemp) && \
+			printf '%s\n' \
+				'/^            for excluded in &trust.excludeds {$$/i\' \
+				'            let my_id = &state.user_identity.as_ref().unwrap().identifier;' \
+				'/^            for excluded in &trust.excludeds {$$/a\' \
+				'                if excluded == my_id {\' \
+				'                    warn!(\' \
+				'                        "Ignoring exclusion of ourselves ({}) from peer {}",\' \
+				'                        excluded,\' \
+				'                        peer.0.hash.as_ref().unwrap()\' \
+				'                    );\' \
+				'                    continue;\' \
+				'                }' \
+				> "$$KEYCHAIN_SED" && \
+			sed -i.bak -f "$$KEYCHAIN_SED" $(RUSTPUSH_DIR)/src/icloud/keychain.rs && \
+			rm -f "$$KEYCHAIN_SED" $(RUSTPUSH_DIR)/src/icloud/keychain.rs.bak; \
+		fi; \
 	fi
 
 # `ensure-rustpush-source` is an order-only prereq (the `|` separator):
