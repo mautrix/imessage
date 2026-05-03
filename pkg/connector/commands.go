@@ -30,6 +30,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+	"maunium.net/go/mautrix/bridgev2/provisionutil"
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 
 	"github.com/lrhodin/imessage/imessage"
@@ -65,6 +66,8 @@ var (
 //	m.Bridge.Commands.(*commands.Processor).AddHandlers(connector.BridgeCommands(...)...)
 func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 	cmds := []*commands.FullHandler{
+		cmdStartChat,
+		cmdResolveIdentifierRedirect,
 		cmdLogout,
 		cmdRestoreChat,
 		cmdRestoreDebug,
@@ -111,6 +114,210 @@ func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 		cmdStatuskitClearLatch,
 	)
 	return cmds
+}
+
+// cmdStartChat opens an iMessage DM with a phone number or email. Replaces
+// bridgev2's built-in `start-chat` (registered first by the Processor, then
+// overwritten by us in PostInit) so users get an interactive picker that
+// doesn't require typing `tel:` / `mailto:` prefixes and gives clear country-
+// code instructions for phone numbers.
+//
+// Usage (management room — prefix with `!im` if invoked from a portal room):
+//
+//	start-chat                       — interactive: pick phone or email, then enter the value
+//	start-chat +15551234567          — direct: phone number (country code required)
+//	start-chat someone@icloud.com    — direct: email address
+//
+// Aliases: `chat`, `dm`. Two short forms is enough — more synonyms just
+// clutter `help` output without making anything easier to find.
+var cmdStartChat = &commands.FullHandler{
+	Name:    "start-chat",
+	Aliases: []string{"chat", "dm"},
+	Func:    fnStartChat,
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionChats,
+		Description: "Start a new iMessage chat with a phone number or email address. Run with no arguments for a guided picker, or pass the identifier directly (no `tel:`/`mailto:` prefix needed).",
+		Args:        "[phone-or-email]",
+	},
+	RequiresLogin: true,
+}
+
+// cmdResolveIdentifierRedirect retires bridgev2's built-in `resolve-identifier`
+// command. The lookup-only flow (validate without creating a chat) was
+// confusing alongside `start-chat` and rarely useful on its own — most users
+// who want to check if someone is on iMessage actually want to message them.
+// We override the built-in with a stub that points users at `start-chat`,
+// which does both validation and chat creation. For pure diagnostics there's
+// `msg-debug`, which prints IDS validity plus per-portal message stats.
+var cmdResolveIdentifierRedirect = &commands.FullHandler{
+	Name: "resolve-identifier",
+	Func: func(ce *commands.Event) {
+		ce.Reply("`resolve-identifier` was replaced by `$cmdprefix start-chat` — that command now handles both the IDS lookup and (when the contact is reachable) opens a chat in one step.\n\n" +
+			"For lookup-only diagnostics (IDS validity + cloud_message stats) use `$cmdprefix msg-debug <phone|email>`.")
+	},
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionChats,
+		Description: "Deprecated — use `start-chat` to open a chat or `msg-debug` for IDS-validation diagnostics.",
+		Args:        "",
+	},
+}
+
+func fnStartChat(ce *commands.Event) {
+	login := ce.User.GetDefaultLogin()
+	if login == nil {
+		ce.Reply("You're not signed in to iMessage. Run `$cmdprefix login` first.")
+		return
+	}
+	if _, ok := login.Client.(*IMClient); !ok {
+		ce.Reply("Bridge client not available.")
+		return
+	}
+
+	// Direct mode: identifier supplied on the same line. Skip the picker.
+	if raw := strings.TrimSpace(ce.RawArgs); raw != "" {
+		startChatResolveAndReply(ce, login, raw)
+		return
+	}
+
+	ce.Reply("**Start a new iMessage chat**\n\n" +
+		"Reply with the type of identifier the recipient uses:\n\n" +
+		"1. **Phone number**\n" +
+		"2. **Email address**\n\n" +
+		"Or `$cmdprefix cancel` to abort.")
+
+	commands.StoreCommandState(ce.User, &commands.CommandState{
+		Action: "start-chat: pick type",
+		Next: commands.MinimalCommandHandlerFunc(func(ce *commands.Event) {
+			choice := strings.ToLower(strings.TrimSpace(ce.RawArgs))
+			var kind string
+			switch choice {
+			case "1", "phone", "phone number", "tel", "number":
+				kind = "phone"
+			case "2", "email", "mailto", "address":
+				kind = "email"
+			default:
+				ce.Reply("Please reply with `1` (phone), `2` (email), or `$cmdprefix cancel`.")
+				return
+			}
+
+			ce.Reply(startChatPromptText(kind))
+			commands.StoreCommandState(ce.User, &commands.CommandState{
+				Action: "start-chat: enter " + kind,
+				Next: commands.MinimalCommandHandlerFunc(func(ce *commands.Event) {
+					raw := strings.TrimSpace(ce.RawArgs)
+					if raw == "" {
+						ce.Reply("Please type the %s, or `$cmdprefix cancel` to abort.", kind)
+						return
+					}
+					if kind == "phone" {
+						normalized := normalizePhone(raw)
+						if !strings.HasPrefix(normalized, "+") {
+							ce.Reply("Phone numbers must start with `+` and a country code — e.g. `+1` for USA, `+44` for UK. "+
+								"You typed `%s`. Try again, or `$cmdprefix cancel`.", raw)
+							return
+						}
+						if len(normalized) < 8 {
+							ce.Reply("That's too short to be a complete phone number — got `%s` after stripping formatting. "+
+								"Type the full international number (country code + area code + local number), or `$cmdprefix cancel`.", normalized)
+							return
+						}
+						commands.StoreCommandState(ce.User, nil)
+						startChatResolveAndReply(ce, login, normalized)
+					} else {
+						addr := strings.ToLower(raw)
+						if !strings.Contains(addr, "@") || strings.Contains(addr, " ") || strings.HasPrefix(addr, "@") || strings.HasSuffix(addr, "@") {
+							ce.Reply("That doesn't look like a valid email address — expected `name@domain`. Try again, or `$cmdprefix cancel`.")
+							return
+						}
+						commands.StoreCommandState(ce.User, nil)
+						startChatResolveAndReply(ce, login, addr)
+					}
+				}),
+				Cancel: func() {},
+			})
+		}),
+		Cancel: func() {},
+	})
+}
+
+// startChatPromptText returns the value-entry prompt with format help for the
+// chosen identifier kind.
+func startChatPromptText(kind string) string {
+	if kind == "phone" {
+		return "**Enter the phone number — must start with `+` and country code.**\n\n" +
+			"Examples:\n" +
+			"  • `+1 555 123 4567`  — USA / Canada (country code `+1`)\n" +
+			"  • `+44 20 7946 0958` — UK (country code `+44`)\n" +
+			"  • `+33 1 23 45 67 89` — France (country code `+33`)\n" +
+			"  • `+91 98765 43210`  — India (country code `+91`)\n\n" +
+			"Spaces, dashes, and parentheses are fine — they're stripped automatically. " +
+			"The `+` and country code are required: a US number alone (e.g. `5551234567`) won't work.\n\n" +
+			"Don't know the country code? Look it up at https://countrycode.org.\n\n" +
+			"Or `$cmdprefix cancel` to abort."
+	}
+	return "**Enter the email address.**\n\n" +
+		"Examples: `friend@icloud.com`, `someone@gmail.com`, `name@me.com`.\n\n" +
+		"Only addresses the recipient has registered with iMessage will work — " +
+		"if iMessage isn't enabled on that address, the bridge will report the user as not found.\n\n" +
+		"Or `$cmdprefix cancel` to abort."
+}
+
+// startChatResolveAndReply normalizes a raw phone-or-email, runs it through
+// bridgev2's standard resolve+create flow, and replies with a link to the
+// portal room.
+func startChatResolveAndReply(ce *commands.Event, login *bridgev2.UserLogin, raw string) {
+	identifier := normalizeStartChatIdentifier(raw)
+	ce.Reply("Looking up `%s` on iMessage…", identifier)
+
+	resp, err := provisionutil.ResolveIdentifier(ce.Ctx, login, identifier, true)
+	if err != nil {
+		ce.Reply("Couldn't start chat with `%s`: %v\n\nMake sure the recipient has iMessage enabled on this %s.",
+			identifier, err, startChatKindLabel(identifier))
+		return
+	}
+	if resp == nil {
+		ce.Reply("Identifier `%s` was not found on iMessage. Confirm the recipient has iMessage enabled on this %s.",
+			identifier, startChatKindLabel(identifier))
+		return
+	}
+
+	displayName := resp.Name
+	if displayName == "" {
+		displayName = string(resp.ID)
+	}
+	if resp.Portal != nil && resp.Portal.MXID != "" {
+		link := resp.Portal.MXID.URI().MatrixToURL()
+		if !resp.JustCreated {
+			ce.Reply("You already have a chat with **%s** — open it: [%s](%s)", displayName, displayName, link)
+		} else {
+			ce.Reply("Started a chat with **%s** — open it: [%s](%s)", displayName, displayName, link)
+		}
+		return
+	}
+	ce.Reply("Started chat with **%s** — the room will appear shortly.", displayName)
+}
+
+// normalizeStartChatIdentifier accepts a raw user-typed phone or email and
+// returns the canonical `tel:+...` / `mailto:...` form ResolveIdentifier
+// expects. Strips phone-number formatting characters; lowercases emails.
+func normalizeStartChatIdentifier(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "tel:") || strings.HasPrefix(raw, "mailto:") {
+		return raw
+	}
+	if strings.Contains(raw, "@") {
+		return addIdentifierPrefix(strings.ToLower(raw))
+	}
+	return addIdentifierPrefix(normalizePhone(raw))
+}
+
+// startChatKindLabel returns "phone number" or "email address" for use in
+// user-facing error messages.
+func startChatKindLabel(identifier string) string {
+	if strings.HasPrefix(identifier, "mailto:") || strings.Contains(identifier, "@") {
+		return "email address"
+	}
+	return "phone number"
 }
 
 // cmdLogout signs the user out of one (or all) of their iMessage logins and

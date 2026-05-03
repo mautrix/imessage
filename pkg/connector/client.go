@@ -1285,31 +1285,36 @@ func (c *IMClient) maybeSendManagementRoomWelcome(ctx context.Context, log zerol
 }
 
 // managementRoomWelcomeMarkdown is the body posted on first connect. The
-// single %s is the bridge command prefix (e.g. "!im").
-const managementRoomWelcomeMarkdown = `### Welcome to your iMessage bridge management room
+// single %s (used as %[1]s) is the bridge command prefix (e.g. "!im").
+const managementRoomWelcomeMarkdown = `### Welcome to your iMessage bridge
 
-This room is where the bridge bot delivers notices that don't belong in any specific chat — for example:
+You're signed in. This is your **management room** — the bot uses it to deliver bridge-wide notices and it's where you run bridge commands.
 
-- Incoming FaceTime invites when no portal exists yet, missed calls, and "answered elsewhere" notices
-- Recycle-bin and chat-restore notifications
+#### Get started
+
+- ` + "`start-chat`" + ` — open a new chat. The bot walks you through phone vs. email and explains the country-code format. (Aliases: ` + "`chat`, `dm`, `pm`, `text`, `message`" + `.)
+- ` + "`contacts`" + ` — sync names from your iCloud contacts so chats show real names instead of phone numbers.
+- ` + "`restore-chat`" + ` — bring back a deleted iMessage chat. Lists everything that can be restored; reply with the number you want.
+- ` + "`help`" + ` — every available command, grouped by section.
+
+#### Sign out cleanly
+
+- ` + "`logout`" + ` — sign out of the bridge. Lists your active handles; reply with a number (or ` + "`all`" + `) to confirm. The bot tells you exactly how to finish the cleanup at appleid.apple.com so Apple stops treating the bridge as a registered device.
+
+#### Where to type commands
+
+- **Here in the management room**: type the command bare — ` + "`start-chat`" + `, ` + "`help`" + `, ` + "`logout`" + `.
+- **Inside a chat room** (a DM or group): prefix with ` + "`%[1]s`" + ` — e.g. ` + "`%[1]s facetime`" + ` to start a call from a DM.
+- ` + "`$cmdprefix cancel`" + ` will always abort an in-progress interactive command (like the ` + "`start-chat`" + ` picker).
+
+#### Notices the bot will post here
+
+- FaceTime invites, missed-call notices, and "answered elsewhere" updates when there's no portal yet
+- Chat-restore confirmations and recycle-bin activity
 - StatusKit / presence updates
-- Shared-album / Shared Streams notifications
+- Shared-album / Shared Streams activity
 
-It's also where you run **bridge commands**.
-
-#### Basic commands
-
-In this management room, you can run commands by name — no prefix needed:
-
-- ` + "`help`" + ` — list every available command
-- ` + "`restore-chat`" + ` — list deleted iMessage chats and pick a number to restore one
-- ` + "`contacts`" + ` — sync contacts from iCloud
-- ` + "`facetime`" + ` — start a FaceTime call (when run inside a DM portal)
-- ` + "`statuskit-state`" + ` — inspect StatusKit / presence state
-
-Inside chat rooms (DMs, groups), commands need the ` + "`%[1]s`" + ` prefix instead — e.g. ` + "`%[1]s facetime`" + `.
-
-Run ` + "`help`" + ` here any time to see the full list.
+Run ` + "`help`" + ` any time for the full command list.
 `
 
 func (c *IMClient) Disconnect() {
