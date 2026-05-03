@@ -227,6 +227,19 @@ ensure-rustpush-source:
 			KEYCHAIN_REPL=$$(printf '            let my_id = \\&state.user_identity.as_ref().unwrap().identifier;\\\n&\\\n                if excluded == my_id {\\\n                    warn!(\\\n                        "Ignoring exclusion of ourselves ({}) from peer {}",\\\n                        excluded,\\\n                        peer.0.hash.as_ref().unwrap()\\\n                    );\\\n                    continue;\\\n                }') && \
 			sed -i.bak "s|^            for excluded in \&trust\.excludeds {\$$|$${KEYCHAIN_REPL}|" $(RUSTPUSH_DIR)/src/icloud/keychain.rs && rm -f $(RUSTPUSH_DIR)/src/icloud/keychain.rs.bak; \
 		fi; \
+		if grep -q '^    let mut request = SignedRequest::new("id-register", Method::POST)$$' $(RUSTPUSH_DIR)/src/ids/user.rs 2>/dev/null && \
+		   ! grep -q 'RUSTPUSH_LOG_REGISTER_BODY' $(RUSTPUSH_DIR)/src/ids/user.rs 2>/dev/null; then \
+			echo "Patching user.rs to add env-gated REGISTER body XML dump (StatusKit reliability diagnostic; ports d77b1ac4)..."; \
+			sed -i.bak 's|^    let mut request = SignedRequest::new("id-register", Method::POST)$$|    if std::env::var("RUSTPUSH_LOG_REGISTER_BODY").is_ok() { info!("REGISTER body XML: {}", plist_to_string(\&body).unwrap_or_default()); } let mut request = SignedRequest::new("id-register", Method::POST)|' $(RUSTPUSH_DIR)/src/ids/user.rs && rm -f $(RUSTPUSH_DIR)/src/ids/user.rs.bak; \
+		fi; \
+		if grep -q 'panic!("No saved channel for identifier!")' $(RUSTPUSH_DIR)/src/statuskit.rs 2>/dev/null; then \
+			echo "Softening statuskit.rs:119 panic to warn+default APSChannel (StatusKit reliability)..."; \
+			sed -i.bak 's|            panic!("No saved channel for identifier!")$$|            warn!("StatusKit: no saved channel for identifier — using last_msg_ns=0 (will replay)"); return APSChannel { identifier: channel.clone(), last_msg_ns: 0, subscribe: join };|' $(RUSTPUSH_DIR)/src/statuskit.rs && rm -f $(RUSTPUSH_DIR)/src/statuskit.rs.bak; \
+		fi; \
+		if grep -q 'else { panic!("Channel not found!") };' $(RUSTPUSH_DIR)/src/statuskit.rs 2>/dev/null; then \
+			echo "Softening statuskit.rs:736 panic to warn+Ok(None) (StatusKit reliability — presence-before-keysharing race)..."; \
+			sed -i.bak 's|let Some(referenced_channel) = state.keys.get_mut(&base64_encode(&channel.id)) else { panic!("Channel not found!") };|let Some(referenced_channel) = state.keys.get_mut(\&base64_encode(\&channel.id)) else { warn!("StatusKit: presence msg arrived before keysharing for channel={} — dropping", encode_hex(\&channel.id)); return Ok(None); };|' $(RUSTPUSH_DIR)/src/statuskit.rs && rm -f $(RUSTPUSH_DIR)/src/statuskit.rs.bak; \
+		fi; \
 	fi
 
 # `ensure-rustpush-source` is an order-only prereq (the `|` separator):

@@ -104,6 +104,7 @@ func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 		cmdStatuskitClearInterest,
 		cmdStatuskitInviteToChannel,
 		cmdStatuskitInviteAll,
+		cmdStatuskitClearLatch,
 	)
 	return cmds
 }

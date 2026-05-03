@@ -5427,8 +5427,8 @@ impl LoginSession {
                     .map(|r| {
                         let not_expired = r.calculate_rereg_time_s().map(|t| t > 0).unwrap_or(false);
                         let hash_matches = r.data_hash == MULTIPLEX_SERVICE.hash_data();
-                        if !not_expired { info!("MULTIPLEX registration expired — will re-register"); }
-                        if !hash_matches { info!("MULTIPLEX data_hash changed (sub_services or client_data updated) — will re-register"); }
+                        if !not_expired { warn!("StatusKit: MULTIPLEX registration expired — will re-register (peer iOS may take ~5min to refresh keysharing routing)"); }
+                        if !hash_matches { warn!("StatusKit: MULTIPLEX data_hash changed (sub_services or client_data updated) — will re-register (peer iOS may take ~5min to refresh keysharing routing)"); }
                         not_expired && hash_matches
                     })
                     .unwrap_or(false);
@@ -7260,6 +7260,8 @@ pub async fn new_client(
                         Ok(Ok(Some(rustpush::statuskit::StatusKitMessage::StatusChanged { user, mode, allowed }))) => {
                             if let Some(cb) = status_cb_for_recv.read().await.as_ref() {
                                 cb.on_status_update(user, mode, allowed);
+                            } else {
+                                warn!("StatusKit: status update arrived before callback installed — dropping (user={}, mode={:?})", user, mode);
                             }
                             pending.fetch_sub(1, Ordering::Relaxed);
                             continue;
@@ -7300,6 +7302,8 @@ pub async fn new_client(
                                                 cb.on_reshare_sender(sender);
                                             }
                                             cb.on_keys_received();
+                                        } else {
+                                            warn!("StatusKit: keysharing reshare arrived before callback installed — dropping on_keys_received (peer subscribe will not refresh until next reshare); sender={:?}", upstream_sender);
                                         }
                                     } else {
                                         // Parse the command byte and IDS envelope field presence
@@ -8204,6 +8208,7 @@ impl Client {
         let wrapped = self.get_or_init_statuskit_client().await?;
         *self.shared_statuskit.write().await = Some(wrapped.inner.clone());
         *self.status_callback.write().await = Some(Arc::from(callback));
+        info!("StatusKit: callback registered, recv loop window closed");
         info!("StatusKit initialized — presence system ready");
 
         // Self-visibility diagnostic: query IDS for our own handle's

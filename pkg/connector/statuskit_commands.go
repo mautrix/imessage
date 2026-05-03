@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"maunium.net/go/mautrix/bridgev2/commands"
+	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/lrhodin/imessage/pkg/rustpushgo"
 )
@@ -119,6 +120,17 @@ var cmdStatuskitInviteAll = &commands.FullHandler{
 	Help: commands.HelpMeta{
 		Section:     HelpSectionStatusKit,
 		Description: "Send StatusKit invites to all known ghosts and subscribe to their presence — same as the post-backfill hook.",
+	},
+	RequiresLogin: true,
+}
+
+var cmdStatuskitClearLatch = &commands.FullHandler{
+	Name: "statuskit-clear-latch",
+	Func: fnStatuskitClearLatch,
+	Help: commands.HelpMeta{
+		Section:     HelpSectionStatusKit,
+		Description: "Clear the StatusKit invite latch for one handle so the next sweep re-invites it. Use when a peer's reshare never arrives despite a successful dispatch (for individual recovery without flushing every latch).",
+		Args:        "<handle>",
 	},
 	RequiresLogin: true,
 }
@@ -379,4 +391,41 @@ func fnStatuskitInviteAll(ce *commands.Event) {
 		// prior accepted invite.
 		client.inviteContactsToStatusSharingOpts(log, false, true)
 	}()
+}
+
+func fnStatuskitClearLatch(ce *commands.Event) {
+	if len(ce.Args) < 1 {
+		ce.Reply("Usage: statuskit-clear-latch <handle>")
+		return
+	}
+	handle := strings.TrimSpace(ce.Args[0])
+	if handle == "" {
+		ce.Reply("Empty handle.")
+		return
+	}
+	login := ce.User.GetDefaultLogin()
+	if login == nil {
+		ce.Reply("No active login found.")
+		return
+	}
+	client, ok := login.Client.(*IMClient)
+	if !ok || client == nil {
+		ce.Reply("Bridge client not available.")
+		return
+	}
+	ctx := ce.Ctx
+	bridge := client.Main.Bridge
+	// "Clearing" is Set("") since the bridgev2 KV API is Get/Set only;
+	// Get returns "" for both unset and empty values, so latch checks
+	// (`!= ""`) treat the key as gone.
+	bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+handle), "")
+	bridge.DB.KV.Set(ctx, database.Key(statusKitReshareSeenKeyPrefix+handle), "")
+	bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+handle), "")
+	normalized := normalizeIdentifierForPortalID(handle)
+	if normalized != handle {
+		bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+normalized), "")
+		bridge.DB.KV.Set(ctx, database.Key(statusKitReshareSeenKeyPrefix+normalized), "")
+		bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+normalized), "")
+	}
+	ce.Reply("Cleared StatusKit latches for %q (and normalized %q). Next invite sweep will retry this handle.", handle, normalized)
 }

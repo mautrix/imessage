@@ -93,5 +93,9 @@ pub async fn invite_keysharing<T: AnisetteProvider + Send + Sync + 'static>(
         targets.len()
     );
     sk.invite_to_channel(sender_handle, config_map).await?;
+    info!(
+        "StatusKit: invite_to_channel returned Ok for {} handle(s) — IDS dispatched, peer reciprocation NOT yet confirmed",
+        handles.len()
+    );
     Ok(targets.len())
 }

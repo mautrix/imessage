@@ -859,12 +859,28 @@ const statusKitInterInviteDelay = 1500 * time.Millisecond
 const statusKitLastInviteKeyPrefix = "statuskit.last_invite."
 
 // statusKitInvitedOkKeyPrefix marks handles that received a StatusKit
-// invite which IDS accepted (no error, targets > 0). Once marked, bridge
-// never re-invites that handle. Matches OB-Android's one-shot latch via
-// `config == zenModeIsShared` — invite per chat activation, never again.
-// Peer iOS may treat repeat invites from a device it already has keys
-// for as spam.
+// invite which IDS accepted (no error, targets > 0). Soft-latched: if a
+// reshare from the peer has been observed (statusKitReshareSeenKeyPrefix),
+// the latch is permanent (matches OB-Android one-invite-per-chat-activation;
+// peer has our keys, repeat invites trip spam heuristics). If no reshare has
+// been observed and the latch is older than statusKitInvitedOkTTL, it is
+// treated as expired — IDS-accepted dispatch is not the same as peer
+// reciprocation, and a peer that never reshared probably never got the
+// invite (cert-stale, ratchet, transient IDS issue).
 const statusKitInvitedOkKeyPrefix = "statuskit.invited_ok."
+
+// statusKitReshareSeenKeyPrefix marks handles whose StatusKit reshare we have
+// actually observed (proof of reciprocation, written by OnReshareSender).
+// Used by the soft-latch logic to distinguish "invite dispatched and peer
+// replied" (permanent latch) from "invite dispatched but peer never replied"
+// (TTL'd latch).
+const statusKitReshareSeenKeyPrefix = "statuskit.reshare_seen."
+
+// statusKitInvitedOkTTL is how long the dispatch latch holds before being
+// treated as expired in the absence of an observed reshare. Long enough that
+// repeat-invite spam heuristics on peer iOS don't fire on healthy peers, short
+// enough that a stuck-on-dispatch peer recovers within a week.
+const statusKitInvitedOkTTL = 7 * 24 * time.Hour
 
 // statusKitPerHandleMinSpacing is the minimum time between failed-retry
 // invites. Only applies on the periodic tick path to handles that did NOT
@@ -973,21 +989,46 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 
 	now := time.Now()
 	var pending []string
-	var skippedKnown, skippedSpacing, skippedAlreadySent int
+	var skippedKnown, skippedSpacing, skippedAlreadySent, softExpired int
 	for _, h := range allGhosts {
 		if _, known := knownSet[h]; known {
 			skippedKnown++
 			continue
 		}
-		// One-shot latch: if we've previously sent this handle an invite
-		// that IDS accepted, never re-send. Matches OB's one-invite-per-
-		// chat-activation model; repeated invites to the same peer
-		// produce no additional reshares and may trip spam heuristics.
-		// User-invoked retry (bypassLatch) intentionally overrides this
-		// so `!statuskit-invite-all` can re-drive every known peer.
-		if !bypassLatch && c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitInvitedOkKeyPrefix+h)) != "" {
-			skippedAlreadySent++
-			continue
+		// Soft latch: if we've previously dispatched an invite to this handle
+		// AND we've observed a reshare from them, never re-send (matches OB's
+		// one-invite-per-chat-activation; peer iOS treats repeat invites from
+		// a peer they already have keys for as spam).
+		//
+		// If the dispatch latch is set but no reshare has been observed AND
+		// the latch is older than statusKitInvitedOkTTL, treat it as expired:
+		// IDS-accept ≠ peer-receipt, and a peer that never reciprocated
+		// probably never received the invite (cert-stale, ratchet drift,
+		// transient IDS issue). Re-invite on the next sweep.
+		//
+		// User-invoked retry (bypassLatch) ignores both layers.
+		if !bypassLatch {
+			latchedAt := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitInvitedOkKeyPrefix+h))
+			if latchedAt != "" {
+				reshareSeen := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitReshareSeenKeyPrefix+h)) != ""
+				if !reshareSeen {
+					if normalized := normalizeIdentifierForPortalID(h); normalized != h {
+						reshareSeen = c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitReshareSeenKeyPrefix+normalized)) != ""
+					}
+				}
+				if reshareSeen {
+					skippedAlreadySent++
+					continue
+				}
+				if ts, parseErr := time.Parse(time.RFC3339, latchedAt); parseErr == nil && now.Sub(ts) < statusKitInvitedOkTTL {
+					skippedAlreadySent++
+					continue
+				}
+				// Latch present but no reshare observed and TTL elapsed —
+				// re-invite. Don't clear the latch yet; the next successful
+				// dispatch will refresh the timestamp via the existing Set.
+				softExpired++
+			}
 		}
 		if respectSpacing {
 			last := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitLastInviteKeyPrefix+h))
@@ -1005,6 +1046,7 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 		Int("total_targets", len(allGhosts)).
 		Int("already_keyed", skippedKnown).
 		Int("already_invited_ok", skippedAlreadySent).
+		Int("soft_expired_retrying", softExpired).
 		Int("spacing_skip", skippedSpacing).
 		Int("pending", len(pending)).
 		Bool("respect_spacing", respectSpacing).
@@ -1050,6 +1092,7 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 				c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+h), nowStr)
 				c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+h), nowStr)
 				log.Info().Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: ok for handle")
+				log.Info().Str("handle", h).Msg("StatusKit: latch set on dispatch — relies on 4h retry if peer doesn't reciprocate")
 			}
 		case <-time.After(perInviteTimeout):
 			timeoutCount++

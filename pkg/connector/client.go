@@ -1036,6 +1036,23 @@ func (c *IMClient) Connect(ctx context.Context) {
 			// and failed with "StatusKit not initialized". Re-run it now that
 			// the StatusKit client is guaranteed to be ready.
 			c.subscribeToContactPresence(log)
+			// Delayed re-subscribe (~5s): catches peers whose reshare landed
+			// in the brief window between StatusKitClient::new spawning the
+			// APNs recv loop and the Rust-side status_callback being installed.
+			// Reshares in that window have their on_keys_received() call
+			// silently dropped by the `if let Some(cb)` guard in the recv loop;
+			// the bridge has the keys but never re-subscribes for that peer's
+			// presence channel. The 5s delay is comfortably larger than the
+			// callback-install gap (sub-millisecond on typical hardware) and
+			// the first round of inbound reshares (peer-network RTT bounded).
+			go func() {
+				time.Sleep(5 * time.Second)
+				if c.client == nil {
+					return
+				}
+				log.Info().Msg("StatusKit: delayed re-subscribe (catches install-callback race)")
+				c.subscribeToContactPresence(log)
+			}()
 			// Fan-out StatusKit invites matching OB-Android's shape: one
 			// handle per IDS message, paced with a small inter-send delay.
 			// OB invites per-chat-activation (and on app resume); bridge
@@ -1880,10 +1897,21 @@ func (c *IMClient) OnReshareSender(sender string) {
 	if sender == "" {
 		return
 	}
+	// Stamp reshare_seen for both raw and normalized sender forms before any
+	// cache short-circuit. The soft-latch in inviteContactsToStatusSharingOpts
+	// reads these to distinguish "invite dispatched and peer reciprocated"
+	// (permanent latch) from "dispatched but no reshare ever observed"
+	// (TTL'd latch — re-invite after statusKitInvitedOkTTL).
+	normalized := normalizeIdentifierForPortalID(sender)
+	ctx := context.Background()
+	now := time.Now().UTC().Format(time.RFC3339)
+	c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitReshareSeenKeyPrefix+sender), now)
+	if normalized != sender {
+		c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitReshareSeenKeyPrefix+normalized), now)
+	}
 	if _, ok := c.statusKitPortalCache.Load(sender); ok {
 		return
 	}
-	normalized := normalizeIdentifierForPortalID(sender)
 	if normalized != sender {
 		if _, ok := c.statusKitPortalCache.Load(normalized); ok {
 			return

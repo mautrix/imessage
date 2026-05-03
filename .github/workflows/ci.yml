@@ -107,6 +107,9 @@ jobs:
           check "FetchedToken.expiration"  "$BASE/apple-private-apis/icloud-auth/src/client.rs"     "pub expiration: SystemTime,"
           check "FetchedToken re-export"   "$BASE/apple-private-apis/icloud-auth/src/lib.rs"        "pub use client::{AppleAccount, FetchedToken,"
           check "keychain self-exclusion"  "$BASE/src/icloud/keychain.rs"                           "Ignoring exclusion of ourselves"
+          check "register XML dump"        "$BASE/src/ids/user.rs"                                  "RUSTPUSH_LOG_REGISTER_BODY"
+          check "statuskit no-saved-channel softened"  "$BASE/src/statuskit.rs"                     "no saved channel for identifier — using last_msg_ns=0"
+          check "statuskit channel-not-found softened" "$BASE/src/statuskit.rs"                     "presence msg arrived before keysharing"
           exit $FAIL
 
   # ───────────────────────────────────────────────────────────────
