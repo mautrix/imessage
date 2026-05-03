@@ -176,17 +176,24 @@ On first run expect ~3 minutes for the Rust library to compile.
 
 ### Step 3: Login
 
-DM the bridge bot and choose the **"Apple ID (External Key)"** login flow:
+`make install` / `make install-beeper` detects that no login exists and runs the bridge's `login` subcommand inline at the end of Step 2. You're prompted right there in the terminal for:
 
-1. Paste your hardware key (base64)
-2. Enter your Apple ID and password
-3. Enter the 2FA code sent to your trusted devices
+1. Your hardware key (paste the base64 from Step 1)
+2. Your Apple ID and password
+3. The 2FA code sent to your trusted devices
 
-The bridge registers with Apple's servers and starts receiving iMessages.
+When the script finishes you're already logged in and the bridge is up.
+
+**Alternative: log in through the bridge bot.** If you ever need to log in (or log back in) outside the install script, DM the bridge bot in the Matrix management room and run the **"Apple ID (External Key)"** login flow there — same three prompts, same result.
 
 ## Login
 
-Follow the prompts: Apple ID → password → 2FA (if needed) → handle selection. If the Mac is signed into iCloud with the same Apple ID, login completes without 2FA.
+There are two ways to log in:
+
+- **Through the install script (default).** `make install` and `make install-beeper` detect a missing login and run `mautrix-imessage-v2 login` inline at the end of the install. This is the path almost everyone uses — answer the prompts in the terminal and you're done.
+- **Through the bridge bot (alternative).** DM the bot in the Matrix management room and run the **"Apple ID (External Key)"** login flow. Useful if you skipped the script's login step, want to switch handles, or are re-logging without re-running install.
+
+Either path follows the same prompts: Apple ID → password → 2FA (if needed) → handle selection. On macOS, if the Mac is signed into iCloud with the same Apple ID, login completes without 2FA.
 
 If your Apple ID has multiple identities registered (e.g. a phone number and an email address), you'll be asked which one to use for outgoing messages. This is what recipients see your messages "from". To change it later, set `preferred_handle` in the config (see [Configuration](#configuration)) or log in again.
 
