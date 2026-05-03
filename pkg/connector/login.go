@@ -106,7 +106,7 @@ func (l *AppleIDLogin) SubmitUserInput(ctx context.Context, input map[string]str
 
 	// Handle selection step (after device passcode)
 	if l.result != nil {
-		l.handle = input["handle"]
+		l.handle = parseHandleSelection(input["handle"], l.result.Users.GetHandles())
 		return l.completeLogin(ctx)
 	}
 
@@ -308,7 +308,7 @@ func (l *ExternalKeyLogin) SubmitUserInput(ctx context.Context, input map[string
 
 	// Handle selection step (after device passcode)
 	if l.result != nil {
-		l.handle = input["handle"]
+		l.handle = parseHandleSelection(input["handle"], l.result.Users.GetHandles())
 		return l.completeLogin(ctx)
 	}
 
@@ -767,24 +767,52 @@ func joinKeychainWithPasscode(log zerolog.Logger, tp **rustpushgo.WrappedTokenPr
 // handleSelectionStep returns a login step prompting the user to pick a handle,
 // or nil if there are no handles. Always prompts (even with 1 handle) so the
 // preferred handle is explicitly chosen and persisted.
+//
+// Handles are presented as a numbered list ("1. tel:+1…", "2. mailto:…") so the
+// Matrix bot's chat-driven login flow lets users reply with just a number
+// instead of retyping a full phone or email — same shape as fetchDevicesAndPrompt.
 func handleSelectionStep(handles []string) *bridgev2.LoginStep {
 	if len(handles) == 0 {
 		return nil
+	}
+	options := make([]string, len(handles))
+	for i, h := range handles {
+		options[i] = fmt.Sprintf("%d. %s", i+1, h)
 	}
 	return &bridgev2.LoginStep{
 		Type:   bridgev2.LoginStepTypeUserInput,
 		StepID: LoginStepSelectHandle,
 		Instructions: "Choose which identity to use for outgoing iMessages.\n" +
-			"This is what recipients will see your messages \"from\".",
+			"This is what recipients will see your messages \"from\".\n\n" +
+			"Reply with the number (e.g. `1`) or the full handle.",
 		UserInputParams: &bridgev2.LoginUserInputParams{
 			Fields: []bridgev2.LoginInputDataField{{
 				Type:    bridgev2.LoginInputFieldTypeSelect,
 				ID:      "handle",
 				Name:    "Send messages as",
-				Options: handles,
+				Options: options,
 			}},
 		},
 	}
+}
+
+// parseHandleSelection converts the user's handle reply back to the actual
+// handle string. Mirrors parseDeviceSelection — accepts a bare 1-based index
+// ("2"), the full numbered label we emitted ("2. tel:+1..."), or the raw
+// handle. Falls back to the trimmed input so direct-API callers that round-trip
+// the option value continue to work.
+func parseHandleSelection(selected string, handles []string) string {
+	trimmed := strings.TrimSpace(selected)
+	if n, err := strconv.Atoi(trimmed); err == nil && n >= 1 && n <= len(handles) {
+		return handles[n-1]
+	}
+	for i, h := range handles {
+		numbered := fmt.Sprintf("%d. %s", i+1, h)
+		if trimmed == h || trimmed == numbered {
+			return h
+		}
+	}
+	return trimmed
 }
 
 // completeLoginWithMeta is the shared tail of both login flows: creates the

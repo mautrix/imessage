@@ -1181,6 +1181,8 @@ func (c *IMClient) Connect(ctx context.Context) {
 	// Run in a goroutine to avoid blocking Connect on the homeserver round-trip.
 	go c.ensureBotPushRuleSilenced(ctx)
 
+	go c.maybeSendManagementRoomWelcome(context.Background(), log)
+
 	// Set up contact source: external CardDAV > local macOS > iCloud CardDAV
 	if c.Main.Config.CardDAV.IsConfigured() {
 		extContacts := newExternalCardDAVClient(c.Main.Config.CardDAV, log)
@@ -1252,6 +1254,63 @@ func (c *IMClient) Connect(ctx context.Context) {
 	}
 
 }
+
+// maybeSendManagementRoomWelcome posts a one-time welcome notice to the user's
+// management room on first successful connect, then sets WelcomeSent in
+// UserLoginMetadata so subsequent connects don't repost. The room itself is
+// auto-created by bridgev2's GetManagementRoom on first call.
+func (c *IMClient) maybeSendManagementRoomWelcome(ctx context.Context, log zerolog.Logger) {
+	meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata)
+	if !ok || meta.WelcomeSent {
+		return
+	}
+	mgmtRoom, err := c.UserLogin.User.GetManagementRoom(ctx)
+	if err != nil {
+		log.Warn().Err(err).Msg("Welcome: failed to get management room")
+		return
+	}
+	prefix := c.Main.Bridge.Config.CommandPrefix
+	markdown := fmt.Sprintf(managementRoomWelcomeMarkdown, prefix)
+	content := format.RenderMarkdown(markdown, true, false)
+	if _, err := c.Main.Bridge.Bot.SendMessage(ctx, mgmtRoom, event.EventMessage, &event.Content{Parsed: content}, nil); err != nil {
+		log.Warn().Err(err).Str("management_room", string(mgmtRoom)).Msg("Welcome: failed to send welcome message")
+		return
+	}
+	meta.WelcomeSent = true
+	if err := c.UserLogin.Save(ctx); err != nil {
+		log.Warn().Err(err).Msg("Welcome: failed to persist welcome_sent flag")
+		return
+	}
+	log.Info().Str("management_room", string(mgmtRoom)).Msg("Welcome: posted management-room welcome notice")
+}
+
+// managementRoomWelcomeMarkdown is the body posted on first connect. The
+// single %s is the bridge command prefix (e.g. "!im").
+const managementRoomWelcomeMarkdown = `### Welcome to your iMessage bridge management room
+
+This room is where the bridge bot delivers notices that don't belong in any specific chat — for example:
+
+- Incoming FaceTime invites when no portal exists yet, missed calls, and "answered elsewhere" notices
+- Recycle-bin and chat-restore notifications
+- StatusKit / presence updates
+- Shared-album / Shared Streams notifications
+
+It's also where you run **bridge commands**.
+
+#### Basic commands
+
+In this management room, you can run commands by name — no prefix needed:
+
+- ` + "`help`" + ` — list every available command
+- ` + "`restore-chat`" + ` — list deleted iMessage chats and pick a number to restore one
+- ` + "`contacts`" + ` — sync contacts from iCloud
+- ` + "`facetime`" + ` — start a FaceTime call (when run inside a DM portal)
+- ` + "`statuskit-state`" + ` — inspect StatusKit / presence state
+
+Inside chat rooms (DMs, groups), commands need the ` + "`%[1]s`" + ` prefix instead — e.g. ` + "`%[1]s facetime`" + `.
+
+Run ` + "`help`" + ` here any time to see the full list.
+`
 
 func (c *IMClient) Disconnect() {
 	if c.msgBuffer != nil {

@@ -28,6 +28,7 @@ type MessageMetadata struct {
 type UserLoginMetadata struct {
 	Platform    string `json:"platform,omitempty"`
 	ChatsSynced bool   `json:"chats_synced,omitempty"`
+	WelcomeSent bool   `json:"welcome_sent,omitempty"`
 
 	// Persisted rustpush state (restored across restarts)
 	APSState    string `json:"aps_state,omitempty"`
