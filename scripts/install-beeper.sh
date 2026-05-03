@@ -1024,7 +1024,27 @@ EOF
             echo "      start-imessage   stop-imessage   restart-imessage   imessage-log"
         fi
         ;;
-    *) echo "  Skipped — re-run this installer to add them later." ;;
+    *)
+        # User declined. If a previous run installed shortcuts, treat the
+        # decline as "remove them" so the rc file matches the user's choice.
+        case "$SHELL" in
+            */zsh)  RC_FILE="$HOME/.zshrc" ;;
+            */bash) RC_FILE="$HOME/.bashrc" ;;
+            *)      RC_FILE="" ;;
+        esac
+        MARKER_START="# >>> mautrix-imessage shortcuts (managed) >>>"
+        MARKER_END="# <<< mautrix-imessage shortcuts (managed) <<<"
+        if [ -n "$RC_FILE" ] && [ -f "$RC_FILE" ] && grep -qF "$MARKER_START" "$RC_FILE"; then
+            awk -v s="$MARKER_START" -v e="$MARKER_END" '
+                $0 == s { skip = 1; next }
+                $0 == e { skip = 0; next }
+                !skip   { print }
+            ' "$RC_FILE" > "$RC_FILE.tmp" && mv "$RC_FILE.tmp" "$RC_FILE"
+            echo "  Removed previously-installed shortcuts from $RC_FILE."
+        else
+            echo "  Skipped — re-run this installer to add them later."
+        fi
+        ;;
 esac
 echo ""
 
