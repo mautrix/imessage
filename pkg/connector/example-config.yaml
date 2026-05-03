@@ -49,6 +49,17 @@ disable_facetime: false
 # chance of seeing others' Focus state in Matrix. Set to false to opt out.
 statuskit_share_on_startup: true
 
+# StatusKit notifications surface iOS 18 Focus / Do Not Disturb state
+# changes from your contacts inline in the relevant DM portal. When a
+# contact enables DND on their iPhone, a silent m.notice appears in the
+# DM ("🔕 Name has notifications silenced (Do Not Disturb).") plus a
+# Matrix ghost presence update, and clears when they turn it off — the
+# same affordance Apple's Messages app shows in-conversation. Set this
+# to false to suppress the notices and presence updates while leaving
+# StatusKit registration / key exchange running normally (the IDS-layer
+# 4-service identity is unaffected, so peer reshare eligibility is kept).
+statuskit_notifications: true
+
 # External CardDAV server for contact name resolution.
 # Works with Google (app passwords), Nextcloud, Radicale, Fastmail, etc.
 # When configured, this is used instead of iCloud contacts.

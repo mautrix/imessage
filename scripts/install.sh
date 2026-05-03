@@ -703,6 +703,60 @@ elif [ -t 0 ]; then
     fi
 fi
 
+# ── Ensure statuskit_notifications key exists in config ─────
+if ! grep -q 'statuskit_notifications:' "$CONFIG" 2>/dev/null; then
+    sed -i '' '/disable_facetime:/a\
+    statuskit_notifications: true' "$CONFIG"
+fi
+
+# ── StatusKit notifications (iOS 18 Focus / DND inline notices) ───
+CURRENT_STATUSKIT_NOTIF=$(grep 'statuskit_notifications:' "$CONFIG" 2>/dev/null | head -1 | sed 's/.*statuskit_notifications: *//' || true)
+if [ -n "${STATUSKIT_NOTIFICATIONS:-}" ]; then
+    case "$STATUSKIT_NOTIFICATIONS" in
+        1|true|TRUE|yes|YES)
+            sed -i '' "s/statuskit_notifications: .*/statuskit_notifications: true/" "$CONFIG"
+            echo "✓ StatusKit notifications enabled (STATUSKIT_NOTIFICATIONS env)"
+            ;;
+        *)
+            sed -i '' "s/statuskit_notifications: .*/statuskit_notifications: false/" "$CONFIG"
+            echo "✓ StatusKit notifications disabled (STATUSKIT_NOTIFICATIONS env)"
+            ;;
+    esac
+elif [ -t 0 ]; then
+    echo ""
+    echo "StatusKit notifications:"
+    echo "  When a contact enables iOS 18 Focus or Do Not Disturb on their"
+    echo "  iPhone, the bridge can post a silent notice in the DM portal"
+    echo "  (\"🔕 Name has notifications silenced (Do Not Disturb).\") and"
+    echo "  update Matrix ghost presence — the same affordance Apple's"
+    echo "  Messages app shows in-conversation. Disabling keeps the"
+    echo "  StatusKit registration intact but suppresses the notices."
+    echo ""
+    if [ "$CURRENT_STATUSKIT_NOTIF" = "false" ]; then
+        read -p "Enable StatusKit notifications? [y/N]: " EN_SK
+        case "$EN_SK" in
+            [yY]*)
+                sed -i '' "s/statuskit_notifications: .*/statuskit_notifications: true/" "$CONFIG"
+                echo "✓ StatusKit notifications enabled"
+                ;;
+            *)
+                echo "✓ StatusKit notifications disabled"
+                ;;
+        esac
+    else
+        read -p "Enable StatusKit notifications? [Y/n]: " EN_SK
+        case "$EN_SK" in
+            [nN]*)
+                sed -i '' "s/statuskit_notifications: .*/statuskit_notifications: false/" "$CONFIG"
+                echo "✓ StatusKit notifications disabled"
+                ;;
+            *)
+                echo "✓ StatusKit notifications enabled"
+                ;;
+        esac
+    fi
+fi
+
 # ── Ensure heic_conversion key exists in config ──────────────
 if ! grep -q 'heic_conversion:' "$CONFIG" 2>/dev/null; then
     sed -i '' '/video_transcoding:/a\

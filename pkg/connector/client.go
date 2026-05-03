@@ -1316,6 +1316,11 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 		Str("user", user).
 		Logger()
 
+	if !c.Main.Config.StatusKitNotifications {
+		log.Debug().Msg("StatusKit notifications disabled in config — dropping update")
+		return
+	}
+
 	// Suppress duplicate notices: only act when the state actually changes.
 	// Apple sends available=true for BOTH DND-on and DND-off; the real
 	// discriminator is whether mode is set. Track by mode string so that
