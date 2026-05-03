@@ -1305,7 +1305,7 @@ You're signed in. This is your **management room** — the bot uses it to delive
 
 - **Here in the management room**: type the command bare — ` + "`start-chat`" + `, ` + "`help`" + `, ` + "`logout`" + `.
 - **Inside a chat room** (a DM or group): prefix with ` + "`%[1]s`" + ` — e.g. ` + "`%[1]s facetime`" + ` to start a call from a DM.
-- ` + "`$cmdprefix cancel`" + ` will always abort an in-progress interactive command (like the ` + "`start-chat`" + ` picker).
+- To abort an interactive command (like the ` + "`start-chat`" + ` picker): type ` + "`cancel`" + ` here, or ` + "`%[1]s cancel`" + ` from a portal room.
 
 #### Notices the bot will post here
 
