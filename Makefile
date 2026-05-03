@@ -224,22 +224,8 @@ ensure-rustpush-source:
 		if grep -q '^            for excluded in &trust.excludeds {$$' $(RUSTPUSH_DIR)/src/icloud/keychain.rs 2>/dev/null && \
 		   ! grep -q 'Ignoring exclusion of ourselves' $(RUSTPUSH_DIR)/src/icloud/keychain.rs 2>/dev/null; then \
 			echo "Patching keychain.rs to ignore self-exclusion in fast_forward_trust (Clique self-eviction fix; ports 9f29ff1)..."; \
-			KEYCHAIN_SED=$$(mktemp) && \
-			printf '%s\n' \
-				'/^            for excluded in &trust.excludeds {$$/i\' \
-				'            let my_id = &state.user_identity.as_ref().unwrap().identifier;' \
-				'/^            for excluded in &trust.excludeds {$$/a\' \
-				'                if excluded == my_id {\' \
-				'                    warn!(\' \
-				'                        "Ignoring exclusion of ourselves ({}) from peer {}",\' \
-				'                        excluded,\' \
-				'                        peer.0.hash.as_ref().unwrap()\' \
-				'                    );\' \
-				'                    continue;\' \
-				'                }' \
-				> "$$KEYCHAIN_SED" && \
-			sed -i.bak -f "$$KEYCHAIN_SED" $(RUSTPUSH_DIR)/src/icloud/keychain.rs && \
-			rm -f "$$KEYCHAIN_SED" $(RUSTPUSH_DIR)/src/icloud/keychain.rs.bak; \
+			KEYCHAIN_REPL=$$(printf '            let my_id = \\&state.user_identity.as_ref().unwrap().identifier;\\\n&\\\n                if excluded == my_id {\\\n                    warn!(\\\n                        "Ignoring exclusion of ourselves ({}) from peer {}",\\\n                        excluded,\\\n                        peer.0.hash.as_ref().unwrap()\\\n                    );\\\n                    continue;\\\n                }') && \
+			sed -i.bak "s|^            for excluded in \&trust\.excludeds {\$$|$${KEYCHAIN_REPL}|" $(RUSTPUSH_DIR)/src/icloud/keychain.rs && rm -f $(RUSTPUSH_DIR)/src/icloud/keychain.rs.bak; \
 		fi; \
 	fi
 
