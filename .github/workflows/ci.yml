@@ -56,6 +56,60 @@ jobs:
   # and are run as part of the build jobs below (after `make build`).
 
   # ───────────────────────────────────────────────────────────────
+  # Verify rustpush patches – clones OpenBubbles/rustpush at the pinned
+  # SHA (third_party/rustpush-upstream.sha) and asserts every Makefile
+  # sed-patch in `ensure-rustpush-source` actually applied. The sed
+  # patches are guarded by `grep -q '<original pattern>'`; if upstream
+  # rewords a guarded line, the sed is skipped silently and the build
+  # still goes green with the patch dropped on the floor. This job
+  # catches that case explicitly so a SHA-pin bump that breaks any
+  # patch fails CI before it ships.
+  # ───────────────────────────────────────────────────────────────
+  verify-rustpush-patches:
+    name: Verify rustpush patches apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show pinned rustpush SHA
+        run: |
+          PIN_FILE=third_party/rustpush-upstream.sha
+          if [ ! -f "$PIN_FILE" ]; then
+            echo "::error::$PIN_FILE is missing"
+            exit 1
+          fi
+          PIN=$(tr -d '[:space:]' < "$PIN_FILE")
+          if [ -z "$PIN" ]; then
+            echo "::error::$PIN_FILE is empty"
+            exit 1
+          fi
+          echo "Pinned rustpush SHA: $PIN"
+
+      - name: Clone pinned rustpush + apply Makefile patches
+        run: make ensure-rustpush-source
+
+      - name: Verify every patch marker is present
+        run: |
+          BASE=third_party/rustpush-upstream
+          FAIL=0
+          check() {
+            local desc="$1" file="$2" marker="$3"
+            if ! grep -Fq "$marker" "$file"; then
+              echo "::error file=$file::patch '$desc' did not apply — marker not found (upstream may have moved out from under us at the pinned SHA)"
+              FAIL=1
+            else
+              echo "ok: $desc"
+            fi
+          }
+          check "activation pub"           "$BASE/src/lib.rs"                                       "pub mod activation;"
+          check "ids pub"                  "$BASE/src/lib.rs"                                       "pub mod ids;"
+          check "FetchedToken.token pub"   "$BASE/apple-private-apis/icloud-auth/src/client.rs"     "pub token: String,"
+          check "FetchedToken.expiration"  "$BASE/apple-private-apis/icloud-auth/src/client.rs"     "pub expiration: SystemTime,"
+          check "FetchedToken re-export"   "$BASE/apple-private-apis/icloud-auth/src/lib.rs"        "pub use client::{AppleAccount, FetchedToken,"
+          check "keychain self-exclusion"  "$BASE/src/icloud/keychain.rs"                           "Ignoring exclusion of ourselves"
+          exit $FAIL
+
+  # ───────────────────────────────────────────────────────────────
   # Full build – Rust + Go on macOS and Linux
   # ───────────────────────────────────────────────────────────────
   build-macos:
