@@ -728,11 +728,11 @@ func (c *IMClient) notifyRecycleBinCandidates(log zerolog.Logger) {
 	var sb strings.Builder
 	sb.WriteString("**Chats blocked from Apple's recycle bin:**\n\n")
 	sb.WriteString("These chats have messages in Apple's \"Recently Deleted\" and were not created during backfill. ")
-	sb.WriteString("If any were restored on your iPhone and should appear here, use `!restore-chat` to bring them back.\n\n")
+	sb.WriteString("If any were restored on your iPhone and should appear here, use `restore-chat` to bring them back.\n\n")
 	for i, c := range candidates {
 		sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, c.displayName))
 	}
-	sb.WriteString(fmt.Sprintf("\nUse `!restore-chat` to restore any of these chats."))
+	sb.WriteString(fmt.Sprintf("\nUse `restore-chat` to restore any of these chats."))
 
 	content := format.RenderMarkdown(sb.String(), true, false)
 	content.MsgType = event.MsgNotice
