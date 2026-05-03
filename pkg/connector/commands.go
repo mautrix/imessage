@@ -20,11 +20,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/commands"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -35,8 +37,8 @@ import (
 
 // Help sections for Apple-service commands added by this bridge. Orders slot
 // in after bridgev2's built-in sections (General=0, Auth=10, Chats=20,
-// Admin=50), so `!im help` renders each service as its own heading at the
-// bottom instead of lumping everything under "General".
+// Admin=50), so the `help` command renders each service as its own heading at
+// the bottom instead of lumping everything under "General".
 var (
 	HelpSectionFaceTime      = commands.HelpSection{Name: "FaceTime", Order: 60}
 	HelpSectionSharedStreams = commands.HelpSection{Name: "Shared Streams", Order: 80}
@@ -44,15 +46,26 @@ var (
 )
 
 // BridgeCommands returns the custom slash commands for the iMessage bridge.
-// Pass disableFaceTime=true to skip every !facetime* handler — used by
+// Pass disableFaceTime=true to skip every facetime* handler — used by
 // IMConfig.DisableFaceTime to give Apple-native FaceTime users a way to
 // keep the bridge's FT wrapper out of their chat.
+//
+// Invocation conventions for users:
+//
+//   - Management room (the bot DM): type the command bare, e.g. `logout`.
+//   - Portal rooms (bridged chats): prefix with the bridge tag, e.g.
+//     `!im logout`.
+//
+// User-facing reply strings should use `$cmdprefix` (substituted by bridgev2
+// at render time) instead of a hard-coded `!` so the rendered example matches
+// whichever room the user is in.
 //
 // Register these in main.go's PostInit hook:
 //
 //	m.Bridge.Commands.(*commands.Processor).AddHandlers(connector.BridgeCommands(...)...)
 func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 	cmds := []*commands.FullHandler{
+		cmdLogout,
 		cmdRestoreChat,
 		cmdRestoreDebug,
 		cmdMsgDebug,
@@ -100,13 +113,152 @@ func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 	return cmds
 }
 
+// cmdLogout signs the user out of one (or all) of their iMessage logins and
+// scrubs the on-disk session backup so a re-login can't silently resume the
+// identity that was just signed out.
+//
+// Usage (management room — prefix with `!im` if invoked from a portal room):
+//
+//	logout     — show numbered list of active handles
+//	1          — (bare number after listing) sign out handle #1
+//	all        — sign out every active handle
+var cmdLogout = &commands.FullHandler{
+	Name:    "logout",
+	Aliases: []string{"signout", "sign-out"},
+	Func:    fnLogout,
+	Help: commands.HelpMeta{
+		Section:     commands.HelpSectionAuth,
+		Description: "Sign out of iMessage. Disconnects from Apple, removes the bridge connection, and clears the local session backup so the next login starts fresh.",
+		Args:        "",
+	},
+}
+
+func fnLogout(ce *commands.Event) {
+	type entry struct {
+		login *bridgev2.UserLogin
+		label string
+	}
+	var entries []entry
+	for _, l := range ce.User.GetCachedUserLogins() {
+		if l == nil {
+			continue
+		}
+		label := string(l.ID)
+		if meta, ok := l.Metadata.(*UserLoginMetadata); ok && meta.PreferredHandle != "" {
+			label = meta.PreferredHandle
+		}
+		entries = append(entries, entry{login: l, label: label})
+	}
+
+	if len(entries) == 0 {
+		// No active logins, but a stale session backup may still be on disk
+		// (e.g. previous logout crashed mid-cleanup). Sweep it so the next
+		// login won't auto-resume an orphan identity.
+		removed := clearLocalSessionBackup(ce.Log)
+		if removed > 0 {
+			ce.Reply("You're not logged in to iMessage. Cleared %d stale session file(s) so the next login starts fresh.", removed)
+		} else {
+			ce.Reply("You're not logged in to iMessage.")
+		}
+		return
+	}
+
+	var sb strings.Builder
+	sb.WriteString("**Logged-in iMessage handles:**\n\n")
+	for i, e := range entries {
+		sb.WriteString(fmt.Sprintf("%d. **%s**\n", i+1, e.label))
+	}
+	sb.WriteString("\nReply with a number to sign out that handle, `all` to sign out everything, or `$cmdprefix cancel` to cancel.")
+	ce.Reply(sb.String())
+
+	commands.StoreCommandState(ce.User, &commands.CommandState{
+		Action: "logout",
+		Next: commands.MinimalCommandHandlerFunc(func(ce *commands.Event) {
+			commands.StoreCommandState(ce.User, nil)
+			choice := strings.ToLower(strings.TrimSpace(ce.RawArgs))
+
+			var targets []entry
+			switch {
+			case choice == "all":
+				targets = entries
+			default:
+				n, err := strconv.Atoi(choice)
+				if err != nil || n < 1 || n > len(entries) {
+					ce.Reply("Please reply with a number between 1 and %d, `all`, or `$cmdprefix cancel`.", len(entries))
+					return
+				}
+				targets = []entry{entries[n-1]}
+			}
+
+			signedOut := make([]string, 0, len(targets))
+			for _, t := range targets {
+				t.login.Logout(ce.Ctx)
+				signedOut = append(signedOut, t.label)
+			}
+
+			// If every login was removed, scrub the session backup files so
+			// a fresh login can't auto-resume the identity we just signed out.
+			if len(ce.User.GetCachedUserLogins()) == 0 {
+				clearLocalSessionBackup(ce.Log)
+			}
+
+			// One consolidated reply that confirms the bridge-side teardown
+			// AND walks the user through removing the device from Apple's
+			// servers — the bridge has no API to do that itself, so the only
+			// way to fully sever the connection is for the user to revoke the
+			// device under their Apple ID.
+			var sb strings.Builder
+			sb.WriteString("**Signed out of:**\n")
+			for _, label := range signedOut {
+				sb.WriteString(fmt.Sprintf("  • %s\n", label))
+			}
+			sb.WriteString("\nBridge-side state has been cleared (rustpush stopped, login removed, session backup wiped).\n\n")
+			sb.WriteString("**Finish the cleanup on Apple's side — required to fully sever the connection:**\n")
+			sb.WriteString("  1. Open https://appleid.apple.com and sign in with the Apple ID you used to log into the bridge.\n")
+			sb.WriteString("  2. Go to **Devices** in the sidebar.\n")
+			sb.WriteString("  3. Find the entry that represents this bridge (it'll show as a Mac, often named \"Apple Device\" or similar).\n")
+			sb.WriteString("  4. Click it and choose **Remove from account**.\n\n")
+			sb.WriteString("Until you do step 4, Apple still considers the bridge a registered iMessage device and may attempt deliveries to it.")
+			ce.Reply(sb.String())
+		}),
+		Cancel: func() {},
+	})
+}
+
+// clearLocalSessionBackup deletes the on-disk session/identity files so a
+// re-login starts from a clean slate (no auto-resume of the just-signed-out
+// identity). Returns the count of files that existed and were removed.
+func clearLocalSessionBackup(log *zerolog.Logger) int {
+	pathFns := []func() (string, error){
+		sessionFilePath,
+		legacyIdentityFilePath,
+		trustedPeersFilePath,
+	}
+	removed := 0
+	for _, fn := range pathFns {
+		p, err := fn()
+		if err != nil {
+			continue
+		}
+		if err := os.Remove(p); err == nil {
+			removed++
+			if log != nil {
+				log.Info().Str("path", p).Msg("Removed session backup file during logout")
+			}
+		} else if !os.IsNotExist(err) && log != nil {
+			log.Warn().Err(err).Str("path", p).Msg("Failed to remove session backup file during logout")
+		}
+	}
+	return removed
+}
+
 // cmdRestoreChat lists deleted rooms, then waits for the user to reply with
 // just a number to restore that room.
 //
-// Usage:
+// Usage (management room — prefix with `!im` if invoked from a portal room):
 //
-//	!restore-chat    — show numbered list of restorable rooms
-//	3                — (bare number) restore room #3 from the list
+//	restore-chat    — show numbered list of restorable rooms
+//	3               — (bare number) restore room #3 from the list
 var cmdRestoreChat = &commands.FullHandler{
 	Name:    "restore-chat",
 	Aliases: []string{"restore"},
@@ -715,7 +867,9 @@ func (c *IMClient) restorePortalByID(_ context.Context, portalID string) error {
 
 // cmdRestoreDebug dumps recycle bin + cloud_chat state for diagnosing restore issues.
 //
-// Usage: !restore-debug
+// Usage (management room — prefix with `!im` if invoked from a portal room):
+//
+//	restore-debug
 var cmdRestoreDebug = &commands.FullHandler{
 	Name:    "restore-debug",
 	Aliases: []string{"rdebug", "chat-debug"},
@@ -833,11 +987,11 @@ func fnRestoreDebug(ce *commands.Event) {
 //   - DM has 0 messages in cloud_message (APNs-only or wrong portal_id)
 //   - Group chat shows only one side (per-participant UUID routing split)
 //
-// Usage:
+// Usage (management room — prefix with `!im` if invoked from a portal room):
 //
-//	!msg-debug +19176138320        — phone number (normalized automatically)
-//	!msg-debug user@example.com    — email handle
-//	!msg-debug gid:abc123-uuid     — explicit group portal ID
+//	msg-debug +19176138320        — phone number (normalized automatically)
+//	msg-debug user@example.com    — email handle
+//	msg-debug gid:abc123-uuid     — explicit group portal ID
 var cmdMsgDebug = &commands.FullHandler{
 	Name:          "msg-debug",
 	Aliases:       []string{"msgdbg"},
@@ -875,7 +1029,7 @@ func fnMsgDebug(ce *commands.Event) {
 	if identifier == "" {
 		// No args: use current room's portal (lets user run from inside a chat room).
 		if ce.Portal == nil {
-			ce.Reply("Usage: `!msg-debug <phone|email|gid:uuid>`\n\nOr run from inside a bridged room with no arguments.\n\nExamples:\n  `!msg-debug +19176138320`\n  `!msg-debug user@example.com`\n  `!msg-debug gid:abc123`")
+			ce.Reply("Usage: `$cmdprefix msg-debug <phone|email|gid:uuid>`\n\nOr run from inside a bridged room with no arguments.\n\nExamples:\n  `$cmdprefix msg-debug +19176138320`\n  `$cmdprefix msg-debug user@example.com`\n  `$cmdprefix msg-debug gid:abc123`")
 			return
 		}
 		portalID = string(ce.Portal.ID)
