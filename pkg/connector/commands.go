@@ -143,23 +143,20 @@ var cmdStartChat = &commands.FullHandler{
 }
 
 // cmdResolveIdentifierRedirect retires bridgev2's built-in `resolve-identifier`
-// command. The lookup-only flow (validate without creating a chat) was
-// confusing alongside `start-chat` and rarely useful on its own — most users
-// who want to check if someone is on iMessage actually want to message them.
-// We override the built-in with a stub that points users at `start-chat`,
-// which does both validation and chat creation. For pure diagnostics there's
-// `msg-debug`, which prints IDS validity plus per-portal message stats.
+// command. The lookup-only flow was confusingly redundant with `start-chat`
+// (same IDS lookup, different verb) and rarely useful on its own. We override
+// the built-in with a redirect stub: it catches the command name so anyone
+// with muscle memory gets pointed at `start-chat` rather than seeing the
+// terse default usage line, but the empty Description hides it from `help`
+// output (FormatHelp skips entries with no Description) so we don't teach
+// users about a command they shouldn't be running.
 var cmdResolveIdentifierRedirect = &commands.FullHandler{
 	Name: "resolve-identifier",
 	Func: func(ce *commands.Event) {
-		ce.Reply("`resolve-identifier` was replaced by `$cmdprefix start-chat` — that command now handles both the IDS lookup and (when the contact is reachable) opens a chat in one step.\n\n" +
+		ce.Reply("`resolve-identifier` is gone — use `$cmdprefix start-chat` instead. It does the IDS lookup and opens the chat in one step.\n\n" +
 			"For lookup-only diagnostics (IDS validity + cloud_message stats) use `$cmdprefix msg-debug <phone|email>`.")
 	},
-	Help: commands.HelpMeta{
-		Section:     commands.HelpSectionChats,
-		Description: "Deprecated — use `start-chat` to open a chat or `msg-debug` for IDS-validation diagnostics.",
-		Args:        "",
-	},
+	// Description deliberately empty so help.go's FormatHelp skips this entry.
 }
 
 func fnStartChat(ce *commands.Event) {
