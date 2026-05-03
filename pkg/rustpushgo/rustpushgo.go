@@ -601,33 +601,6 @@ func uniffiCheckChecksums() {
 	}
 	{
 		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_client_findmy_friends_import(uniffiStatus)
-		})
-		if checksum != 28320 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_client_findmy_friends_import: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_client_findmy_friends_refresh_json(uniffiStatus)
-		})
-		if checksum != 27180 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_client_findmy_friends_refresh_json: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_client_findmy_phone_refresh_json(uniffiStatus)
-		})
-		if checksum != 45424 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_client_findmy_phone_refresh_json: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
 			return C.uniffi_rustpushgo_checksum_method_client_force_reregister_identity(uniffiStatus)
 		})
 		if checksum != 48275 {
@@ -660,15 +633,6 @@ func uniffiCheckChecksums() {
 		if checksum != 2377 {
 			// If this happens try cleaning and rebuilding your project
 			panic("rustpushgo: uniffi_rustpushgo_checksum_method_client_get_facetime_client: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_client_get_findmy_client(uniffiStatus)
-		})
-		if checksum != 58400 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_client_get_findmy_client: UniFFI API checksum mismatch")
 		}
 	}
 	{
@@ -1335,51 +1299,6 @@ func uniffiCheckChecksums() {
 		if checksum != 19893 {
 			// If this happens try cleaning and rebuilding your project
 			panic("rustpushgo: uniffi_rustpushgo_checksum_method_wrappedfacetimeclient_use_link_for: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_wrappedfindmyclient_accept_item_share(uniffiStatus)
-		})
-		if checksum != 21451 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_wrappedfindmyclient_accept_item_share: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_wrappedfindmyclient_delete_shared_item(uniffiStatus)
-		})
-		if checksum != 47642 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_wrappedfindmyclient_delete_shared_item: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_wrappedfindmyclient_export_state_json(uniffiStatus)
-		})
-		if checksum != 48669 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_wrappedfindmyclient_export_state_json: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_wrappedfindmyclient_sync_item_positions(uniffiStatus)
-		})
-		if checksum != 16803 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_wrappedfindmyclient_sync_item_positions: UniFFI API checksum mismatch")
-		}
-	}
-	{
-		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
-			return C.uniffi_rustpushgo_checksum_method_wrappedfindmyclient_update_beacon_name(uniffiStatus)
-		})
-		if checksum != 531 {
-			// If this happens try cleaning and rebuilding your project
-			panic("rustpushgo: uniffi_rustpushgo_checksum_method_wrappedfindmyclient_update_beacon_name: UniFFI API checksum mismatch")
 		}
 	}
 	{
@@ -2587,81 +2506,6 @@ func (_self *Client) FetchProfile(recordKey string, decryptionKey []byte, hasPos
 		})
 }
 
-func (_self *Client) FindmyFriendsImport(daemon bool, url string) error {
-	_pointer := _self.ffiObject.incrementPointer("*Client")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithError(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_client_findmy_friends_import(
-				_pointer, FfiConverterBoolINSTANCE.Lower(daemon), rustBufferToC(FfiConverterStringINSTANCE.Lower(url)),
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_void(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) {
-			// completeFunc
-			C.ffi_rustpushgo_rust_future_complete_void(unsafe.Pointer(handle), status)
-		},
-		func(bool) {}, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_void(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (_self *Client) FindmyFriendsRefreshJson(daemon bool) (string, error) {
-	_pointer := _self.ffiObject.incrementPointer("*Client")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithErrorAndResult(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_client_findmy_friends_refresh_json(
-				_pointer, FfiConverterBoolINSTANCE.Lower(daemon),
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_rust_buffer(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) RustBufferI {
-			// completeFunc
-			return rustBufferFromC(C.ffi_rustpushgo_rust_future_complete_rust_buffer(unsafe.Pointer(handle), status))
-		},
-		FfiConverterStringINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_rust_buffer(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (_self *Client) FindmyPhoneRefreshJson() (string, error) {
-	_pointer := _self.ffiObject.incrementPointer("*Client")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithErrorAndResult(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_client_findmy_phone_refresh_json(
-				_pointer,
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_rust_buffer(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) RustBufferI {
-			// completeFunc
-			return rustBufferFromC(C.ffi_rustpushgo_rust_future_complete_rust_buffer(unsafe.Pointer(handle), status))
-		},
-		FfiConverterStringINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_rust_buffer(unsafe.Pointer(rustFuture), status)
-		})
-}
-
 func (_self *Client) ForceReregisterIdentity() (uint32, error) {
 	_pointer := _self.ffiObject.incrementPointer("*Client")
 	defer _self.ffiObject.decrementPointer()
@@ -2757,31 +2601,6 @@ func (_self *Client) GetFacetimeClient() (*WrappedFaceTimeClient, error) {
 			return C.ffi_rustpushgo_rust_future_complete_pointer(unsafe.Pointer(handle), status)
 		},
 		FfiConverterWrappedFaceTimeClientINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_pointer(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (_self *Client) GetFindmyClient() (*WrappedFindMyClient, error) {
-	_pointer := _self.ffiObject.incrementPointer("*Client")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithErrorAndResult(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_client_get_findmy_client(
-				_pointer,
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_pointer(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) unsafe.Pointer {
-			// completeFunc
-			return C.ffi_rustpushgo_rust_future_complete_pointer(unsafe.Pointer(handle), status)
-		},
-		FfiConverterWrappedFindMyClientINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
 			// freeFunc
 			C.ffi_rustpushgo_rust_future_free_pointer(unsafe.Pointer(rustFuture), status)
 		})
@@ -4819,179 +4638,6 @@ func (c FfiConverterWrappedFaceTimeClient) Write(writer io.Writer, value *Wrappe
 type FfiDestroyerWrappedFaceTimeClient struct{}
 
 func (_ FfiDestroyerWrappedFaceTimeClient) Destroy(value *WrappedFaceTimeClient) {
-	value.Destroy()
-}
-
-type WrappedFindMyClient struct {
-	ffiObject FfiObject
-}
-
-func (_self *WrappedFindMyClient) AcceptItemShare(circleId string) error {
-	_pointer := _self.ffiObject.incrementPointer("*WrappedFindMyClient")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithError(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_wrappedfindmyclient_accept_item_share(
-				_pointer, rustBufferToC(FfiConverterStringINSTANCE.Lower(circleId)),
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_void(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) {
-			// completeFunc
-			C.ffi_rustpushgo_rust_future_complete_void(unsafe.Pointer(handle), status)
-		},
-		func(bool) {}, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_void(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (_self *WrappedFindMyClient) DeleteSharedItem(id string, removeBeacon bool) error {
-	_pointer := _self.ffiObject.incrementPointer("*WrappedFindMyClient")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithError(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_wrappedfindmyclient_delete_shared_item(
-				_pointer, rustBufferToC(FfiConverterStringINSTANCE.Lower(id)), FfiConverterBoolINSTANCE.Lower(removeBeacon),
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_void(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) {
-			// completeFunc
-			C.ffi_rustpushgo_rust_future_complete_void(unsafe.Pointer(handle), status)
-		},
-		func(bool) {}, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_void(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (_self *WrappedFindMyClient) ExportStateJson() (string, error) {
-	_pointer := _self.ffiObject.incrementPointer("*WrappedFindMyClient")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithErrorAndResult(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_wrappedfindmyclient_export_state_json(
-				_pointer,
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_rust_buffer(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) RustBufferI {
-			// completeFunc
-			return rustBufferFromC(C.ffi_rustpushgo_rust_future_complete_rust_buffer(unsafe.Pointer(handle), status))
-		},
-		FfiConverterStringINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_rust_buffer(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (_self *WrappedFindMyClient) SyncItemPositions() error {
-	_pointer := _self.ffiObject.incrementPointer("*WrappedFindMyClient")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithError(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_wrappedfindmyclient_sync_item_positions(
-				_pointer,
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_void(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) {
-			// completeFunc
-			C.ffi_rustpushgo_rust_future_complete_void(unsafe.Pointer(handle), status)
-		},
-		func(bool) {}, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_void(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (_self *WrappedFindMyClient) UpdateBeaconName(associatedBeacon string, roleId int64, name string, emoji string) error {
-	_pointer := _self.ffiObject.incrementPointer("*WrappedFindMyClient")
-	defer _self.ffiObject.decrementPointer()
-	return uniffiRustCallAsyncWithError(
-		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
-			// rustFutureFunc
-			return (*C.void)(C.uniffi_rustpushgo_fn_method_wrappedfindmyclient_update_beacon_name(
-				_pointer, rustBufferToC(FfiConverterStringINSTANCE.Lower(associatedBeacon)), FfiConverterInt64INSTANCE.Lower(roleId), rustBufferToC(FfiConverterStringINSTANCE.Lower(name)), rustBufferToC(FfiConverterStringINSTANCE.Lower(emoji)),
-				status,
-			))
-		},
-		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
-			// pollFunc
-			C.ffi_rustpushgo_rust_future_poll_void(unsafe.Pointer(handle), ptr, status)
-		},
-		func(handle *C.void, status *C.RustCallStatus) {
-			// completeFunc
-			C.ffi_rustpushgo_rust_future_complete_void(unsafe.Pointer(handle), status)
-		},
-		func(bool) {}, func(rustFuture *C.void, status *C.RustCallStatus) {
-			// freeFunc
-			C.ffi_rustpushgo_rust_future_free_void(unsafe.Pointer(rustFuture), status)
-		})
-}
-
-func (object *WrappedFindMyClient) Destroy() {
-	runtime.SetFinalizer(object, nil)
-	object.ffiObject.destroy()
-}
-
-type FfiConverterWrappedFindMyClient struct{}
-
-var FfiConverterWrappedFindMyClientINSTANCE = FfiConverterWrappedFindMyClient{}
-
-func (c FfiConverterWrappedFindMyClient) Lift(pointer unsafe.Pointer) *WrappedFindMyClient {
-	result := &WrappedFindMyClient{
-		newFfiObject(
-			pointer,
-			func(pointer unsafe.Pointer, status *C.RustCallStatus) {
-				C.uniffi_rustpushgo_fn_free_wrappedfindmyclient(pointer, status)
-			}),
-	}
-	runtime.SetFinalizer(result, (*WrappedFindMyClient).Destroy)
-	return result
-}
-
-func (c FfiConverterWrappedFindMyClient) Read(reader io.Reader) *WrappedFindMyClient {
-	return c.Lift(unsafe.Pointer(uintptr(readUint64(reader))))
-}
-
-func (c FfiConverterWrappedFindMyClient) Lower(value *WrappedFindMyClient) unsafe.Pointer {
-	// TODO: this is bad - all synchronization from ObjectRuntime.go is discarded here,
-	// because the pointer will be decremented immediately after this function returns,
-	// and someone will be left holding onto a non-locked pointer.
-	pointer := value.ffiObject.incrementPointer("*WrappedFindMyClient")
-	defer value.ffiObject.decrementPointer()
-	return pointer
-}
-
-func (c FfiConverterWrappedFindMyClient) Write(writer io.Writer, value *WrappedFindMyClient) {
-	writeUint64(writer, uint64(uintptr(c.Lower(value))))
-}
-
-type FfiDestroyerWrappedFindMyClient struct{}
-
-func (_ FfiDestroyerWrappedFindMyClient) Destroy(value *WrappedFindMyClient) {
 	value.Destroy()
 }
 

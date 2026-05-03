@@ -5875,55 +5875,6 @@ async fn download_icon_change_photo(
     }
 }
 
-// ============================================================================
-// Client
-// ============================================================================
-
-#[derive(uniffi::Object)]
-pub struct WrappedFindMyClient {
-    inner: Arc<rustpush::findmy::FindMyClient<BridgeDefaultAnisetteProvider>>,
-}
-
-#[uniffi::export(async_runtime = "tokio")]
-impl WrappedFindMyClient {
-    pub async fn export_state_json(&self) -> Result<String, WrappedError> {
-        let state = self.inner.state.state.lock().await;
-        serialize_state_json(&*state)
-    }
-
-    pub async fn sync_item_positions(&self) -> Result<(), WrappedError> {
-        self.inner.sync_item_positions().await?;
-        Ok(())
-    }
-
-    pub async fn accept_item_share(&self, circle_id: String) -> Result<(), WrappedError> {
-        self.inner.accept_item_share(&circle_id).await?;
-        Ok(())
-    }
-
-    pub async fn update_beacon_name(
-        &self,
-        associated_beacon: String,
-        role_id: i64,
-        name: String,
-        emoji: String,
-    ) -> Result<(), WrappedError> {
-        let record = rustpush::findmy::BeaconNamingRecord {
-            associated_beacon,
-            role_id,
-            name,
-            emoji,
-        };
-        self.inner.update_beacon_name(&record).await?;
-        Ok(())
-    }
-
-    pub async fn delete_shared_item(&self, id: String, remove_beacon: bool) -> Result<(), WrappedError> {
-        self.inner.delete_shared_item(&id, remove_beacon).await?;
-        Ok(())
-    }
-}
-
 #[derive(uniffi::Object)]
 pub struct WrappedFaceTimeClient {
     inner: Arc<rustpush::facetime::FTClient>,
@@ -6581,7 +6532,6 @@ pub struct Client {
     token_provider: Option<Arc<WrappedTokenProvider>>,
     cloud_messages_client: tokio::sync::Mutex<Option<Arc<rustpush::cloud_messages::CloudMessagesClient<BridgeDefaultAnisetteProvider>>>>,
     cloud_keychain_client: tokio::sync::Mutex<Option<Arc<rustpush::keychain::KeychainClient<BridgeDefaultAnisetteProvider>>>>,
-    findmy_client: tokio::sync::Mutex<Option<Arc<WrappedFindMyClient>>>,
     facetime_client: tokio::sync::Mutex<Option<Arc<WrappedFaceTimeClient>>>,
     passwords_client: tokio::sync::Mutex<Option<Arc<WrappedPasswordsClient>>>,
     statuskit_client: tokio::sync::Mutex<Option<Arc<WrappedStatusKitClient>>>,
@@ -7565,7 +7515,6 @@ pub async fn new_client(
         token_provider,
         cloud_messages_client: tokio::sync::Mutex::new(None),
         cloud_keychain_client: tokio::sync::Mutex::new(None),
-        findmy_client: tokio::sync::Mutex::new(None),
         facetime_client: tokio::sync::Mutex::new(Some(prewarmed_facetime)),
         passwords_client: tokio::sync::Mutex::new(None),
         statuskit_client: tokio::sync::Mutex::new(None),
@@ -7792,60 +7741,6 @@ impl Client {
                 );
             }
         }
-    }
-
-    async fn get_or_init_findmy_client(&self) -> Result<Arc<WrappedFindMyClient>, WrappedError> {
-        let mut locked = self.findmy_client.lock().await;
-        if let Some(client) = &*locked {
-            return Ok(client.clone());
-        }
-
-        let tp = self.token_provider.as_ref().ok_or(WrappedError::GenericError {
-            msg: "No TokenProvider available".into(),
-        })?;
-        let dsid = tp.get_dsid().await?;
-        let keychain = self.get_or_init_cloud_keychain_client().await?;
-        let cloudkit = keychain.client.clone();
-        let account = tp.get_account();
-        let anisette = account.lock().await.anisette.clone();
-
-        let state_path = subsystem_state_path("findmy.state");
-        let state_bytes = match std::fs::read(&state_path) {
-            Ok(data) => data,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => rustpush::findmy::FindMyState::new(dsid).encode()?,
-            Err(err) => {
-                return Err(WrappedError::GenericError {
-                    msg: format!("Failed to read Find My state: {}", err),
-                })
-            }
-        };
-        let state_path_for_closure = state_path.clone();
-        let state_manager = rustpush::findmy::FindMyStateManager::new(
-            &state_bytes,
-            Box::new(move |data| {
-                if let Err(err) = std::fs::write(&state_path_for_closure, data) {
-                    warn!("Failed to persist Find My state to {}: {}", state_path_for_closure, err);
-                }
-            }),
-        );
-
-        let wrapped = Arc::new(WrappedFindMyClient {
-            inner: Arc::new(
-                rustpush::findmy::FindMyClient::new(
-                    self.conn.clone(),
-                    cloudkit,
-                    keychain,
-                    self.os_config.clone(),
-                    state_manager,
-                    tp.inner.clone(),
-                    anisette,
-                    self.client.identity.clone(),
-                )
-                .await?,
-            ),
-        });
-        *locked = Some(wrapped.clone());
-        Ok(wrapped)
     }
 
     async fn get_or_init_facetime_client(&self) -> Result<Arc<WrappedFaceTimeClient>, WrappedError> {
@@ -8625,10 +8520,6 @@ impl Client {
         }
     }
 
-    pub async fn get_findmy_client(&self) -> Result<Arc<WrappedFindMyClient>, WrappedError> {
-        self.get_or_init_findmy_client().await
-    }
-
     pub async fn get_facetime_client(&self) -> Result<Arc<WrappedFaceTimeClient>, WrappedError> {
         self.get_or_init_facetime_client().await
     }
@@ -8643,86 +8534,6 @@ impl Client {
 
     pub async fn get_sharedstreams_client(&self) -> Result<Arc<WrappedSharedStreamsClient>, WrappedError> {
         self.get_or_init_sharedstreams_client().await
-    }
-
-    pub async fn findmy_phone_refresh_json(&self) -> Result<String, WrappedError> {
-        let tp = self.token_provider.as_ref().ok_or(WrappedError::GenericError {
-            msg: "No TokenProvider available".into(),
-        })?;
-        let dsid = tp.get_dsid().await?;
-        let account = tp.get_account();
-        let anisette = account.lock().await.anisette.clone();
-
-        let mut client = rustpush::findmy::FindMyPhoneClient::new(
-            self.os_config.as_ref(),
-            dsid,
-            self.conn.clone(),
-            anisette,
-            tp.inner.clone(),
-        )
-        .await?;
-        client.refresh(self.os_config.as_ref()).await?;
-
-        serde_json::to_string(&client.devices).map_err(|e| WrappedError::GenericError {
-            msg: format!("Failed to encode Find My Phone devices: {}", e),
-        })
-    }
-
-    pub async fn findmy_friends_refresh_json(&self, daemon: bool) -> Result<String, WrappedError> {
-        let tp = self.token_provider.as_ref().ok_or(WrappedError::GenericError {
-            msg: "No TokenProvider available".into(),
-        })?;
-        let dsid = tp.get_dsid().await?;
-        let account = tp.get_account();
-        let anisette = account.lock().await.anisette.clone();
-
-        let mut client = rustpush::findmy::FindMyFriendsClient::new(
-            self.os_config.as_ref(),
-            dsid,
-            tp.inner.clone(),
-            self.conn.clone(),
-            anisette,
-            daemon,
-        )
-        .await?;
-        client.refresh(self.os_config.as_ref()).await?;
-
-        #[derive(serde::Serialize)]
-        struct FriendsSnapshot {
-            selected_friend: Option<String>,
-            followers: Vec<rustpush::findmy::Follow>,
-            following: Vec<rustpush::findmy::Follow>,
-        }
-
-        serde_json::to_string(&FriendsSnapshot {
-            selected_friend: client.selected_friend,
-            followers: client.followers,
-            following: client.following,
-        })
-        .map_err(|e| WrappedError::GenericError {
-            msg: format!("Failed to encode Find My Friends snapshot: {}", e),
-        })
-    }
-
-    pub async fn findmy_friends_import(&self, daemon: bool, url: String) -> Result<(), WrappedError> {
-        let tp = self.token_provider.as_ref().ok_or(WrappedError::GenericError {
-            msg: "No TokenProvider available".into(),
-        })?;
-        let dsid = tp.get_dsid().await?;
-        let account = tp.get_account();
-        let anisette = account.lock().await.anisette.clone();
-
-        let mut client = rustpush::findmy::FindMyFriendsClient::new(
-            self.os_config.as_ref(),
-            dsid,
-            tp.inner.clone(),
-            self.conn.clone(),
-            anisette,
-            daemon,
-        )
-        .await?;
-        client.import(self.os_config.as_ref(), &url).await?;
-        Ok(())
     }
 
     pub async fn validate_targets(

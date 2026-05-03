@@ -39,7 +39,6 @@ import (
 // bottom instead of lumping everything under "General".
 var (
 	HelpSectionFaceTime      = commands.HelpSection{Name: "FaceTime", Order: 60}
-	HelpSectionFindMy        = commands.HelpSection{Name: "Find My", Order: 70}
 	HelpSectionSharedStreams = commands.HelpSection{Name: "Shared Streams", Order: 80}
 	HelpSectionStatusKit     = commands.HelpSection{Name: "StatusKit", Order: 90}
 )
@@ -80,14 +79,6 @@ func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 		)
 	}
 	cmds = append(cmds,
-		cmdFindMy,
-		cmdFindMyAcceptShare,
-		cmdFindMyDeleteItem,
-		cmdFindMyRenameBeacon,
-		cmdFindMyStateJSON,
-		cmdFindMyDevices,
-		cmdFindMyFriends,
-		cmdFindMyFriendsImport,
 		cmdSharedAlbums,
 		cmdSharedSubscribe,
 		cmdSharedSubscribeToken,

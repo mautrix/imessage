@@ -164,24 +164,6 @@ void* uniffi_rustpushgo_fn_method_client_fetch_profile(
 	RustCallStatus* out_status
 );
 
-void* uniffi_rustpushgo_fn_method_client_findmy_friends_import(
-	void* ptr,
-	int8_t daemon,
-	RustBuffer url,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_client_findmy_friends_refresh_json(
-	void* ptr,
-	int8_t daemon,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_client_findmy_phone_refresh_json(
-	void* ptr,
-	RustCallStatus* out_status
-);
-
 void* uniffi_rustpushgo_fn_method_client_force_reregister_identity(
 	void* ptr,
 	RustCallStatus* out_status
@@ -198,11 +180,6 @@ void* uniffi_rustpushgo_fn_method_client_get_dsid(
 );
 
 void* uniffi_rustpushgo_fn_method_client_get_facetime_client(
-	void* ptr,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_client_get_findmy_client(
 	void* ptr,
 	RustCallStatus* out_status
 );
@@ -772,43 +749,6 @@ void* uniffi_rustpushgo_fn_method_wrappedfacetimeclient_use_link_for(
 	void* ptr,
 	RustBuffer old_usage,
 	RustBuffer usage,
-	RustCallStatus* out_status
-);
-
-void uniffi_rustpushgo_fn_free_wrappedfindmyclient(
-	void* ptr,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_wrappedfindmyclient_accept_item_share(
-	void* ptr,
-	RustBuffer circle_id,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_wrappedfindmyclient_delete_shared_item(
-	void* ptr,
-	RustBuffer id,
-	int8_t remove_beacon,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_wrappedfindmyclient_export_state_json(
-	void* ptr,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_wrappedfindmyclient_sync_item_positions(
-	void* ptr,
-	RustCallStatus* out_status
-);
-
-void* uniffi_rustpushgo_fn_method_wrappedfindmyclient_update_beacon_name(
-	void* ptr,
-	RustBuffer associated_beacon,
-	int64_t role_id,
-	RustBuffer name,
-	RustBuffer emoji,
 	RustCallStatus* out_status
 );
 
@@ -1643,18 +1583,6 @@ uint16_t uniffi_rustpushgo_checksum_method_client_fetch_profile(
 	RustCallStatus* out_status
 );
 
-uint16_t uniffi_rustpushgo_checksum_method_client_findmy_friends_import(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_client_findmy_friends_refresh_json(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_client_findmy_phone_refresh_json(
-	RustCallStatus* out_status
-);
-
 uint16_t uniffi_rustpushgo_checksum_method_client_force_reregister_identity(
 	RustCallStatus* out_status
 );
@@ -1668,10 +1596,6 @@ uint16_t uniffi_rustpushgo_checksum_method_client_get_dsid(
 );
 
 uint16_t uniffi_rustpushgo_checksum_method_client_get_facetime_client(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_client_get_findmy_client(
 	RustCallStatus* out_status
 );
 
@@ -1968,26 +1892,6 @@ uint16_t uniffi_rustpushgo_checksum_method_wrappedfacetimeclient_ring(
 );
 
 uint16_t uniffi_rustpushgo_checksum_method_wrappedfacetimeclient_use_link_for(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_wrappedfindmyclient_accept_item_share(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_wrappedfindmyclient_delete_shared_item(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_wrappedfindmyclient_export_state_json(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_wrappedfindmyclient_sync_item_positions(
-	RustCallStatus* out_status
-);
-
-uint16_t uniffi_rustpushgo_checksum_method_wrappedfindmyclient_update_beacon_name(
 	RustCallStatus* out_status
 );
 
