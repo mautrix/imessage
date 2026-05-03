@@ -1292,7 +1292,7 @@ You're signed in. This is your **management room** — the bot uses it to delive
 
 #### Get started
 
-- ` + "`start-chat`" + ` — open a new chat. The bot walks you through phone vs. email and explains the country-code format. (Aliases: ` + "`chat`, `dm`, `pm`, `text`, `message`" + `.)
+- ` + "`start-chat`" + ` — open a new chat. Type ` + "`start-chat`" + ` and the bot asks ` + "`1` (phone)" + ` or ` + "`2` (email)" + `, then prompts for the value. For phones, include the country code with a leading ` + "`+`" + ` — e.g. ` + "`+15551234567`" + ` for the US, ` + "`+442079460958`" + ` for the UK. Spaces, dashes, and parens get stripped automatically. You can also skip the picker by passing the identifier directly: ` + "`start-chat +15551234567`" + ` or ` + "`start-chat someone@icloud.com`" + `.
 - ` + "`contacts`" + ` — sync names from your iCloud contacts so chats show real names instead of phone numbers.
 - ` + "`restore-chat`" + ` — bring back a deleted iMessage chat. Lists everything that can be restored; reply with the number you want.
 - ` + "`help`" + ` — every available command, grouped by section.

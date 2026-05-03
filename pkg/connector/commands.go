@@ -128,12 +128,11 @@ func BridgeCommands(disableFaceTime bool) []*commands.FullHandler {
 //	start-chat +15551234567          — direct: phone number (country code required)
 //	start-chat someone@icloud.com    — direct: email address
 //
-// Aliases: `chat`, `dm`. Two short forms is enough — more synonyms just
-// clutter `help` output without making anything easier to find.
+// No aliases — `start-chat` is the single canonical command name. Synonyms
+// just teach users multiple ways to do the same thing and clutter help.
 var cmdStartChat = &commands.FullHandler{
-	Name:    "start-chat",
-	Aliases: []string{"chat", "dm"},
-	Func:    fnStartChat,
+	Name: "start-chat",
+	Func: fnStartChat,
 	Help: commands.HelpMeta{
 		Section:     commands.HelpSectionChats,
 		Description: "Start a new iMessage chat with a phone number or email address. Run with no arguments for a guided picker, or pass the identifier directly (no `tel:`/`mailto:` prefix needed).",
