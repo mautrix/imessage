@@ -97,11 +97,34 @@ cat > "$APP/Contents/Info.plist" << 'PLIST'
 </plist>
 PLIST
 
-# Ad-hoc sign (required for Gatekeeper on recent macOS)
-codesign --force --sign - "$APP" 2>/dev/null || true
+# Strip xattrs and AppleDouble (._*) files. If either remains when we sign,
+# they get sealed in (or worse, appear later and invalidate the seal — which
+# macOS reports as "the app is damaged and can't be opened").
+find "$APP" -name '._*' -delete
+xattr -cr "$APP"
+
+# Ad-hoc sign (required for Gatekeeper on recent macOS). --deep covers nested
+# resources; we let failures surface instead of swallowing them.
+codesign --force --deep --sign - "$APP"
+codesign --verify --verbose=2 "$APP"
+
+# Package a release-ready zip. `ditto` is the only zipper that preserves the
+# exec bit reliably across the GitHub upload/download path. --norsrc/--noextattr
+# prevent xattrs from being smuggled into the archive as AppleDouble entries
+# that would re-materialize on extract and break the signature seal.
+ZIP="${APP}.zip"
+rm -f "$ZIP"
+COPYFILE_DISABLE=1 ditto --norsrc --noextattr --noacl -c -k --keepParent "$APP" "$ZIP"
+
+# Round-trip the zip to confirm what downloaders will see.
+VERIFY_DIR=$(mktemp -d)
+ditto -x -k "$ZIP" "$VERIFY_DIR"
+codesign --verify --verbose=2 "$VERIFY_DIR/$APP"
+rm -rf "$VERIFY_DIR"
 
 echo ""
 echo "App bundle: $(pwd)/$APP"
+echo "Zip:        $(pwd)/$ZIP   (upload this to GitHub releases)"
 echo ""
 echo "To run on this Mac (under Rosetta if Apple Silicon):"
 echo "  open $APP"
