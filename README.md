@@ -1,4 +1,4 @@
-# mautrix-imessage (v2)
+# Rustpush-Matrix
 
 A Matrix-iMessage puppeting bridge. Send and receive iMessages from any Matrix client.
 
