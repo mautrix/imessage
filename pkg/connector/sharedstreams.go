@@ -812,7 +812,7 @@ func (c *IMClient) pollSharedStreams(log zerolog.Logger) (retErr error) {
 			sb.WriteString(fmt.Sprintf("- `%s`\n", id))
 		}
 	}
-	sb.WriteString("\n\nUse `!shared-albums` to browse and download.")
+	sb.WriteString("\n\nUse `shared-albums` to browse and download.")
 
 	content := format.RenderMarkdown(sb.String(), true, false)
 	content.MsgType = event.MsgNotice
