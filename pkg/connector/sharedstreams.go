@@ -278,7 +278,6 @@ func handleAlbumSelection(ce *commands.Event, client *IMClient, albums []rustpus
 		return
 	}
 
-	// Precompute parsed DateCreated once per asset \u2014 used for sorting and display.
 	type assetWithTime struct {
 		asset rustpushgo.SharedAssetInfo
 		t     time.Time
