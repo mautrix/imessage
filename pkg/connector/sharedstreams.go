@@ -24,6 +24,7 @@ import (
 	"image/jpeg"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -277,7 +278,20 @@ func handleAlbumSelection(ce *commands.Event, client *IMClient, albums []rustpus
 		return
 	}
 
-	shown := assets
+	// Precompute parsed DateCreated once per asset \u2014 used for sorting and display.
+	type assetWithTime struct {
+		asset rustpushgo.SharedAssetInfo
+		t     time.Time
+	}
+	withTimes := make([]assetWithTime, len(assets))
+	for i, a := range assets {
+		withTimes[i].asset = a
+		withTimes[i].t, _ = time.Parse(time.RFC3339, a.DateCreated)
+	}
+
+	sort.SliceStable(withTimes, func(i, j int) bool { return withTimes[i].t.Before(withTimes[j].t) })
+
+	shown := withTimes
 	truncated := false
 	if len(shown) > 50 {
 		shown = shown[len(shown)-50:]
@@ -291,16 +305,15 @@ func handleAlbumSelection(ce *commands.Event, client *IMClient, albums []rustpus
 	}
 	sb.WriteString("\n\n")
 
-	for i, a := range shown {
+	for i, awt := range shown {
+		a := awt.asset
 		dims := ""
 		if a.Width != "" && a.Height != "" && a.Width != "0" && a.Height != "0" {
 			dims = fmt.Sprintf(", %s\u00d7%s", a.Width, a.Height)
 		}
 		date := ""
-		if a.DateCreated != "" {
-			if t, parseErr := time.Parse(time.RFC3339, a.DateCreated); parseErr == nil {
-				date = fmt.Sprintf(", %s", t.Format("2006-01-02"))
-			}
+		if !awt.t.IsZero() {
+			date = fmt.Sprintf(", %s", awt.t.Format("2006-01-02"))
 		}
 		mediaLabel := a.MediaType
 		if mediaLabel == "" {
@@ -311,10 +324,15 @@ func handleAlbumSelection(ce *commands.Event, client *IMClient, albums []rustpus
 	sb.WriteString("\nReply with number(s), a range (1-5), or `all` to download. `$cmdprefix cancel` to cancel.")
 	ce.Reply(sb.String())
 
+	shownAssets := make([]rustpushgo.SharedAssetInfo, len(shown))
+	for i, awt := range shown {
+		shownAssets[i] = awt.asset
+	}
+
 	commands.StoreCommandState(ce.User, &commands.CommandState{
 		Action: "select shared album assets",
 		Next: commands.MinimalCommandHandlerFunc(func(ce *commands.Event) {
-			handleAssetSelection(ce, client, ss, albumGUID, albumName, shown)
+			handleAssetSelection(ce, client, ss, albumGUID, albumName, shownAssets)
 		}),
 		Cancel: func() {},
 	})
