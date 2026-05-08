@@ -240,13 +240,6 @@ ensure-rustpush-source:
 			echo "Softening statuskit.rs:736 panic to warn+Ok(None) (StatusKit reliability — presence-before-keysharing race)..."; \
 			sed -i.bak 's|let Some(referenced_channel) = state.keys.get_mut(&base64_encode(&channel.id)) else { panic!("Channel not found!") };|let Some(referenced_channel) = state.keys.get_mut(\&base64_encode(\&channel.id)) else { warn!("StatusKit: presence msg arrived before keysharing for channel={} — dropping", encode_hex(\&channel.id)); return Ok(None); };|' $(RUSTPUSH_DIR)/src/statuskit.rs && rm -f $(RUSTPUSH_DIR)/src/statuskit.rs.bak; \
 		fi; \
-		if grep -qF 'self.keys.clear(); // no one uses the old key anymore, right?' $(RUSTPUSH_DIR)/src/statuskit.rs 2>/dev/null; then \
-			echo "Patching statuskit.rs get_key to retain the shared seed (fixes silent decrypt failures on APNs replay / out-of-order presence; removes the unbounded cache the original keys.clear()+push pattern was guarding against)..."; \
-			sed -i.bak \
-				-e 's#^        self\.keys\.clear(); // no one uses the old key anymore, right?$$#        // keys vec holds only the original shared seed; derive forward each call to handle replays without unbounded growth#' \
-				-e '/^        self\.keys\.push(key\.clone());$$/d' \
-				$(RUSTPUSH_DIR)/src/statuskit.rs && rm -f $(RUSTPUSH_DIR)/src/statuskit.rs.bak; \
-		fi; \
 	fi
 
 # `ensure-rustpush-source` is an order-only prereq (the `|` separator):
