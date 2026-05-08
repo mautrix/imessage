@@ -1,10 +1,12 @@
 // Thin wrapper that binds the bridge's StatusKit-invite flow to upstream's
-// `sk.invite_to_channel`. All the real work — batch construction, per-target
-// encryption, c=255 collection, 5032 refresh_handles retry — stays inside
-// upstream's InnerSendJob::send_targets. This file's only job is to prime
-// the IDS cache with strong QueryOptions before handing off, so upstream's
-// own weak-flag `cache_keys` call inside `invite_to_channel` doesn't see
-// stale empty cache entries.
+// `sk.invite_to_channel`. Mirrors OB's chat-open prelude
+// (chat_manager.dart:64-78): madrid IDS query first, then a per-handle
+// presence-channel interest token, then the keysharing send. Skipping the
+// first two leaves peer iOS treating the inviting account as an inactive
+// peer at the moment of invite, which empirically gates unprompted
+// reshare. The existing strong-flag keysharing pre-warm is kept because
+// it serves the "is peer reachable on keysharing sub-service" check that
+// produces NoValidTargets for unregistered peers.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,10 +15,12 @@ use log::info;
 use omnisette::AnisetteProvider;
 
 use rustpush::{
+    ids::user::QueryOptions,
     statuskit::{StatusKitClient, StatusKitPersonalConfig},
     PushError,
 };
 
+const MADRID_TOPIC: &str = "com.apple.madrid";
 const KEYSHARING_TOPIC: &str = "com.apple.private.alloy.status.keysharing";
 
 /// Send StatusKit keysharing invites to `handles` from `sender_handle`.
@@ -29,10 +33,41 @@ pub async fn invite_keysharing<T: AnisetteProvider + Send + Sync + 'static>(
     sender_handle: &str,
     handles: &[String],
 ) -> Result<usize, PushError> {
-    // Prime IDS cache with strong flags (required_for_message=true,
-    // result_expected=true). invite_to_channel internally re-invokes
-    // cache_keys with refresh=false and weak flags; that call becomes
-    // idempotent once our strong-primed entries are present.
+    // OB chat-open step 1: weak-flag madrid IDS query. Matches
+    // `validate_targets("com.apple.madrid", participants, ensureHandle())`
+    // at chat_manager.dart:68. The semantic signal to peer iOS is that this
+    // sender just looked up your iMessage keys — the same evidence-of-active-
+    // conversation peer iOS appears to evaluate when deciding whether to
+    // reshare keysharing unprompted.
+    sk.identity
+        .cache_keys(
+            MADRID_TOPIC,
+            handles,
+            sender_handle,
+            false,
+            &QueryOptions {
+                required_for_message: false,
+                result_expected: false,
+            },
+        )
+        .await?;
+
+    // OB chat-open step 2: hold a per-handle presence-channel interest
+    // token across the invite send. Matches `requestHandles(to: [participants[0]])`
+    // at chat_manager.dart:74. For first-time peers (no state.keys entry
+    // yet) this resolves to an empty topic list — request_handles filters
+    // state.keys by handle, so a peer we have not yet keysharing'd with
+    // produces a no-op token. For already-keyed peers it ensures the APNs
+    // interest matches what OB's chat-open lifecycle establishes. The
+    // token drops at the end of this function (after invite_to_channel
+    // returns) — same lifetime as a single OB chat-open transaction.
+    let _interest = sk.request_handles(handles).await;
+
+    // OB chat-open step 3 prelude (bridge-only): strong-flag keysharing
+    // cache to surface NoValidTargets for peers not registered on the
+    // keysharing sub-service. invite_to_channel re-invokes cache_keys
+    // with weak flags internally; that call becomes idempotent once our
+    // strong-primed entries are present.
     let targets = sk
         .identity
         .targets_for_handles(KEYSHARING_TOPIC, handles, sender_handle)
