@@ -1,12 +1,15 @@
 // Thin wrapper that binds the bridge's StatusKit-invite flow to upstream's
 // `sk.invite_to_channel`. Mirrors OB's chat-open prelude
-// (chat_manager.dart:64-78): madrid IDS query first, then a per-handle
-// presence-channel interest token, then the keysharing send. Skipping the
-// first two leaves peer iOS treating the inviting account as an inactive
-// peer at the moment of invite, which empirically gates unprompted
-// reshare. The existing strong-flag keysharing pre-warm is kept because
-// it serves the "is peer reachable on keysharing sub-service" check that
-// produces NoValidTargets for unregistered peers.
+// (chat_manager.dart:64-78): weak-flag madrid IDS query, then a per-handle
+// presence-channel interest token, then the keysharing send. Skipping any
+// of these leaves peer iOS treating the inviting account as an inactive
+// peer at the moment of invite, which empirically gates unprompted reshare.
+// The keysharing-topic cache primer below uses WEAK flags only — strong
+// flags (required_for_message=true, result_expected=true) emit an IDS
+// query Apple's stack treats as "I'm about to send an iMessage right now,"
+// which cascades into a MULTIPLEX freshness check + bundle re-register
+// that drags cloud_messages into a full sync on every invite-all sweep.
+// OB never issues a strong-flag query against the keysharing sub-service.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -63,15 +66,34 @@ pub async fn invite_keysharing<T: AnisetteProvider + Send + Sync + 'static>(
     // returns) — same lifetime as a single OB chat-open transaction.
     let _interest = sk.request_handles(handles).await;
 
-    // OB chat-open step 3 prelude (bridge-only): strong-flag keysharing
-    // cache to surface NoValidTargets for peers not registered on the
-    // keysharing sub-service. invite_to_channel re-invokes cache_keys
-    // with weak flags internally; that call becomes idempotent once our
-    // strong-primed entries are present.
+    // OB chat-open step 3 prelude: weak-flag keysharing cache primer +
+    // explicit targets lookup. We need the targets list ourselves to
+    // surface NoValidTargets for peers not registered on the keysharing
+    // sub-service (used by the caller's invite-loop to skip unreachable
+    // handles instead of latching them as invited_ok). targets_for_handles
+    // would do the same thing but with strong flags — see file header for
+    // why those flags trigger a re-register cascade and a cloud-messages
+    // sync on every sweep. Drop down to plain cache_keys (weak) +
+    // get_participants_targets, which is exactly what OB's chat-open does
+    // implicitly inside invite_to_channel.
+    sk.identity
+        .cache_keys(
+            KEYSHARING_TOPIC,
+            handles,
+            sender_handle,
+            false,
+            &QueryOptions {
+                required_for_message: false,
+                result_expected: false,
+            },
+        )
+        .await?;
     let targets = sk
         .identity
-        .targets_for_handles(KEYSHARING_TOPIC, handles, sender_handle)
-        .await?;
+        .cache
+        .lock()
+        .await
+        .get_participants_targets(KEYSHARING_TOPIC, sender_handle, handles);
     let reachable: std::collections::HashSet<&str> =
         targets.iter().map(|t| t.participant.as_str()).collect();
     let unreachable_handles: Vec<&str> = handles
