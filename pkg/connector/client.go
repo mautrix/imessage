@@ -715,6 +715,20 @@ func (c *IMClient) onForwardBackfillDone() {
 		// per-handle invite is idempotent on peer's side (re-delivery just
 		// hits the server-side retry loop).
 		go c.inviteContactsToStatusSharing(log.Logger)
+
+		// StatusKit-CloudKit pull also waits until here. The pull's
+		// subscribeToContactPresence trigger queries the ghost table; firing
+		// it earlier (during runCloudSyncController, before forward backfill
+		// creates DM ghosts) would subscribe to an incomplete handle set.
+		// Run after all initial backfills complete so the subscribe covers
+		// every peer the user actually talks to.
+		go func() {
+			ctx := context.Background()
+			skLog := c.UserLogin.Log.With().Str("component", "cloud_sync").Str("source", "post_backfill").Logger()
+			if err := c.syncCloudStatusKitPeers(ctx, skLog); err != nil {
+				skLog.Info().Err(err).Msg("StatusKit-CloudKit post-backfill pass: errored (continuing)")
+			}
+		}()
 	}
 }
 

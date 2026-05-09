@@ -1669,19 +1669,6 @@ func (c *IMClient) runCloudSyncController(log zerolog.Logger) {
 	// Run after bootstrap so the cleanup doesn't delay portal creation.
 	c.runPostSyncHousekeeping(ctx, log)
 
-	// StatusKit-CloudKit pull is the last bootstrap step. It depends on
-	// ghosts existing so subscribeToContactPresence (fired from inside the
-	// pull when keys are injected) actually has handles to subscribe to —
-	// before createPortalsFromCloudSync the ghost table is empty and the
-	// subscribe is a no-op, leaving the bridge with keys it never wires up.
-	// The bootstrap-side runCloudSyncOnce defers this phase to here for
-	// the same reason; steady-state cycles fire it from inside
-	// runCloudSyncOnce normally. The first-call-after-startup bypass on
-	// the gate ensures this pass isn't blocked by stale persisted backoff.
-	if err := c.syncCloudStatusKitPeers(ctx, log); err != nil {
-		log.Info().Err(err).Msg("StatusKit-CloudKit bootstrap pass: errored (continuing)")
-	}
-
 	// Delayed incremental re-syncs: catch CloudKit messages that propagated
 	// after the bootstrap sync completed. Messages sent in the last few minutes
 	// may not be in the CloudKit changes feed yet (propagation delay). APNs
