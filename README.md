@@ -536,16 +536,18 @@ make clean      # Remove build artifacts
 cmd/
   ├── mautrix-imessage/                     # Bridge entrypoint
   │     ├── main.go                         #   process bootstrap, config load, command registration
-  │     ├── login_cli.go                    #   interactive Matrix login prompts
-  │     ├── carddav_setup.go                #   `carddav-setup` subcommand — URL discovery + password encrypt
+  │     ├── login_cli.go                    #   interactive iMessage CLI login (stdin → bridgev2 LoginProcess)
+  │     ├── carddav_setup.go                #   `carddav-setup` subcommand — URL discovery + password encryption
   │     ├── setup_darwin.go                 #   macOS chat.db permission dialogs
-  │     └── setup_other.go                  #   non-Darwin stubs (no-op)
-  └── bbctl/                                # Beeper bridge-manager CLI (built alongside the bridge)
-        ├── main.go                         #   urfave/cli entrypoint for register/auth/stop/delete
-        ├── register.go                     #   provisions a Beeper bridge and writes default config
-        ├── auth.go                         #   logs into the Beeper API and persists credentials
-        ├── stop.go                         #   marks the bridge offline before teardown
-        └── delete.go                       #   removes the bridge from the Beeper cluster
+  │     └── setup_other.go                  #   non-Darwin stubs (no-ops)
+  └── bbctl/                                # Beeper bridge-manager CLI — companion tool that talks to Beeper's
+                                            # API to register / auth / stop / delete this bridge in Beeper infra.
+                                            # Built into a separate `bbctl` binary alongside the bridge.
+        ├── main.go                         #   CLI entrypoint — sets up the app and dispatches subcommands
+        ├── register.go                     #   `register` — provisions a new Beeper bridge + writes default config
+        ├── auth.go                         #   `auth` — logs into the Beeper API and persists credentials
+        ├── stop.go                         #   `stop` — marks the bridge offline before teardown
+        └── delete.go                       #   `delete` — removes the bridge from the Beeper cluster
 
 pkg/connector/                              # bridgev2 connector — the main Go bridge package
   ├── connector.go                          #   bridge lifecycle + platform detection
