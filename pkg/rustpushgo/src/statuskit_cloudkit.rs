@@ -530,8 +530,9 @@ fn build_channel_id_map(
     map
 }
 
-/// Find a string-valued field on the record. Handles the unencrypted
-/// STRING_TYPE case only — encrypted strings need PCS unwrap.
+/// Find a STRING_TYPE field's value. Returns the plaintext if available,
+/// otherwise None — encrypted strings need to be decrypted via the PCS
+/// encryptor (see `decrypt_string_field`).
 fn extract_string_field(
     rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
     name: &str,
@@ -541,29 +542,79 @@ fn extract_string_field(
         let fname = f.identifier.as_ref().and_then(|i| i.name.as_deref());
         if fname == Some(name) {
             let v = f.value.as_ref()?;
-            return v.string_value.clone();
+            // For unencrypted strings, string_value is populated directly.
+            if let Some(s) = &v.string_value {
+                return Some(s.clone());
+            }
+            return None;
         }
     }
     None
 }
 
-/// Find an encrypted-bytes field's raw ciphertext bytes.
-fn extract_encrypted_bytes_field<'a>(
+/// Locate a record field by identifier name.
+fn find_field<'a>(
     rec: &'a cloudkit_proto::retrieve_changes_response::RecordChange,
     name: &str,
-) -> Option<&'a [u8]> {
+) -> Option<&'a cloudkit_proto::record::Field> {
     let record = rec.record.as_ref()?;
-    for f in &record.record_field {
-        let fname = f.identifier.as_ref().and_then(|i| i.name.as_deref());
-        if fname == Some(name) {
-            let v = f.value.as_ref()?;
-            // EncryptedBytesType=20 (FieldType::EncryptedBytesType)
-            if v.r#type == Some(FieldType::EncryptedBytesType as i32) {
-                return v.bytes_value.as_deref();
-            }
+    record.record_field.iter().find(|f| {
+        f.identifier
+            .as_ref()
+            .and_then(|i| i.name.as_deref())
+            == Some(name)
+    })
+}
+
+/// Decrypt an encrypted STRING_TYPE field through the PCS encryptor.
+/// Apple's Core Data CloudKit Mirroring marks every string field as
+/// `is_encrypted=true` with the ciphertext stored in `bytes_value`. The
+/// decrypted plaintext is an `EncryptedValue` proto whose `string_value`
+/// is the actual string.
+fn decrypt_string_field(
+    rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
+    name: &str,
+    encryptor: &rustpush::pcs::PCSEncryptor,
+) -> Option<String> {
+    let f = find_field(rec, name)?;
+    let v = f.value.as_ref()?;
+    // Plaintext fast-path.
+    if let Some(s) = &v.string_value {
+        if v.is_encrypted != Some(true) {
+            return Some(s.clone());
         }
     }
-    None
+    let ct = v.bytes_value.as_deref()?;
+    let plaintext = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        encryptor.decrypt_data(ct, name)
+    })) {
+        Ok(b) if !b.is_empty() => b,
+        Ok(_) => return None,
+        Err(_) => return None,
+    };
+    let ev = cloudkit_proto::record::field::EncryptedValue::decode(&plaintext[..]).ok()?;
+    ev.string_value
+}
+
+/// Decrypt an ENCRYPTED_BYTES_TYPE field through the PCS encryptor.
+/// The plaintext is the raw decrypted bytes (no inner protobuf wrapper).
+fn decrypt_bytes_field(
+    rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
+    name: &str,
+    encryptor: &rustpush::pcs::PCSEncryptor,
+) -> Option<Vec<u8>> {
+    let f = find_field(rec, name)?;
+    let v = f.value.as_ref()?;
+    if v.r#type != Some(FieldType::EncryptedBytesType as i32) {
+        return None;
+    }
+    let ct = v.bytes_value.as_deref()?;
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        encryptor.decrypt_data(ct, name)
+    })) {
+        Ok(b) if !b.is_empty() => Some(b),
+        _ => None,
+    }
 }
 
 /// Decoded peer ready for injection.
@@ -611,23 +662,22 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         .clone()
         .ok_or("record missing zone_identifier")?;
 
-    let sender_handle = extract_string_field(rec, "CD_senderHandle");
-    let channel_fk = extract_string_field(rec, "CD_channel");
-    let payload_ct = extract_encrypted_bytes_field(rec, "CD_invitationPayload");
-    if sender_handle.is_none() || channel_fk.is_none() || payload_ct.is_none() {
+    // Quick presence check. We log presence based on the field identifier
+    // alone — the values are all encrypted under PCS and only readable
+    // after we build the encryptor below.
+    let has_sender = find_field(rec, "CD_senderHandle").is_some();
+    let has_channel = find_field(rec, "CD_channel").is_some();
+    let has_payload = find_field(rec, "CD_invitationPayload").is_some();
+    if !has_sender || !has_channel || !has_payload {
         info!(
             "StatusKit-CloudKit decode: missing required fields (sender={}, channel_fk={}, payload={})",
-            sender_handle.is_some(),
-            channel_fk.is_some(),
-            payload_ct.is_some()
+            has_sender, has_channel, has_payload
         );
         return Ok(None);
     }
-    let sender_handle = sender_handle.unwrap();
-    let channel_fk = channel_fk.unwrap();
-    let payload_ct = payload_ct.unwrap();
 
-    // PCS-unwrap CD_invitationPayload.
+    // Build the PCS encryptor for this record. All three fields decrypt
+    // through this single encryptor.
     let zone_key = match opened
         .get_zone_encryption_config(&zone_id, &cm.keychain, &MESSAGES_SERVICE)
         .await
@@ -668,18 +718,27 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         }
     };
 
-    // Decrypt the encrypted-bytes payload field.
-    let plaintext = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        encryptor.decrypt_data(payload_ct, "CD_invitationPayload")
-    })) {
-        Ok(b) => b,
-        Err(_) => return Err("decrypt_data panicked on CD_invitationPayload".into()),
+    // Decrypt the three fields through the encryptor. CD_senderHandle and
+    // CD_channel are encrypted strings (type=STRING_TYPE, is_encrypted=true,
+    // ciphertext in bytes_value, plaintext is an EncryptedValue proto whose
+    // string_value is the actual string). CD_invitationPayload is
+    // ENCRYPTED_BYTES_TYPE — raw bytes after decrypt.
+    let sender_handle = match decrypt_string_field(rec, "CD_senderHandle", &encryptor) {
+        Some(s) => s,
+        None => return Err("decrypt CD_senderHandle returned None".into()),
     };
-    if plaintext.is_empty() {
-        return Err("decrypted CD_invitationPayload is empty".into());
-    }
+    let channel_fk = match decrypt_string_field(rec, "CD_channel", &encryptor) {
+        Some(s) => s,
+        None => return Err("decrypt CD_channel returned None".into()),
+    };
+    let plaintext = match decrypt_bytes_field(rec, "CD_invitationPayload", &encryptor) {
+        Some(b) => b,
+        None => return Err("decrypt CD_invitationPayload returned None".into()),
+    };
     info!(
-        "StatusKit-CloudKit decode: PCS-decrypted CD_invitationPayload ({} bytes)",
+        "StatusKit-CloudKit decode: PCS-decrypted record sender='{}' channel_fk='{}' payload_bytes={}",
+        sender_handle,
+        channel_fk,
         plaintext.len()
     );
 
