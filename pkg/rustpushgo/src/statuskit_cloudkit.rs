@@ -94,6 +94,9 @@ use openssl::{
     ec::{EcGroup, EcKey, EcPoint},
     nid::Nid,
 };
+fn hex_short(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
 use plist::Value as PlistValue;
 use prost::Message;
 use rustpush::{
@@ -322,6 +325,16 @@ impl Client {
         // CD_Channel record carries its own protection_info, so we decrypt
         // CD_identifier through a per-record PCS encryptor inside the helper.
         let in_pass_map = build_channel_id_map(&opened, &cm, &hit.records).await;
+
+        // Read-only diagnostic to confirm the upstream "PCS master key
+        // verification failed" warning reflects a benign condition. Dumps
+        // the in-memory keychain views after sync_keychain has fired
+        // (build_channel_id_map calls get_zone_encryption_config which
+        // syncs both LimitedPeersAllowed and ProtectedCloudStorage). No
+        // mutation, no Apple traffic — just an info!() of what's already
+        // in memory. Single line per pass, prefixed STATUSKIT-CLOUDKIT-DIAG
+        // for easy grepping.
+        dump_keychain_diag(&cm).await;
 
         // Union: persisted ∪ in-pass. In-pass wins on collision so a
         // freshly-decoded value overrides any stale persisted one (Apple
@@ -954,4 +967,77 @@ async fn inject_into_state(
         already_known,
         injected_handles,
     })
+}
+
+/// Read-only keychain diagnostic. Logs one info!() line summarizing the
+/// keychain views relevant to the StatusKit-CloudKit decryption path.
+/// Used to confirm whether the upstream "PCS master key verification
+/// failed" warning indicates a real problem (e.g. ProtectedCloudStorage
+/// view empty → sync broken) or a benign condition (e.g. master genuinely
+/// not present on this account → orphaned-but-valid service key).
+///
+/// No keychain writes, no Apple network traffic — just iterates the
+/// already-synced in-memory state and emits one log line.
+async fn dump_keychain_diag<P: omnisette::AnisetteProvider>(
+    cm: &rustpush::cloud_messages::CloudMessagesClient<P>,
+) {
+    let s = cm.keychain.state.read().await;
+
+    let mut zones: Vec<(String, usize)> = s
+        .items
+        .iter()
+        .map(|(z, items)| (z.clone(), items.keys.len()))
+        .collect();
+    zones.sort();
+
+    let pcs_view = s.items.get("ProtectedCloudStorage");
+    let pcs_count = pcs_view.map(|v| v.keys.len()).unwrap_or(0);
+    let pcs_labels: Vec<String> = pcs_view
+        .map(|v| {
+            v.keys
+                .values()
+                .filter_map(|d| d.get("labl").and_then(|x| x.as_string()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+    let pcs_atyps: Vec<String> = pcs_view
+        .map(|v| {
+            v.keys
+                .values()
+                .filter_map(|d| {
+                    d.get("atyp")
+                        .and_then(|x| x.as_data())
+                        .map(|b| hex_short(b))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let lpa_view = s.items.get("LimitedPeersAllowed");
+    let lpa_count = lpa_view.map(|v| v.keys.len()).unwrap_or(0);
+    let lpa_labels: Vec<String> = lpa_view
+        .map(|v| {
+            v.keys
+                .values()
+                .filter_map(|d| d.get("labl").and_then(|x| x.as_string()).map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let statuskit_service_key_present = lpa_labels
+        .iter()
+        .any(|l| l.contains("com.apple.statuskit"));
+    let master_key_present = pcs_labels.iter().any(|l| l.contains("MasterKey"));
+
+    info!(
+        "STATUSKIT-CLOUDKIT-DIAG: views={:?} pcs_count={} pcs_master_present={} pcs_labels={:?} pcs_atyps={:?} lpa_count={} statuskit_service_key_present={} lpa_labels={:?}",
+        zones,
+        pcs_count,
+        master_key_present,
+        pcs_labels,
+        pcs_atyps,
+        lpa_count,
+        statuskit_service_key_present,
+        lpa_labels,
+    );
 }
