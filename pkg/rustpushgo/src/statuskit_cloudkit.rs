@@ -37,8 +37,8 @@ use log::{info, warn};
 use rustpush::{
     cloud_messages::MESSAGES_SERVICE,
     cloudkit::{
-        pcs_keys_for_record, CloudKitSession, FetchRecordChangesOperation,
-        FetchZoneChangesOperation, NO_ASSETS,
+        pcs_keys_for_record, CloudKitContainer, CloudKitSession,
+        FetchRecordChangesOperation, FetchZoneChangesOperation, NO_ASSETS,
     },
     cloudkit_proto,
     pcs::PCSShareProtection,
@@ -46,6 +46,75 @@ use rustpush::{
 };
 
 use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
+
+/// Candidate CloudKit containers to probe for StatusKit data.
+///
+/// We don't know which container Apple uses, so we try a curated list each
+/// pass and log results. The first run on the user's account determined
+/// that the iMessage container ("com.apple.messages.cloud" / bundle
+/// "com.apple.imagent") has 13 zones and ZERO StatusKit-shaped data, so
+/// we now also probe these alternates. Each is identified as
+/// "(bundleid, containerid)" pairs in logs.
+///
+/// Naming hypotheses, in priority order:
+///   1. `com.apple.icloud.presence` — matches APNs topic
+///      `com.apple.icloud.presence.channel.management` used by StatusKit.
+///   2. `com.apple.statuskit` with `com.apple.statuskitd` daemon, mirroring
+///      Apple's `<feature>` / `<feature>d` daemon convention.
+///   3. `com.apple.identityservicesd` bundle owning a presence-shaped
+///      container — IDS handles the keysharing topic, so its daemon may
+///      own the storage.
+///   4. `com.apple.security.keychain` — the iCloud keychain container.
+///      StatusKit `SharedKey` material is keychain-shaped (32-byte
+///      symmetric seed); plausible if Apple syncs StatusKit keys via
+///      the keychain rail.
+///   5. `com.apple.icloud.sharedchannels` — StatusKit channels are a
+///      shared-channels feature (per the
+///      `com.apple.gs.sharedchannels.auth` GSA token name).
+const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.imagent",
+        containerid: "com.apple.icloud.presence",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.identityservicesd",
+        containerid: "com.apple.icloud.presence",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.statuskitd",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.imagent",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.identityservicesd",
+        containerid: "com.apple.icloud.sharedchannels",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.icloud.presence",
+        containerid: "com.apple.icloud.presence",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.securityd",
+        containerid: "com.apple.security.keychain",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+];
 
 /// Result of one CloudKit-pull pass for StatusKit peer keys.
 ///
@@ -243,34 +312,120 @@ impl Client {
     }
 }
 
-/// Iterate every zone in the user's private database, log each, and pick
-/// one whose name suggests StatusKit storage. Returns `None` if nothing
-/// matches the keyword heuristic — the user can then read the zone list
-/// out of the logs and supply a hint.
+/// Iterate candidate CloudKit containers, list each container's zones, and
+/// pick a zone whose name matches StatusKit-shaped keywords. The iMessage
+/// container's zones are listed too as a baseline; experience on the test
+/// account showed it has ZERO StatusKit zones, so the alternates in
+/// `CANDIDATE_CONTAINERS` matter more.
+///
+/// Returns `Some(zone_name)` if a candidate zone was identified, `None`
+/// otherwise. Currently only returns the zone name — Phase 2 will need to
+/// also remember which container owns it. For Phase 1 the iMessage
+/// container is implicitly assumed.
 async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, String> {
     let cm = client
         .get_or_init_cloud_messages_client()
         .await
         .map_err(|e| format!("cloud_messages init failed: {:?}", e))?;
-    let container = cm
-        .get_container()
-        .await
-        .map_err(|e| format!("get_container failed: {:?}", e))?;
 
+    // Track every (container, zone) pair logged so we can summarize at the
+    // end if nothing matches.
+    let mut all_pairs: Vec<String> = Vec::new();
+    let mut keyword_matches: Vec<String> = Vec::new();
+
+    // Probe 1: existing iMessage container (proves the discovery path is
+    // working even if we don't expect StatusKit zones here).
     info!(
-        "StatusKit-CloudKit discovery: requesting zone-changes from CloudKit private DB"
+        "StatusKit-CloudKit discovery: probing baseline iMessage container (bundleid='com.apple.imagent', containerid='com.apple.messages.cloud')"
     );
-    let (zones, _final_token) = FetchZoneChangesOperation::do_sync(&*container, None)
-        .await
-        .map_err(|e| format!("FetchZoneChangesOperation failed: {:?}", e))?;
+    match cm.get_container().await {
+        Ok(open) => {
+            log_zones_for_container(
+                "com.apple.imagent / com.apple.messages.cloud",
+                &*open,
+                &mut all_pairs,
+                &mut keyword_matches,
+            )
+            .await;
+        }
+        Err(e) => {
+            warn!(
+                "StatusKit-CloudKit discovery: baseline iMessage container open failed: {:?}",
+                e
+            );
+        }
+    }
+
+    // Probe 2..N: candidate containers. Each is independent — failures are
+    // logged and we continue. The `init` call hits Apple's setup endpoint
+    // with the bundleid + containerid in headers, so a wrong pair will
+    // typically 4xx and we move on.
+    for (idx, candidate) in CANDIDATE_CONTAINERS.iter().enumerate() {
+        let label = format!("{} / {}", candidate.bundleid, candidate.containerid);
+        info!(
+            "StatusKit-CloudKit discovery: probing candidate[{}] container ({})",
+            idx, label
+        );
+        let opened = match candidate.init(cm.client.clone()).await {
+            Ok(c) => c,
+            Err(e) => {
+                info!(
+                    "StatusKit-CloudKit discovery: candidate[{}] init FAILED ({}): {:?} — skipping",
+                    idx, label, e
+                );
+                continue;
+            }
+        };
+        log_zones_for_container(&label, &opened, &mut all_pairs, &mut keyword_matches).await;
+    }
 
     info!(
-        "StatusKit-CloudKit discovery: CloudKit returned {} zone(s) in private DB",
+        "StatusKit-CloudKit discovery: full (container, zone) inventory ({} entries): [{}]",
+        all_pairs.len(),
+        all_pairs.join(" | ")
+    );
+
+    if keyword_matches.is_empty() {
+        info!(
+            "StatusKit-CloudKit discovery: NO keyword-matching candidate zone found across {} probes; user inspection of the inventory above may identify the right one",
+            CANDIDATE_CONTAINERS.len() + 1
+        );
+        return Ok(None);
+    }
+
+    info!(
+        "StatusKit-CloudKit discovery: {} keyword-matching candidate(s): [{}]; picking first",
+        keyword_matches.len(),
+        keyword_matches.join(", ")
+    );
+    Ok(Some(keyword_matches.into_iter().next().unwrap()))
+}
+
+/// Helper: list every zone in the given opened container, log each one,
+/// and append container/zone labels to the running summaries. Skips zones
+/// the iMessage container is known to own so noise stays manageable, but
+/// still logs them.
+async fn log_zones_for_container<P: omnisette::AnisetteProvider>(
+    container_label: &str,
+    open: &rustpush::cloudkit::CloudKitOpenContainer<'_, P>,
+    all_pairs: &mut Vec<String>,
+    keyword_matches: &mut Vec<String>,
+) {
+    let zones = match FetchZoneChangesOperation::do_sync(open, None).await {
+        Ok((z, _tok)) => z,
+        Err(e) => {
+            warn!(
+                "StatusKit-CloudKit discovery: do_sync against '{}' failed: {:?}",
+                container_label, e
+            );
+            return;
+        }
+    };
+    info!(
+        "StatusKit-CloudKit discovery: container='{}' returned {} zone(s)",
+        container_label,
         zones.len()
     );
-
-    // Zones we already know are for non-StatusKit data — exclude them from
-    // candidates but still log them.
     let known_messages_zones = [
         "chatManateeZone",
         "messageManateeZone",
@@ -279,10 +434,6 @@ async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, Stri
         "chatBotRecoverableMessageDeleteZone",
         "_defaultZone",
     ];
-
-    let mut candidates: Vec<String> = Vec::new();
-    let mut all_names: Vec<String> = Vec::new();
-
     for z in &zones {
         let zname = match z
             .identifier
@@ -293,53 +444,27 @@ async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, Stri
             Some(n) => n.to_string(),
             None => {
                 info!(
-                    "StatusKit-CloudKit discovery: zone with no zone_name (change_type={:?})",
-                    z.change_type
+                    "StatusKit-CloudKit discovery: container='{}' zone with no zone_name (change_type={:?})",
+                    container_label, z.change_type
                 );
                 continue;
             }
         };
-        all_names.push(zname.clone());
+        all_pairs.push(format!("{}::{}", container_label, zname));
         let nm_lc = zname.to_lowercase();
         let is_known = known_messages_zones.contains(&zname.as_str());
         let is_status_kw = nm_lc.contains("status")
             || nm_lc.contains("presence")
             || nm_lc.contains("sharedchannel")
             || nm_lc.contains("focus");
-
         info!(
-            "StatusKit-CloudKit discovery: zone='{}' known_messages_zone={} status_keyword_match={} change_type={:?} is_anonymous={:?}",
-            zname,
-            is_known,
-            is_status_kw,
-            z.change_type,
-            z.is_annonymous
+            "StatusKit-CloudKit discovery: container='{}' zone='{}' known_messages_zone={} status_keyword_match={} change_type={:?} is_anonymous={:?}",
+            container_label, zname, is_known, is_status_kw, z.change_type, z.is_annonymous
         );
-
         if is_status_kw && !is_known {
-            candidates.push(zname);
+            keyword_matches.push(zname);
         }
     }
-
-    info!(
-        "StatusKit-CloudKit discovery: full zone list ({} total): [{}]",
-        all_names.len(),
-        all_names.join(", ")
-    );
-
-    if candidates.is_empty() {
-        info!(
-            "StatusKit-CloudKit discovery: NO keyword-matching candidate zone found; user inspection of the full zone list above may identify the right one"
-        );
-        return Ok(None);
-    }
-
-    info!(
-        "StatusKit-CloudKit discovery: {} keyword-matching candidate(s): {:?}; picking first",
-        candidates.len(),
-        candidates
-    );
-    Ok(Some(candidates.into_iter().next().unwrap()))
 }
 
 /// Single-page fetch of `FetchRecordChangesOperation` against the named zone.
