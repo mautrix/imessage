@@ -13,6 +13,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -20,6 +21,20 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 
 	"github.com/lrhodin/imessage/pkg/rustpushgo"
+)
+
+// CloudKit rate-limit guards for the periodic shared-profile re-fetch.
+// The ticker fires every 15 minutes (see periodicCloudContactSync); without
+// these we'd burst a FetchProfile call per cached row on every tick, which
+// trips CloudKit's TooManyRequests for users with many shared contacts.
+const (
+	// sharedProfileFreshnessWindow skips rows whose UpdatedTS is within
+	// this window. UpdatedTS is bumped on every successful fetch (not only
+	// on actual changes) so steady-state ticks become near-no-ops.
+	sharedProfileFreshnessWindow = 6 * time.Hour
+	// sharedProfileFetchPace inserts a small gap between consecutive
+	// CloudKit fetches in a single tick so we don't burst-hit the API.
+	sharedProfileFetchPace = 500 * time.Millisecond
 )
 
 // Shared iMessage profile (Name & Photo Sharing) ingestion, caching, and
@@ -354,6 +369,17 @@ func (c *IMClient) applyCachedSharedProfilesToGhosts(log zerolog.Logger) {
 
 // refreshAllSharedProfiles re-fetches every persisted shared profile and
 // refreshes the corresponding ghost when the record changed.
+//
+// Throttling: rows whose UpdatedTS is within sharedProfileFreshnessWindow
+// are skipped, and the remaining fetches are paced by
+// sharedProfileFetchPace. On a CloudKit TooManyRequests response we abort
+// the rest of the tick — the next tick (15min later) resumes with whatever
+// rows are still stale. UpdatedTS is bumped on every successful fetch, so
+// after the first full pass the steady-state tick becomes a near-no-op.
+//
+// Push-driven updates (ShareProfile / UpdateProfile messages) take the
+// handleSharedProfile path and bypass this throttle, so profile changes
+// the peer iPhone announces are still applied immediately.
 func (c *IMClient) refreshAllSharedProfiles(log zerolog.Logger) {
 	if c.sharedProfileStore == nil || c.client == nil {
 		return
@@ -363,10 +389,35 @@ func (c *IMClient) refreshAllSharedProfiles(log zerolog.Logger) {
 		log.Warn().Err(err).Msg("Failed to load shared profiles for periodic sync")
 		return
 	}
-	var refreshed, changed int
-	for _, r := range rows {
+	nowMS := time.Now().UnixMilli()
+	cutoffMS := nowMS - sharedProfileFreshnessWindow.Milliseconds()
+	var refreshed, changed, skippedFresh int
+	fetchCount := 0
+	for i, r := range rows {
+		if r.UpdatedTS > cutoffMS {
+			skippedFresh++
+			continue
+		}
+		if fetchCount > 0 {
+			select {
+			case <-time.After(sharedProfileFetchPace):
+			case <-c.stopChan:
+				return
+			}
+		}
+		fetchCount++
 		record, err := c.client.FetchProfile(r.RecordKey, r.DecryptionKey, r.HasPoster)
 		if err != nil {
+			// CloudKit rate-limited us — stop the rest of this tick. The
+			// rows we didn't touch keep their old UpdatedTS, so the next
+			// tick picks them up.
+			if strings.Contains(err.Error(), "TooManyRequests") {
+				log.Info().
+					Int("processed", refreshed).
+					Int("remaining", len(rows)-i-1).
+					Msg("CloudKit rate-limited periodic shared-profile fetch; deferring rest to next tick")
+				break
+			}
 			log.Debug().Err(err).Str("identifier", r.Identifier).
 				Msg("Periodic shared-profile fetch failed")
 			continue
@@ -376,28 +427,35 @@ func (c *IMClient) refreshAllSharedProfiles(log zerolog.Logger) {
 		if record.Avatar != nil {
 			newAvatar = *record.Avatar
 		}
-		if record.DisplayName == r.DisplayName &&
-			record.FirstName == r.FirstName &&
-			record.LastName == r.LastName &&
-			bytes.Equal(newAvatar, r.Avatar) {
-			continue
+		recordChanged := record.DisplayName != r.DisplayName ||
+			record.FirstName != r.FirstName ||
+			record.LastName != r.LastName ||
+			!bytes.Equal(newAvatar, r.Avatar)
+		// Always bump UpdatedTS on a successful fetch so the freshness
+		// window can skip this row on subsequent ticks even when the
+		// record itself didn't change.
+		r.UpdatedTS = nowMS
+		if recordChanged {
+			r.DisplayName = record.DisplayName
+			r.FirstName = record.FirstName
+			r.LastName = record.LastName
+			r.Avatar = append([]byte(nil), newAvatar...)
 		}
-		r.DisplayName = record.DisplayName
-		r.FirstName = record.FirstName
-		r.LastName = record.LastName
-		r.Avatar = append([]byte(nil), newAvatar...)
-		r.UpdatedTS = time.Now().UnixMilli()
 		if err := c.sharedProfileStore.save(context.Background(), r); err != nil {
 			log.Warn().Err(err).Str("identifier", r.Identifier).
 				Msg("Failed to persist refreshed shared profile")
 		}
 		c.sharedProfiles.Store(r.Identifier, r)
-		c.refreshGhostFromSharedProfile(log, r.Identifier)
-		changed++
+		if recordChanged {
+			c.refreshGhostFromSharedProfile(log, r.Identifier)
+			changed++
+		}
 	}
-	if refreshed > 0 {
-		log.Debug().Int("refreshed", refreshed).Int("changed", changed).
+	if refreshed > 0 || skippedFresh > 0 {
+		log.Debug().
+			Int("refreshed", refreshed).
+			Int("changed", changed).
+			Int("skipped_fresh", skippedFresh).
 			Msg("Periodic shared-profile sync completed")
 	}
 }
-
