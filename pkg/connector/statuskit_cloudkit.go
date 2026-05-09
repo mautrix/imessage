@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -82,8 +83,8 @@ var statuskitPassRetryAfterRegex = cloudKitRetryAfterRegex
 // statusKitPassMeta is the parsed form of statusKitCloudPassMetaRow. Stored
 // flat in the existing TEXT column so no schema change is needed.
 type statusKitPassMeta struct {
-	LastAttempt      time.Time
-	ConsecutiveErrs  int
+	LastAttempt     time.Time
+	ConsecutiveErrs int
 }
 
 func parseStatusKitPassMeta(raw *string) statusKitPassMeta {
@@ -197,6 +198,30 @@ func (c *IMClient) syncCloudStatusKitPeers(ctx context.Context, log zerolog.Logg
 	// rust-side StatusKit state mutex. Sweep wins; we'll pick up next pass.
 	if c.statusKitSweepRunning.Load() {
 		log.Info().Msg("StatusKit-CloudKit pass: deferred (StatusKit invite sweep is running)")
+		return nil
+	}
+
+	// Don't run during initial forward backfill or for a settling window
+	// after it completes. On a cold bootstrap, presence broadcasts that
+	// arrive while messages are still being inserted into the bridge DB
+	// hit the OnStatusUpdate `lastMsg=nil` fallback (now-1ms) and bump
+	// chats to the top of the room list in random presence-arrival order.
+	// A warm restart works fine because the DB already has prior-session
+	// messages to anchor against. apnsBufferFlushedAt is set the moment
+	// the last forward-backfill batch's CompleteCallback fires (in
+	// onForwardBackfillDone at counter==0); we add a settling window on
+	// top of that to let any straggler DB writes commit.
+	const statusKitBackfillSettleWindow = 60 * time.Second
+	flushedAt := atomic.LoadInt64(&c.apnsBufferFlushedAt)
+	if flushedAt == 0 {
+		log.Info().Msg("StatusKit-CloudKit pass: skipped (initial forward backfill not yet complete)")
+		return nil
+	}
+	if elapsed := time.Since(time.UnixMilli(flushedAt)); elapsed < statusKitBackfillSettleWindow {
+		log.Info().
+			Dur("elapsed_since_backfill", elapsed.Round(time.Second)).
+			Dur("settle_window", statusKitBackfillSettleWindow).
+			Msg("StatusKit-CloudKit pass: skipped (waiting for backfill DB writes to settle)")
 		return nil
 	}
 
