@@ -701,6 +701,64 @@ fn decrypt_string_field(
     ev.string_value
 }
 
+/// Diagnostic helper: walk every field in the record, decrypt each
+/// ENCRYPTED_BYTES_TYPE through the supplied encryptor, and log the
+/// plaintext as hex. Truncates very long values so logs stay bounded.
+/// Used to identify which encrypted-bytes field actually carries the
+/// peer-key material across CD_ReceivedInvitation variants.
+fn dump_encrypted_bytes_fields(
+    record: &cloudkit_proto::Record,
+    encryptor: &rustpush::pcs::PCSEncryptor,
+) {
+    for f in &record.record_field {
+        let fname = match f.identifier.as_ref().and_then(|i| i.name.as_deref()) {
+            Some(s) => s,
+            None => continue,
+        };
+        let v = match f.value.as_ref() {
+            Some(v) => v,
+            None => continue,
+        };
+        if v.r#type != Some(FieldType::EncryptedBytesType as i32) {
+            continue;
+        }
+        let ct = match v.bytes_value.as_deref() {
+            Some(b) => b,
+            None => continue,
+        };
+        let pt = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            encryptor.decrypt_data(ct, fname)
+        })) {
+            Ok(b) if !b.is_empty() => b,
+            Ok(_) => {
+                info!(
+                    "StatusKit-CloudKit decode: encrypted_bytes_field='{}' decrypt returned empty",
+                    fname
+                );
+                continue;
+            }
+            Err(_) => {
+                info!(
+                    "StatusKit-CloudKit decode: encrypted_bytes_field='{}' decrypt panicked",
+                    fname
+                );
+                continue;
+            }
+        };
+        const MAX_HEX_BYTES: usize = 256;
+        let truncated = pt.len() > MAX_HEX_BYTES;
+        let to_show = if truncated { &pt[..MAX_HEX_BYTES] } else { &pt[..] };
+        let hex: String = to_show.iter().map(|b| format!("{:02x}", b)).collect();
+        info!(
+            "StatusKit-CloudKit decode: encrypted_bytes_field='{}' bytes={} hex={}{}",
+            fname,
+            pt.len(),
+            hex,
+            if truncated { "..." } else { "" }
+        );
+    }
+}
+
 /// Decrypt an ENCRYPTED_BYTES_TYPE field through the PCS encryptor.
 /// The plaintext is the raw decrypted bytes (no inner protobuf wrapper).
 fn decrypt_bytes_field(
@@ -763,20 +821,15 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         );
         return Ok(None);
     }
-    if !has_payload {
-        // Variant schema: some CD_ReceivedInvitation rows store CD_peerKey /
-        // CD_serverKey / CD_channelToken instead of an embedded payload.
-        // We don't yet know how to assemble a StatusKitSharedDevice from
-        // those primitives — log loudly and skip so the user knows we saw
-        // them.
-        info!(
-            "StatusKit-CloudKit decode: variant record without CD_invitationPayload — skipping (CD_peerKey/CD_serverKey path TBD)"
-        );
-        return Ok(None);
-    }
 
-    // Build the PCS encryptor for this record. All three fields decrypt
-    // through this single encryptor.
+    // Build the PCS encryptor for this record. We build it BEFORE branching
+    // on the variant because we want to diagnostic-dump every encrypted-
+    // bytes field through it regardless of variant — the empirical evidence
+    // says `CD_invitationPayload` is `{"a":[]}` on every record we've seen,
+    // so the actual peer-key material has to be in one of the other
+    // encrypted-bytes fields (CD_incomingRatchetState in the 9-field
+    // variant; CD_peerKey/CD_serverKey/CD_channelToken in the 10-field
+    // variant).
     let zone_key = match opened
         .get_zone_encryption_config(&zone_id, &cm.keychain, &STATUSKIT_SERVICE)
         .await
@@ -816,6 +869,21 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
             }
         }
     };
+
+    // Diagnostic: dump every encrypted-bytes field's hex through this
+    // encryptor. Lets us see where the peer-key material actually lives
+    // for both variants.
+    dump_encrypted_bytes_fields(record, &encryptor);
+
+    if !has_payload {
+        // 10-field variant: CD_peerKey/CD_serverKey/CD_channelToken instead
+        // of CD_invitationPayload. Skip until we know the assembly format —
+        // but the dump above will have logged their plaintext hex.
+        info!(
+            "StatusKit-CloudKit decode: 10-field variant (no CD_invitationPayload) — skipping after diagnostic dump"
+        );
+        return Ok(None);
+    }
 
     // Decrypt the three fields through the encryptor. CD_senderHandle and
     // CD_channel are encrypted strings (type=STRING_TYPE, is_encrypted=true,
