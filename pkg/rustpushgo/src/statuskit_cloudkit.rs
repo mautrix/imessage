@@ -691,14 +691,14 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         return Ok(None);
     }
 
-    // Build the PCS encryptor for this record. We build it BEFORE branching
-    // on the variant because we want to diagnostic-dump every encrypted-
-    // bytes field through it regardless of variant — the empirical evidence
-    // says `CD_invitationPayload` is `{"a":[]}` on every record we've seen,
-    // so the actual peer-key material has to be in one of the other
-    // encrypted-bytes fields (CD_incomingRatchetState in the 9-field
-    // variant; CD_peerKey/CD_serverKey/CD_channelToken in the 10-field
-    // variant).
+    // 10-field variant (CD_peerKey/CD_serverKey/CD_channelToken instead
+    // of CD_invitationPayload + CD_incomingRatchetState) has no assembly
+    // path yet — skip before any PCS work so we don't waste per-record
+    // unwrap CPU on records we'll discard anyway.
+    if !has_payload {
+        return Ok(None);
+    }
+
     let zone_key = match opened
         .get_zone_encryption_config(&zone_id, &cm.keychain, &STATUSKIT_SERVICE)
         .await
@@ -724,13 +724,6 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
             None => return Err("PCS unwrap failed (both paths)".into()),
         },
     };
-
-    if !has_payload {
-        // 10-field variant: CD_peerKey/CD_serverKey/CD_channelToken instead
-        // of CD_invitationPayload + CD_incomingRatchetState. Assembly path
-        // for that schema is still TBD; skip silently.
-        return Ok(None);
-    }
 
     // Decrypt the load-bearing fields through the encryptor.
     // - CD_senderHandle / CD_channel: encrypted STRING_TYPE (is_encrypted,
