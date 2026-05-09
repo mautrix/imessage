@@ -476,6 +476,7 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
     };
 
     for zname in try_zones {
+        let is_cached_zone = cached_zone_name == Some(zname.as_str());
         let zone_id = opened.private_zone(zname.clone());
         let fetch_result = opened
             .perform(
@@ -494,7 +495,15 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
             Ok((_assets, response)) => {
                 let next_token = response.sync_continuation_token.clone();
                 let records: Vec<_> = response.change.into_iter().collect();
-                if records.is_empty() {
+                // Empty page on a discovery candidate (no cache, or trying a
+                // non-cached fallback) means "this zone has nothing for us"
+                // — fall through to the next candidate. Empty page on the
+                // cached zone is a legitimate "no new changes since
+                // since_token" response, so return it as a successful no-op
+                // page that preserves zone+token state. Without this, the
+                // Go-side ResolvedZone=None branch would clear the cached
+                // zone row and force the next pass into fresh discovery.
+                if records.is_empty() && !is_cached_zone {
                     continue;
                 }
                 return Ok(Some(DiscoveryHit {
