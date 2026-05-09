@@ -858,6 +858,15 @@ const statusKitInterInviteDelay = 1500 * time.Millisecond
 // and never re-attempted.
 const statusKitLastInviteKeyPrefix = "statuskit.last_invite."
 
+// statusKitLastPostInviteShareKey stores the last time we published our
+// current StatusKit state immediately after changing the sharing ACL. OB has
+// Android zen-mode hooks that keep its channel status fresh; the bridge's only
+// truthful state is "available", so publish that state after successful
+// invites, but coalesce invite sweeps into a single channel publish.
+const statusKitLastPostInviteShareKey = "statuskit.last_post_invite_share"
+
+const statusKitPostInviteShareMinSpacing = 5 * time.Minute
+
 // statusKitInvitedOkKeyPrefix marks handles that received a StatusKit
 // invite which IDS accepted (no error, targets > 0). Soft-latched: if a
 // reshare from the peer has been observed (statusKitReshareSeenKeyPrefix),
@@ -1123,6 +1132,43 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 		}
 	}
 	log.Info().Int("pending", len(pending)).Int("ok", okCount).Int("failed", failCount).Int("timed_out", timeoutCount).Str("sender", sender).Msg("Sent StatusKit key invites one-per-handle (pending-only, paced)")
+	if okCount > 0 {
+		c.publishStatusKitAvailableAfterInvite(log, "invite sweep")
+	}
+}
+
+func (c *IMClient) publishStatusKitAvailableAfterInvite(log zerolog.Logger, reason string) {
+	if c.client == nil {
+		return
+	}
+	ctx := context.Background()
+	now := time.Now()
+	last := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitLastPostInviteShareKey))
+	if last != "" {
+		if ts, parseErr := time.Parse(time.RFC3339, last); parseErr == nil && now.Sub(ts) < statusKitPostInviteShareMinSpacing {
+			log.Debug().
+				Str("reason", reason).
+				Time("last_share_at", ts).
+				Dur("min_spacing", statusKitPostInviteShareMinSpacing).
+				Msg("StatusKit post-invite share_status skipped by cooldown")
+			return
+		}
+	}
+
+	if err := c.safeRefreshPetTokenThrottled(); err != nil {
+		log.Debug().Err(err).Str("reason", reason).Msg("StatusKit post-invite share_status: PET refresh skipped")
+	}
+	sk, err := c.client.GetStatuskitClient()
+	if err != nil || sk == nil {
+		log.Debug().Err(err).Str("reason", reason).Msg("StatusKit post-invite share_status skipped — client not ready")
+		return
+	}
+	if err := sk.ShareStatus(true, nil); err != nil {
+		log.Warn().Err(err).Str("reason", reason).Msg("StatusKit post-invite share_status failed")
+		return
+	}
+	c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastPostInviteShareKey), now.Format(time.RFC3339))
+	log.Info().Str("reason", reason).Msg("StatusKit post-invite share_status(available) published")
 }
 
 // inviteSingleHandleToStatusSharing dispatches a StatusKit keysharing invite
@@ -1215,6 +1261,7 @@ func (c *IMClient) inviteSingleHandleToStatusSharing(log zerolog.Logger, handle 
 		c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+handle), nowStr)
 		c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+handle), nowStr)
 		log.Info().Str("sender", sender).Str("handle", handle).Msg("StatusKit invite (new portal): ok")
+		c.publishStatusKitAvailableAfterInvite(log, "new portal invite")
 	case <-time.After(perInviteTimeout):
 		log.Warn().Str("sender", sender).Str("handle", handle).Dur("timeout", perInviteTimeout).Msg("StatusKit invite (new portal): timed out — abandoning")
 	case <-c.stopChan:
