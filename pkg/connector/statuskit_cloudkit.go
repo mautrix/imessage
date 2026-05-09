@@ -49,12 +49,21 @@ const (
 
 // statusKitFailureBackoffBase is the base delay used when the previous
 // pass failed. The actual delay scales exponentially with consecutive
-// errors (15m → 30m → 1h → 2h capped). On a successful pass we apply NO
-// inter-pass floor — the bridge's chat/message backfill paths in
-// sync_controller.go run on every cloud-sync cycle without one and are
-// empirically calibrated to Apple's tolerance, so matching that cadence
-// for steady-state StatusKit is the right baseline.
+// errors (15m → 30m → 1h → 2h capped).
 const statusKitFailureBackoffBase = 15 * time.Minute
+
+// statusKitSuccessFloor is the steady-state minimum interval between
+// successful passes. New peer keys arrive at human-event rates (a
+// contact opening Focus sharing for the first time, a peer rotating
+// devices) — typically a handful per week across a contact list. The
+// outer cloud-sync orchestrator fires multiple times per hour on a
+// chatty cluster; without this floor we'd pull ~100 records of CKKS
+// churn per cycle to discover changes that statistically aren't there.
+// 12h is well above the natural event rate while still picking up new
+// peers within a day, and an order-of-magnitude reduction in CKKS
+// volume on the LimitedPeersAllowed view (the surface that produced
+// the clique-kick during early testing).
+const statusKitSuccessFloor = 12 * time.Hour
 
 // statusKitPassMaxBackoff caps the exponential backoff after consecutive
 // errors. Two hours is long enough that a transient CKKS rate-limit window
@@ -104,16 +113,16 @@ func (m statusKitPassMeta) encode() string {
 }
 
 // nextAllowedAt returns the earliest time at which a new pass may run.
-// On a successful previous pass with no Apple retry-after hint, returns
-// the zero time — no gate, the next outer cloud-sync cycle is free to
-// fire. On failure, applies exponential backoff (15m → 30m → 1h → 2h
-// capped) honoring any larger retry-after hint.
+// On a successful previous pass with no Apple retry-after hint, applies
+// the statusKitSuccessFloor (12h) — new peer keys are rare and polling
+// tighter wastes CKKS budget. On failure, applies exponential backoff
+// (15m → 30m → 1h → 2h capped) honoring any larger retry-after hint.
 func (m statusKitPassMeta) nextAllowedAt(retryAfterHint time.Duration) time.Time {
 	if m.LastAttempt.IsZero() {
 		return time.Time{}
 	}
 	if m.ConsecutiveErrs == 0 && retryAfterHint == 0 {
-		return time.Time{}
+		return m.LastAttempt.Add(statusKitSuccessFloor)
 	}
 	delay := statusKitFailureBackoffBase
 	if m.ConsecutiveErrs > 0 {
@@ -196,10 +205,11 @@ func (c *IMClient) syncCloudStatusKitPeers(ctx context.Context, log zerolog.Logg
 	// (bootstrap + delayed-resync schedule + !resync) and on every APNs
 	// nudge thereafter. Hammering Apple's CKKS for the LimitedPeersAllowed
 	// view at that cadence is what got us kicked out of the trust circle
-	// today. Mirrors the bridge's chat/message-backfill retry shape from
-	// sync_controller.go: exponential backoff on consecutive errors,
-	// honoring Apple's `retry_after_seconds` hint when larger, capped at
-	// statusKitPassMaxBackoff (2h).
+	// during early testing. Two gates apply here: a 12h success floor
+	// (statusKitSuccessFloor) for steady-state, since new peer keys
+	// arrive at human-event rates rather than per-cycle; and exponential
+	// failure backoff (15m → 30m → 1h → 2h capped) honoring Apple's
+	// `retry_after_seconds` hint when larger.
 	//
 	// Skipping the FFI here intentionally does NOT touch the meta row —
 	// the gate is read-only when it blocks. Bumping last_attempt on a
