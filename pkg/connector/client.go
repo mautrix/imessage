@@ -1736,33 +1736,26 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 				return fmt.Errorf("invalid target portal")
 			}
 
-			// Anchor each notice 1ms before the last real iMessage so room
-			// ordering does NOT jump on passive status updates. Pinning
-			// the notice to a stale timestamp is fine; what matters is
-			// that the room isn't bumped to the top every time a contact
-			// toggles Focus mode.
+			// Stamp each notice at exactly the previous message's timestamp
+			// so room ordering doesn't change. The m.notice +
+			// com.beeper.action_message=presence_update extension already
+			// signals "do not reorder" at the client level; matching the
+			// last message's timestamp is the bridge-side belt that
+			// doesn't depend on every client honoring the extension.
 			//
-			// If the portal has no prior message (freshly-created portal,
-			// or initial backfill hasn't loaded its messages yet), SKIP
-			// the notice entirely. The previous `now - 1ms` fallback
-			// scrambled chat order during initial backfill: many portals
-			// existed without backfilled messages, and presence broadcasts
-			// arriving for them all stamped at "now" simultaneously bumped
-			// them to the top of the room list in random presence-arrival
-			// order. The next presence broadcast from the same peer (after
-			// backfill completes) will create the notice properly.
-			lastMsg, dbErr := c.Main.Bridge.DB.Message.GetLastNonFakePartAtOrBeforeTime(
+			// A portal without any prior message shouldn't exist in
+			// practice (no messages = nothing to backfill = no portal),
+			// so the fallback below is defensive — keep the original
+			// now-1ms shape for that path.
+			noticeTS := time.Now().Add(-1 * time.Millisecond)
+			if lastMsg, dbErr := c.Main.Bridge.DB.Message.GetLastNonFakePartAtOrBeforeTime(
 				ctx, targetPortal.PortalKey, time.Now(),
-			)
-			if dbErr != nil {
+			); dbErr != nil {
 				log.Warn().Err(dbErr).Str("portal_id", string(targetPortal.ID)).
-					Msg("StatusKit: failed to query last message timestamp, skipping notice")
-				return nil
+					Msg("StatusKit: failed to query last message timestamp, using now-1ms")
+			} else if lastMsg != nil && !lastMsg.Timestamp.IsZero() {
+				noticeTS = lastMsg.Timestamp
 			}
-			if lastMsg == nil || lastMsg.Timestamp.IsZero() {
-				return nil
-			}
-			noticeTS := lastMsg.Timestamp.Add(-1 * time.Millisecond)
 
 			if c.Main.Bridge.Matrix.GetCapabilities().BatchSending {
 				batchEvt := &event.Event{
