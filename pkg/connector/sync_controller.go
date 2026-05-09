@@ -1056,9 +1056,20 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 		return
 	}
 
-	// One sender only — OB calls invite_to_channel with a single
-	// `ensureHandle()` result per chat, not with every registered handle.
-	sender := c.handle
+	// Multi-alias invite. OB picks `chat.ensureHandle()` per chat, which
+	// resolves to whichever of the user's IDS aliases that peer's existing
+	// thread uses. The bridge runs server-side and doesn't know which alias
+	// each peer's iMessage thread targets, so emulate by inviting from every
+	// alias the bridge owns. Empirically the single-c.handle path produced
+	// 1–2 of 20 reciprocations across many relogs and sweeps; that ratio
+	// matches "peers whose threads happen to land on c.handle's alias
+	// reciprocate; the rest get invites from a sender alias their thread
+	// doesn't use and silently drop." Inviting per-alias covers all peer-
+	// thread-to-alias mappings.
+	senders := c.allHandles
+	if len(senders) == 0 {
+		senders = []string{c.handle}
+	}
 	var okCount, failCount, timeoutCount int
 	nowStr := now.Format(time.RFC3339)
 
@@ -1072,34 +1083,51 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 	const perInviteTimeout = 30 * time.Second
 
 	for i, h := range pending {
-		inviteDone := make(chan error, 1)
-		go func(handle string) {
-			inviteDone <- c.client.InviteToStatusSharing(sender, []string{handle})
-		}(h)
+		var perHandleOk bool
+		for senderIdx, senderAlias := range senders {
+			inviteDone := make(chan error, 1)
+			go func(senderAlias, handle string) {
+				inviteDone <- c.client.InviteToStatusSharing(senderAlias, []string{handle})
+			}(senderAlias, h)
 
-		select {
-		case err := <-inviteDone:
-			if err != nil {
-				failCount++
-				log.Warn().Err(err).Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: failed for handle")
-			} else {
-				okCount++
-				// Write both keys:
-				// - invited_ok: one-shot latch, never re-invite this peer
-				// - last_invite: periodic-tick spacing timestamp (no effect
-				//   because invited_ok is checked first, but harmless and
-				//   useful for debug timelines)
-				c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+h), nowStr)
-				c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+h), nowStr)
-				log.Info().Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: ok for handle")
-				log.Info().Str("handle", h).Msg("StatusKit: latch set on dispatch — relies on 4h retry if peer doesn't reciprocate")
+			select {
+			case err := <-inviteDone:
+				if err != nil {
+					failCount++
+					log.Warn().Err(err).Str("sender", senderAlias).Str("handle", h).Int("alias_idx", senderIdx+1).Int("alias_total", len(senders)).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: failed for handle from this alias")
+				} else {
+					okCount++
+					perHandleOk = true
+					log.Info().Str("sender", senderAlias).Str("handle", h).Int("alias_idx", senderIdx+1).Int("alias_total", len(senders)).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: ok from this alias")
+				}
+			case <-time.After(perInviteTimeout):
+				timeoutCount++
+				log.Warn().Str("sender", senderAlias).Str("handle", h).Int("alias_idx", senderIdx+1).Int("alias_total", len(senders)).Int("i", i+1).Int("total", len(pending)).Dur("timeout", perInviteTimeout).Msg("StatusKit invite: timed out for handle from this alias — moving on")
+			case <-c.stopChan:
+				log.Info().Int("done", i).Int("total", len(pending)).Msg("StatusKit invite: bridge stopping, aborting sweep")
+				return
 			}
-		case <-time.After(perInviteTimeout):
-			timeoutCount++
-			log.Warn().Str("sender", sender).Str("handle", h).Int("i", i+1).Int("total", len(pending)).Dur("timeout", perInviteTimeout).Msg("StatusKit invite: timed out for handle — abandoning this handle, continuing sweep")
-		case <-c.stopChan:
-			log.Info().Int("done", i).Int("total", len(pending)).Msg("StatusKit invite: bridge stopping, aborting sweep")
-			return
+
+			// Pace between aliases for the same peer. Same delay as
+			// between peers — keeps total IDS-msg rate identical to the
+			// pre-multi-alias path on a per-rate-limit-window basis.
+			if senderIdx < len(senders)-1 {
+				select {
+				case <-time.After(statusKitInterInviteDelay):
+				case <-c.stopChan:
+					log.Info().Int("done", i).Int("total", len(pending)).Msg("StatusKit invite: bridge stopping, aborting sweep")
+					return
+				}
+			}
+		}
+
+		if perHandleOk {
+			// Write both keys:
+			// - invited_ok: latch (TTL-checked, allows soft-expire re-invite)
+			// - last_invite: periodic-tick spacing timestamp
+			c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+h), nowStr)
+			c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+h), nowStr)
+			log.Info().Str("handle", h).Msg("StatusKit: latch set on dispatch (at least one alias succeeded) — relies on TTL retry if peer doesn't reciprocate")
 		}
 
 		// Skip the delay after the last handle.
@@ -1112,7 +1140,7 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 			}
 		}
 	}
-	log.Info().Int("pending", len(pending)).Int("ok", okCount).Int("failed", failCount).Int("timed_out", timeoutCount).Str("sender", sender).Msg("Sent StatusKit key invites one-per-handle (pending-only, paced)")
+	log.Info().Int("pending", len(pending)).Int("alias_count", len(senders)).Int("ok", okCount).Int("failed", failCount).Int("timed_out", timeoutCount).Msg("Sent StatusKit key invites multi-alias (pending-only, paced)")
 }
 
 func (c *IMClient) refreshGhostNamesFromContacts(log zerolog.Logger) {
