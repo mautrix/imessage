@@ -24,13 +24,18 @@
 //!   CD_ReceivedInvitation (the one we care about):
 //!     CD_senderHandle               string         peer handle (mailto:/tel:)
 //!     CD_invitationIdentifier       string         invite UUID
-//!     CD_invitationPayload          encrypted_bytes  ← THE PCS-PROTECTED PAYLOAD
+//!     CD_invitationPayload          encrypted_bytes  placeholder bplist `{"a":[]}`
+//!                                                    on every record observed —
+//!                                                    NOT the key-bearing field
 //!     CD_channel                    string         FK → CD_Channel.record_id
 //!     CD_statusTypeIdentifier       string         "com.apple.focus.status"
 //!     CD_dateInvitationCreated      date
 //!     CD_invitedHandle              string         our handle
 //!     CD_entityName                 string
-//!     CD_incomingRatchetState       encrypted_bytes  (separate ratchet — not used for keysharing)
+//!     CD_incomingRatchetState       encrypted_bytes  ← THE PCS-PROTECTED PAYLOAD
+//!                                                    (raw SharedMessage protobuf:
+//!                                                    SharedKeys with peer pub_bytes
+//!                                                    + sigKey for the channel)
 //!
 //!   CD_Channel:
 //!     CD_channelType                int64
@@ -50,17 +55,18 @@
 //!   2. Decrypt `CD_senderHandle` (encrypted STRING_TYPE → plaintext is an
 //!      `EncryptedValue` proto wrapping the actual string).
 //!   3. Decrypt `CD_channel` (same shape — gives the CD_Channel record_id).
-//!   4. Decrypt `CD_invitationPayload` (ENCRYPTED_BYTES_TYPE → raw bytes).
-//!   5. Decode payload as a bare `SharedMessage` protobuf. NSPersistent-
-//!      CloudKitContainer splits sender/channel/etc. into their own Core
-//!      Data fields, so the inner payload only carries the cryptographic
-//!      material — it is **not** the IDS-format
-//!      `StatusKitRawSharedDevice` plist (that shape is wire-only for cmd
-//!      224/225 reshares).
-//!   6. Look up the channel base64 id via the CD_Channel.CD_identifier map
+//!   4. Decrypt `CD_incomingRatchetState` (ENCRYPTED_BYTES_TYPE → raw bytes
+//!      of a bare `SharedMessage` protobuf). NSPersistentCloudKitContainer
+//!      splits sender/channel/etc. into their own Core Data fields, so the
+//!      ratchet-state field carries only the cryptographic material — it
+//!      is **not** the IDS-format `StatusKitRawSharedDevice` plist (that
+//!      shape is wire-only for cmd 224/225 reshares). The differently-
+//!      named `CD_invitationPayload` is a placeholder bplist `{"a":[]}` on
+//!      every record observed; it does NOT carry the keys.
+//!   5. Look up the channel base64 id via the CD_Channel.CD_identifier map
 //!      built from the same fetch (each CD_Channel needs its own per-record
 //!      PCS encryptor because they each carry their own `protection_info`).
-//!   7. Reconstruct `StatusKitSharedDevice` via plist serialization
+//!   6. Reconstruct `StatusKitSharedDevice` via plist serialization
 //!      round-trip (sender + sigKey-as-DER + protobuf-encoded SharedKey
 //!      blobs + empty StatusKitPersonalConfig).
 //!
@@ -885,11 +891,16 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         return Ok(None);
     }
 
-    // Decrypt the three fields through the encryptor. CD_senderHandle and
-    // CD_channel are encrypted strings (type=STRING_TYPE, is_encrypted=true,
-    // ciphertext in bytes_value, plaintext is an EncryptedValue proto whose
-    // string_value is the actual string). CD_invitationPayload is
-    // ENCRYPTED_BYTES_TYPE — raw bytes after decrypt.
+    // Decrypt the load-bearing fields through the encryptor.
+    // - CD_senderHandle / CD_channel: encrypted STRING_TYPE (is_encrypted,
+    //   ciphertext in bytes_value, plaintext is an EncryptedValue proto
+    //   whose string_value is the actual string).
+    // - CD_incomingRatchetState: ENCRYPTED_BYTES_TYPE; the plaintext is a
+    //   raw `SharedMessage` protobuf carrying the peer's `sigKey` and
+    //   `keys[].pub_bytes`. This is the field NSPersistentCloudKitContainer
+    //   actually populates with key material — `CD_invitationPayload`
+    //   turned out to be a placeholder bplist `{"a":[]}` on every record
+    //   we observed.
     let sender_handle = match decrypt_string_field(rec, "CD_senderHandle", &encryptor) {
         Some(s) => s,
         None => return Err("decrypt CD_senderHandle returned None".into()),
@@ -898,25 +909,17 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         Some(s) => s,
         None => return Err("decrypt CD_channel returned None".into()),
     };
-    let plaintext = match decrypt_bytes_field(rec, "CD_invitationPayload", &encryptor) {
+    let plaintext = match decrypt_bytes_field(rec, "CD_incomingRatchetState", &encryptor) {
         Some(b) => b,
-        None => return Err("decrypt CD_invitationPayload returned None".into()),
+        None => return Err("decrypt CD_incomingRatchetState returned None".into()),
     };
     info!(
-        "StatusKit-CloudKit decode: PCS-decrypted record sender='{}' channel_fk='{}' payload_bytes={} payload_hex={}",
+        "StatusKit-CloudKit decode: PCS-decrypted record sender='{}' channel_fk='{}' ratchet_bytes={}",
         sender_handle,
         channel_fk,
-        plaintext.len(),
-        plaintext.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        plaintext.len()
     );
 
-    // CloudKit stores `CD_invitationPayload` as a raw `SharedMessage`
-    // protobuf — NOT the IDS-format `StatusKitRawSharedDevice` plist
-    // (that's only the wire shape for cmd 224 reshares). NSPersistentCloud-
-    // KitContainer pulls sender/channel/etc. out into separate Core Data
-    // columns, so the inner payload only carries the cryptographic
-    // material. Observed sizes (42/49/97 bytes) are consistent with a bare
-    // SharedMessage, not a multi-base64-string plist.
     let share_message = SharedMessage::decode(Cursor::new(&plaintext))
         .map_err(|e| format!("SharedMessage::decode failed: {:?}", e))?;
 
