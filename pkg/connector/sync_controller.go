@@ -1115,6 +1115,96 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 	log.Info().Int("pending", len(pending)).Int("ok", okCount).Int("failed", failCount).Int("timed_out", timeoutCount).Str("sender", sender).Msg("Sent StatusKit key invites one-per-handle (pending-only, paced)")
 }
 
+// inviteSingleHandleToStatusSharing dispatches a StatusKit keysharing invite
+// to one peer handle without iterating the full portal sweep. Wired from the
+// new-portal-creation hook in client.go GetChatInfo so a contact who messages
+// the bridge for the first time mid-uptime gets our key immediately instead
+// of waiting up to 4h for the periodic tick. Mirrors OB's setActiveChat
+// trigger (chat_manager.dart:64-78) — OB invites on chat-open; the bridge's
+// non-UI analog is "portal materialized for the first time."
+//
+// Applies the same skip checks as the sweep: not-ready guard, self-alias,
+// group portal, peer-already-keyed, dispatch-latch (with reshare-seen and
+// TTL semantics). Same 30s per-invite timeout. KV updates on success match
+// the sweep so the periodic tick correctly skips this handle next.
+func (c *IMClient) inviteSingleHandleToStatusSharing(log zerolog.Logger, handle string) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn().Interface("panic", r).Msg("inviteSingleHandleToStatusSharing panicked — skipped")
+		}
+	}()
+
+	if c.client == nil || c.handle == "" {
+		return
+	}
+	if handle == "" || isGroupPortalID(handle) {
+		return
+	}
+	if handle == c.handle {
+		return
+	}
+	for _, h := range c.allHandles {
+		if h == handle {
+			return
+		}
+	}
+
+	ctx := context.Background()
+
+	if sk, skErr := c.client.GetStatuskitClient(); skErr == nil && sk != nil {
+		for _, known := range sk.GetKnownHandles() {
+			if known == handle {
+				log.Debug().Str("handle", handle).Msg("StatusKit invite (new portal): peer already keyed; skipping")
+				return
+			}
+		}
+	}
+
+	now := time.Now()
+	latchedAt := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitInvitedOkKeyPrefix+handle))
+	if latchedAt != "" {
+		reshareSeen := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitReshareSeenKeyPrefix+handle)) != ""
+		if !reshareSeen {
+			if normalized := normalizeIdentifierForPortalID(handle); normalized != handle {
+				reshareSeen = c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitReshareSeenKeyPrefix+normalized)) != ""
+			}
+		}
+		if reshareSeen {
+			log.Debug().Str("handle", handle).Msg("StatusKit invite (new portal): reshare already seen; skipping")
+			return
+		}
+		if ts, parseErr := time.Parse(time.RFC3339, latchedAt); parseErr == nil && now.Sub(ts) < statusKitInvitedOkTTL {
+			log.Debug().Str("handle", handle).Time("latched_at", ts).Msg("StatusKit invite (new portal): dispatch latch within TTL; skipping")
+			return
+		}
+	}
+
+	sender := c.handle
+	log.Info().Str("sender", sender).Str("handle", handle).Msg("StatusKit invite (new portal): dispatching")
+
+	const perInviteTimeout = 30 * time.Second
+	inviteDone := make(chan error, 1)
+	go func() {
+		inviteDone <- c.client.InviteToStatusSharing(sender, []string{handle})
+	}()
+
+	select {
+	case err := <-inviteDone:
+		if err != nil {
+			log.Warn().Err(err).Str("sender", sender).Str("handle", handle).Msg("StatusKit invite (new portal): failed")
+			return
+		}
+		nowStr := now.Format(time.RFC3339)
+		c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitInvitedOkKeyPrefix+handle), nowStr)
+		c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitLastInviteKeyPrefix+handle), nowStr)
+		log.Info().Str("sender", sender).Str("handle", handle).Msg("StatusKit invite (new portal): ok")
+	case <-time.After(perInviteTimeout):
+		log.Warn().Str("sender", sender).Str("handle", handle).Dur("timeout", perInviteTimeout).Msg("StatusKit invite (new portal): timed out — abandoning")
+	case <-c.stopChan:
+		return
+	}
+}
+
 func (c *IMClient) refreshGhostNamesFromContacts(log zerolog.Logger) {
 	if c.contacts == nil {
 		return

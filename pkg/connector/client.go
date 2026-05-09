@@ -6243,6 +6243,26 @@ func (c *IMClient) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*b
 		// display name, which auto-updates when contacts are edited.
 		chatInfo.Members = members
 
+		// New-portal-creation StatusKit invite hook. When bridgev2 materializes
+		// a fresh DM portal mid-uptime (incoming iMessage from a contact whose
+		// 1:1 portal didn't exist yet), fire a single-handle invite immediately
+		// so the peer gets our key without waiting up to 4h for the periodic
+		// tick. subscribeAfterInit only catches portals that existed at connect
+		// time; the post-backfill hook (onForwardBackfillDone) only fires once
+		// at initial bootstrap. Without this hook, mid-uptime new peers had no
+		// automatic invite path between sweeps.
+		//
+		// Mirrors OB's setActiveChat trigger (chat_manager.dart:64-78). OB
+		// invites on chat-open; the bridge's non-UI analog is "portal
+		// materialized for the first time." MXID empty distinguishes a brand
+		// new portal from a refresh of an existing one. Self-chat skipped
+		// (peer == self). Helper applies the same latch / known-keys / spacing
+		// guards as the periodic sweep.
+		if !isSelfChat && portal.MXID == "" {
+			statuskitLog := c.Main.Bridge.Log.With().Str("hook", "new-portal-statuskit").Str("portal_id", portalID).Logger()
+			go c.inviteSingleHandleToStatusSharing(statuskitLog, portalID)
+		}
+
 		// Persist IsSms so CloudKit-created portals (no suffix, no live APNs
 		// message yet) survive restarts. Mirrors the group ExtraUpdates pattern.
 		isSms := c.isPortalSMS(portalID)
