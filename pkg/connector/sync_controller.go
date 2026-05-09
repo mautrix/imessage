@@ -1074,6 +1074,16 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 	for i, h := range pending {
 		inviteDone := make(chan error, 1)
 		go func(handle string) {
+			// Per-handle panic isolation: a panic inside the FFI must not
+			// crash the bridge or leave the parent select waiting forever
+			// (the channel is unbuffered enough that a missed send hangs
+			// until the 30s timeout and burns one slot of pacing). Convert
+			// to an error so the loop logs and moves on.
+			defer func() {
+				if r := recover(); r != nil {
+					inviteDone <- fmt.Errorf("InviteToStatusSharing panicked: %v\n%s", r, debug.Stack())
+				}
+			}()
 			inviteDone <- c.client.InviteToStatusSharing(sender, []string{handle})
 		}(h)
 
@@ -1185,6 +1195,13 @@ func (c *IMClient) inviteSingleHandleToStatusSharing(log zerolog.Logger, handle 
 	const perInviteTimeout = 30 * time.Second
 	inviteDone := make(chan error, 1)
 	go func() {
+		// Per-handle panic isolation — same shape as the sweep's loop
+		// goroutine. A panic inside the FFI must not crash the bridge.
+		defer func() {
+			if r := recover(); r != nil {
+				inviteDone <- fmt.Errorf("InviteToStatusSharing panicked: %v\n%s", r, debug.Stack())
+			}
+		}()
 		inviteDone <- c.client.InviteToStatusSharing(sender, []string{handle})
 	}()
 
