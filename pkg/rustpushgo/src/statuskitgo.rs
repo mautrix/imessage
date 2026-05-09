@@ -38,14 +38,23 @@ pub async fn invite_keysharing<T: AnisetteProvider + Send + Sync + 'static>(
 ) -> Result<usize, PushError> {
     // OB chat-open step 1: weak-flag madrid IDS query. Matches
     // `validate_targets("com.apple.madrid", participants, ensureHandle())`
-    // at chat_manager.dart:68. The semantic signal to peer iOS is that this
-    // sender just looked up your iMessage keys — the same evidence-of-active-
-    // conversation peer iOS appears to evaluate when deciding whether to
-    // reshare keysharing unprompted.
+    // at chat_manager.dart:67-68, where `participants` is the chat's
+    // ConversationData.participants list — which `chat.dart:1075-1080`
+    // explicitly populates as `getRustHandlesExcludingMine() + [ensureHandle()]`.
+    // i.e. peer URIs PLUS self. Self-inclusion is load-bearing: it routes
+    // through the same `cache_keys_once` 6005-triggered refresh path
+    // (identity_manager.rs:691-700) so the bridge's IDS registration
+    // gets re-affirmed to Apple immediately before each invite when stale,
+    // and the wire-format query Apple receives includes both URIs which
+    // reads as a "I'm in an active conversation with this peer" signal
+    // rather than a bare key lookup.
+    let mut madrid_participants: Vec<String> =
+        handles.iter().cloned().collect();
+    madrid_participants.push(sender_handle.to_string());
     sk.identity
         .cache_keys(
             MADRID_TOPIC,
-            handles,
+            &madrid_participants,
             sender_handle,
             false,
             &QueryOptions {
