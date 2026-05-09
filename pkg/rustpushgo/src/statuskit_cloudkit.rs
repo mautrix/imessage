@@ -284,10 +284,21 @@ impl Client {
                 }
                 Ok(None) => {}
                 Err(e) => {
+                    // Cached-path Apple-side error. Surface as a real
+                    // FFI error so the Go-side inter-pass backoff fires
+                    // (failure backoff + retry-after honoring) rather
+                    // than recording this as a clean no-records pass
+                    // that would apply the 12h success floor.
                     info!(
-                        "StatusKit-CloudKit pass: candidate[{}] fetch error: {}",
+                        "StatusKit-CloudKit pass: candidate[{}] aborting due to cached-path error: {}",
                         idx, e
                     );
+                    return Err(WrappedError::GenericError {
+                        msg: format!(
+                            "StatusKit-CloudKit cached-path failed (idx={}): {}",
+                            idx, e
+                        ),
+                    });
                 }
             }
         }
@@ -448,6 +459,22 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
                 "StatusKit-CloudKit fetch: container='{}' DOSYNC-{}: {:?}",
                 label, cls, e
             );
+            // Zone-list error against a cached path is an Apple-side
+            // back-off signal (rate-limit, trust eject, transient
+            // server error). Propagate so the Go-side gate applies
+            // failure backoff (15m → 30m → 1h → 2h, retry-after
+            // honoring) instead of treating this as a clean empty
+            // pass that would apply the 12h success floor and clear
+            // the cached zone (forcing fresh-discovery next pass —
+            // the burstiest pattern). In discovery mode (no
+            // cached_zone_name) the outer loop's next-candidate
+            // fallback is the right behavior, so still Ok(None).
+            if cached_zone_name.is_some() {
+                return Err(format!(
+                    "DOSYNC-{} on cached container '{}': {:?}",
+                    cls, label, e
+                ));
+            }
             return Ok(None);
         }
     };
@@ -519,6 +546,17 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
                     "StatusKit-CloudKit fetch: container='{}' zone='{}' FETCH-{}: {:?}",
                     label, zname, cls, e
                 );
+                // Fetch error on the cached zone is an Apple-side
+                // back-off signal — propagate so the Go-side gate
+                // applies failure backoff. Errors against discovery
+                // candidates (non-cached zones) still fall through
+                // to the next zone in the list.
+                if is_cached_zone {
+                    return Err(format!(
+                        "FETCH-{} on cached zone '{}' (container '{}'): {:?}",
+                        cls, zname, label, e
+                    ));
+                }
             }
         }
     }
