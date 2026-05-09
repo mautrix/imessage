@@ -715,6 +715,32 @@ func (c *IMClient) onForwardBackfillDone() {
 		// per-handle invite is idempotent on peer's side (re-delivery just
 		// hits the server-side retry loop).
 		go c.inviteContactsToStatusSharing(log.Logger)
+
+		// StatusKit-CloudKit drain: the cloud-sync controller's three
+		// delayed re-syncs (15s/75s/4m15s after bootstrap) all fire well
+		// before forward backfill completes on accounts with substantial
+		// history — backfill regularly takes 20+ minutes. Without an
+		// explicit post-backfill trigger, syncCloudStatusKitPeers' internal
+		// settle-window gate would skip every delayed re-sync and the next
+		// trigger wouldn't arrive until the next bridge restart, leaving
+		// peer keys un-pulled.
+		//
+		// Sleep slightly longer than the gate's settle window so when the
+		// gate runs it definitely sees ">60s elapsed since backfill done".
+		// On warm restart with a fast/empty backfill, the 12h success floor
+		// will short-circuit the call — no redundant CKKS round-trip.
+		go func() {
+			select {
+			case <-time.After(75 * time.Second):
+			case <-c.stopChan:
+				return
+			}
+			ctx := context.Background()
+			skLog := c.UserLogin.Log.With().Str("component", "cloud_sync").Str("source", "post_backfill").Logger()
+			if err := c.syncCloudStatusKitPeers(ctx, skLog); err != nil {
+				skLog.Info().Err(err).Msg("StatusKit-CloudKit post-backfill pass: errored (continuing)")
+			}
+		}()
 	}
 }
 
