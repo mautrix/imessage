@@ -1737,24 +1737,32 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 			}
 
 			// Anchor each notice 1ms before the last real iMessage so room
-			// ordering does NOT jump on passive status updates. This is
-			// always preferred over `now - 1ms`, no matter how old the
-			// last message is — pinning the notice to a stale timestamp
-			// is fine, what matters is that the room isn't bumped to the
-			// top every time a contact toggles Focus mode.
+			// ordering does NOT jump on passive status updates. Pinning
+			// the notice to a stale timestamp is fine; what matters is
+			// that the room isn't bumped to the top every time a contact
+			// toggles Focus mode.
 			//
-			// Only fall back to `now - 1ms` if the room has literally no
-			// prior message at all (newly-created portal). Even then we
-			// avoid the present moment to keep behavior consistent.
-			noticeTS := time.Now().Add(-1 * time.Millisecond)
-			if lastMsg, dbErr := c.Main.Bridge.DB.Message.GetLastNonFakePartAtOrBeforeTime(
+			// If the portal has no prior message (freshly-created portal,
+			// or initial backfill hasn't loaded its messages yet), SKIP
+			// the notice entirely. The previous `now - 1ms` fallback
+			// scrambled chat order during initial backfill: many portals
+			// existed without backfilled messages, and presence broadcasts
+			// arriving for them all stamped at "now" simultaneously bumped
+			// them to the top of the room list in random presence-arrival
+			// order. The next presence broadcast from the same peer (after
+			// backfill completes) will create the notice properly.
+			lastMsg, dbErr := c.Main.Bridge.DB.Message.GetLastNonFakePartAtOrBeforeTime(
 				ctx, targetPortal.PortalKey, time.Now(),
-			); dbErr != nil {
+			)
+			if dbErr != nil {
 				log.Warn().Err(dbErr).Str("portal_id", string(targetPortal.ID)).
-					Msg("StatusKit: failed to query last message timestamp, using now-1ms")
-			} else if lastMsg != nil && !lastMsg.Timestamp.IsZero() {
-				noticeTS = lastMsg.Timestamp.Add(-1 * time.Millisecond)
+					Msg("StatusKit: failed to query last message timestamp, skipping notice")
+				return nil
 			}
+			if lastMsg == nil || lastMsg.Timestamp.IsZero() {
+				return nil
+			}
+			noticeTS := lastMsg.Timestamp.Add(-1 * time.Millisecond)
 
 			if c.Main.Bridge.Matrix.GetCapabilities().BatchSending {
 				batchEvt := &event.Event{
