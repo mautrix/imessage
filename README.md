@@ -541,8 +541,8 @@ cmd/
   │     ├── setup_darwin.go                 #   macOS chat.db permission dialogs
   │     └── setup_other.go                  #   non-Darwin stubs (no-ops)
   └── bbctl/                                # Beeper bridge-manager CLI — companion tool that talks to Beeper's
-                                            # API to register / auth / stop / delete this bridge in Beeper infra.
-                                            # Built into a separate `bbctl` binary alongside the bridge.
+        │                                   # API to register / auth / stop / delete this bridge in Beeper infra.
+        │                                   # Built into a separate `bbctl` binary alongside the bridge.
         ├── main.go                         #   CLI entrypoint — sets up the app and dispatches subcommands
         ├── register.go                     #   `register` — provisions a new Beeper bridge + writes default config
         ├── auth.go                         #   `auth` — logs into the Beeper API and persists credentials
