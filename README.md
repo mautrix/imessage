@@ -533,37 +533,165 @@ make clean      # Remove build artifacts
 ### Source layout
 
 ```
-cmd/mautrix-imessage/        # Entrypoint + carddav-setup subcommand
-pkg/connector/               # bridgev2 connector
-  ├── connector.go           #   bridge lifecycle + platform detection
-  ├── client.go              #   send/receive/reactions/edits/typing
-  ├── login.go               #   Apple ID + external key login flows
-  ├── commands.go            #   start-chat, logout, restore-chat, msg-debug, …
-  ├── facetime.go            #   FaceTime web-join + call control
-  ├── statuskit_commands.go  #   StatusKit (Focus / DND) commands
-  ├── sharedstreams.go       #   iCloud Shared Albums commands + sync
-  ├── shared_profile.go      #   Name & Photo Sharing fallback
-  ├── external_carddav.go    #   External CardDAV contact resolution
-  ├── carddav_crypto.go      #   App-password encryption for carddav config
-  ├── heic.go                #   HEIC → JPEG conversion
-  ├── audioconvert.go        #   Audio remux to M4A/CAF
-  ├── chatdb.go              #   chat.db backfill + contacts (macOS)
-  ├── ids.go                 #   identifier/portal ID conversion
-  ├── capabilities.go        #   supported features
-  └── config.go              #   bridge config schema
-pkg/rustpushgo/              # Rust FFI wrapper (uniffi)
+cmd/
+  ├── mautrix-imessage/                     # Bridge entrypoint
+  │     ├── main.go                         #   process bootstrap, config load, command registration
+  │     ├── login_cli.go                    #   interactive Matrix login prompts
+  │     ├── carddav_setup.go                #   `carddav-setup` subcommand — URL discovery + password encrypt
+  │     ├── setup_darwin.go                 #   macOS chat.db permission dialogs
+  │     └── setup_other.go                  #   non-Darwin stubs (no-op)
+  └── bbctl/                                # Beeper bridge-manager CLI (built alongside the bridge)
+        ├── main.go                         #   urfave/cli entrypoint for register/auth/stop/delete
+        ├── register.go                     #   provisions a Beeper bridge and writes default config
+        ├── auth.go                         #   logs into the Beeper API and persists credentials
+        ├── stop.go                         #   marks the bridge offline before teardown
+        └── delete.go                       #   removes the bridge from the Beeper cluster
+
+pkg/connector/                              # bridgev2 connector — the main Go bridge package
+  ├── connector.go                          #   bridge lifecycle + platform detection
+  ├── client.go                             #   send/receive/reactions/edits/typing
+  ├── login.go                              #   Apple ID + external-key login flows
+  ├── commands.go                           #   `start-chat`, `logout`, `restore-chat`, `msg-debug`, …
+  ├── command_contacts.go                   #   `contacts` command — search + iMessage validation
+  ├── facetime.go                           #   FaceTime web-join + call control
+  ├── statuskit_commands.go                 #   StatusKit (Focus / DND) commands
+  ├── sharedstreams.go                      #   iCloud Shared Albums commands + sync
+  ├── shared_profile.go                     #   Name & Photo Sharing fallback
+  ├── external_carddav.go                   #   external CardDAV contact resolution
+  ├── carddav_crypto.go                     #   app-password encryption for carddav config
+  ├── cloud_contacts.go                     #   iCloud CardDAV contact sync (DSID + mmeAuthToken)
+  ├── contacts_local_darwin.go              #   macOS Contacts framework lookups
+  ├── contacts_local_other.go               #   non-Darwin stub
+  ├── contact_merge.go                      #   dedupes portals across multiple handles per contact
+  ├── chatdb.go                             #   chat.db backfill + contacts (macOS)
+  ├── chatdb_darwin.go                      #   macOS-only chat.db platform registration
+  ├── permissions_darwin.go                 #   macOS Full Disk Access checks/prompts
+  ├── permissions_other.go                  #   non-Darwin stub
+  ├── bridgeadapter.go                      #   adapter to the legacy `imessage.Bridge` interface
+  ├── identity_store.go                     #   persists APSState / IDSUsers / IDSIdentity
+  ├── group_identity.go                     #   detects group portal IDs from sender + participants
+  ├── ids.go                                #   identifier ↔ portal ID conversion
+  ├── dbmeta.go                             #   portal/ghost/message/login metadata types
+  ├── sync_controller.go                    #   APNs-driven real-time event dispatch
+  ├── ford_cache.go                         #   Ford key cache (cross-batch MMCS dedup)
+  ├── attachment_retrier.go                 #   layer-2 MMCS retry — re-downloads failed attachments
+  ├── pending_attachment_store.go           #   DB-backed queue of attachments awaiting retry
+  ├── cloud_backfill_store.go               #   CloudKit backfill message store + paging
+  ├── recycle_bin_hints.go                  #   recoverable-message metadata for CloudKit recycle bin
+  ├── heic.go                               #   HEIC → JPEG conversion (libheif)
+  ├── audioconvert.go                       #   audio remux to M4A / CAF
+  ├── urlpreview.go                         #   OpenGraph / Twitter Card URL-preview extractor
+  ├── util.go                               #   phone normalization + group-key helpers
+  ├── capabilities.go                       #   advertised feature set
+  ├── config.go                             #   bridge config schema (YAML + `upgradeConfig` helper)
+  ├── example-config.yaml                   #   default config template
+  └── *_test.go                             #   unit tests (audioconvert, capabilities, carddav_crypto,
+                                            #   cloud_backfill_store, config, dbmeta, external_carddav,
+                                            #   ford_cache, ids, util)
+
+pkg/rustpushgo/                             # Rust FFI wrapper (uniffi → cgo)
+  ├── src/lib.rs                            #   FFI surface — login / send / receive / CloudKit / Ford
+  ├── src/anisette.rs                       #   Linux remote-anisette-v3 wrapper (panic/timeout guards)
+  ├── src/local_config.rs                   #   macOS LocalMacOSConfig (IOKit → MacOSConfig + native NAC)
+  ├── src/statuskitgo.rs                    #   StatusKit invite-to-channel wrapper
+  ├── src/util.rs                           #   plist serde helpers
+  ├── src/test_hwinfo.rs                    #   hardware-info FFI smoke test
+  ├── src/hardware_info.{h,m}               #   Objective-C IOKit hardware reader (macOS)
+  ├── rustpushgo.go                         #   uniffi-generated Go bindings (post-`patch_bindings.sh`)
+  ├── rustpushgo.{c,h}                      #   C shim consumed by the Go bindings
+  ├── Cargo.toml                            #   crate manifest + feature flags (hardware-key, avid-download)
+  └── build.rs                              #   uniffi codegen + Objective-C cc shim build
+
 rustpush/
-  └── open-absinthe/         # NAC emulator overlay (unicorn-engine, in-tree)
-      └── src/bin/enrich_hw_key  # Enrich Intel keys missing _enc fields (x86_64 Linux CLI)
+  ├── open-absinthe/                        # NAC emulator overlay (overlaid on upstream during build)
+  │     ├── src/lib.rs                      #   error types + RelayOSConfig setup
+  │     ├── src/nac.rs                      #   x86_64 XNU emulator (unicorn-engine) + ARM relay path
+  │     ├── src/asm/encrypt.s               #   XNU kernel encrypt routine for IOKit property fields
+  │     └── src/bin/enrich_hw_key.rs        #   CLI to fill missing `_enc` fields on Intel hardware keys
+  └── certs/                                # Apple cert bundles consumed by upstream rustpush at runtime
+
 third_party/
-  └── rustpush-upstream.sha  # Pinned OpenBubbles/rustpush SHA; Makefile clones + overlays open-absinthe
-nac-validation/              # Local NAC via AppleAccount.framework (macOS)
+  ├── rustpush-upstream.sha                 # pinned OpenBubbles/rustpush SHA — Makefile clones + overlays open-absinthe
+  └── rustpush-upstream/                    # checked-out clone (git-ignored — Makefile materializes it)
+
+nac-validation/                             # Local NAC via AppleAccount.framework (macOS-only)
+  ├── src/lib.rs                            #   Rust wrapper exposing `generate_nac_data` over Obj-C
+  ├── src/validation_data.{h,m}             #   AAAbsintheContext bindings
+  └── Cargo.toml + build.rs                 #   crate manifest + cc shim build
+
+imessage/                                   # chat.db reader — used by macOS backfill + contacts
+  ├── interface.go                          #   Bridge / API interfaces consumed by the connector
+  ├── struct.go                             #   message / chat / attachment data types
+  ├── tapback.go                            #   tapback (reaction) parsing
+  └── mac/                                  # macOS-only chat.db backend
+        ├── database.go                     #   opens chat.db, watches for new messages
+        ├── messages.go                     #   message-stream queries with filtering
+        ├── groups.go                       #   group-chat membership queries
+        ├── contacts.go                     #   Contacts framework lookups (display name, etc.)
+        ├── attributedstring.go             #   NSAttributedString blob → styled text
+        ├── send.go                         #   AppleScript send fallback (legacy macOS path)
+        ├── sleepdetect.go                  #   IOKit sleep/wake notifications
+        ├── debug.go                        #   record-dump helpers for debugging
+        ├── meowMemory.{h,m}                #   shared memory helpers for the Obj-C shims
+        ├── meowAttributedString.{h,m}      #   NSAttributedString decoder shim
+        ├── meowContacts.{h,m}              #   Contacts framework shim
+        └── meowSleep.{h,m}                 #   sleep/wake shim
+
+ipc/
+  └── ipc.go                                # JSON-RPC over Unix socket — legacy bridge ↔ client transport
+
 tools/
-  ├── extract-key/           # Hardware key extraction CLI for Intel Macs (Go)
-  ├── extract-key-app/       # Hardware key extraction GUI for Intel Macs (SwiftUI)
-  ├── nac-relay/             # NAC validation relay CLI for Apple Silicon Macs (Go)
-  └── nac-relay-app/         # NAC relay menubar app for Apple Silicon Macs (SwiftUI)
-imessage/                    # macOS chat.db + Contacts reader
+  ├── extract-key/                          # Hardware-key extractor CLI (Intel Macs, Go)
+  │     ├── main.go                         #   reads IOKit identifiers, prints base64 hardware key
+  │     └── build.sh                        #   bootstraps Go locally if needed and builds
+  ├── extract-key-app/                      # Hardware-key extractor GUI (Intel Macs, SwiftUI)
+  │     ├── Package.swift                   #   SwiftPM manifest
+  │     ├── build.sh                        #   builds and packages the .app bundle
+  │     └── Sources/
+  │           ├── ExtractKeyApp/            # Swift UI sources
+  │           │     ├── ExtractKeyApp.swift       #   SwiftUI app entrypoint
+  │           │     ├── ContentView.swift         #   main UI: extraction + enrichment
+  │           │     ├── HardwareExtractor.swift   #   IOKit identifier extraction
+  │           │     ├── Enrichment.swift          #   computes `_enc` fields via XNU encrypt
+  │           │     ├── IOKitHelpers.swift        #   IOKit property readers
+  │           │     ├── SystemInfo.swift          #   MAC / serial / board-id queries
+  │           │     ├── Models.swift              #   ExtractionResult types
+  │           │     └── Compat.swift              #   macOS 10.15 SF-Symbols fallback
+  │           └── CEncrypt/shim.c           #   placeholder; real impl shipped in libxnu_encrypt.a (encrypt.s)
+  ├── nac-relay/                            # NAC validation relay CLI (Apple Silicon Macs, Go)
+  │     ├── main.go                         #   HTTPS server with bearer-token auth → /validation-data
+  │     └── auth.go                         #   self-signed TLS + relay-info.json persistence
+  └── nac-relay-app/                        # NAC relay menubar app (Apple Silicon Macs, SwiftUI)
+        ├── Package.swift                   #   SwiftPM manifest
+        ├── build.sh                        #   builds and packages the .app bundle
+        └── Sources/NACRelayApp/
+              ├── AppDelegate.swift               #   launches bundled `nac-relay`; menubar lifecycle
+              ├── PopoverView.swift               #   status / address / log popover
+              ├── RelayManager.swift              #   nac-relay process supervisor + relay-info.json
+              ├── KeyExtractor.swift              #   hardware-key extraction with relay URL/token embed
+              ├── IOKitHelpers.swift              #   IOKit property readers
+              ├── LoginItemManager.swift          #   Start-at-Login toggle (SMAppService)
+              ├── SystemInfo.swift                #   MAC / serial / board-id queries
+              └── Models.swift                    #   ExtractionResult + RelayInfo types
+
+scripts/
+  ├── install.sh                            # interactive setup — self-hosted bridge (macOS)
+  ├── install-linux.sh                      # interactive setup — self-hosted bridge (Linux)
+  ├── install-beeper.sh                     # interactive setup — Beeper (macOS)
+  ├── install-beeper-linux.sh               # interactive setup — Beeper (Linux)
+  ├── bootstrap-linux.sh                    # installs build deps on Ubuntu/Debian
+  ├── reset-bridge.sh                       # wipes state + Beeper deregistration (with prompts)
+  ├── patch_bindings.py                     # patches uniffi-generated Go bindings for Go 1.24+ cgo types
+  └── patch_bindings.sh                     # shell wrapper around `patch_bindings.py`
+
+docs/
+  ├── apple-auth-research.md                # token lifecycle, refresh, persistence
+  ├── cloudkit-guide.md                     # CloudKit backfill architecture and rationale
+  └── group-id-research.md                  # group-chat identity model + duplicate-portal analysis
+
+dev/
+  ├── windows-bindings.bat                  # Windows equivalent of `make bindings` (MSVC)
+  └── windows-dev-env.bat                   # MSVC toolchain + SDK setup for Windows dev
 ```
 
 ## Chat With Us
