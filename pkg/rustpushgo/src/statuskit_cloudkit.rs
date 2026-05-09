@@ -78,13 +78,12 @@ use openssl::{
 use plist::Value as PlistValue;
 use prost::Message;
 use rustpush::{
-    cloud_messages::MESSAGES_SERVICE,
     cloudkit::{
         pcs_keys_for_record, CloudKitContainer, CloudKitOpenContainer, CloudKitSession,
         FetchRecordChangesOperation, FetchZoneChangesOperation, NO_ASSETS,
     },
     cloudkit_proto::{self, record::field::value::Type as FieldType, CloudKitEncryptor},
-    pcs::PCSShareProtection,
+    pcs::{PCSService, PCSShareProtection},
     statuskit::{
         statuskitp::{SharedKey, SharedMessage},
         StatusKitSharedDevice,
@@ -93,6 +92,32 @@ use rustpush::{
 use serde::{Deserialize, Serialize};
 
 use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
+
+/// PCS service constants for the StatusKit zone, transcribed verbatim from
+/// `/System/Library/Preferences/ProtectedCloudStorage/Identities/com.apple.statuskit.plist`
+/// on macOS:
+///
+///   ServiceName    = "com.apple.statuskit"
+///   ServiceNumber  = 200
+///   ViewHint       = "LimitedPeersAllowed"
+///   Manatee        = true                   → zone = "Manatee"
+///   Classic7       = false                  → v2 = true
+///
+/// Cross-checked against rustpush's existing FIND_MY_SERVICE constants
+/// (which derive from /System/Library/Preferences/ProtectedCloudStorage/
+/// Identities/com.apple.icloud.searchparty.plist with the same shape).
+/// Without these, get_zone_encryption_config returns ShareKeyNotFound
+/// because we'd be syncing the wrong keychain view ("Engram" instead of
+/// "Manatee") and looking up the wrong service key id.
+const STATUSKIT_SERVICE: PCSService = PCSService {
+    name: "com.apple.statuskit",
+    view_hint: "LimitedPeersAllowed",
+    zone: "Manatee",
+    r#type: 200,
+    keychain_type: 200,
+    v2: true,
+    global_record: false,
+};
 
 /// Candidate CloudKit containers, ordered by likelihood. Index encoded in
 /// the cached_zone string so subsequent passes skip discovery.
@@ -679,13 +704,13 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
     // Build the PCS encryptor for this record. All three fields decrypt
     // through this single encryptor.
     let zone_key = match opened
-        .get_zone_encryption_config(&zone_id, &cm.keychain, &MESSAGES_SERVICE)
+        .get_zone_encryption_config(&zone_id, &cm.keychain, &STATUSKIT_SERVICE)
         .await
     {
         Ok(k) => k,
         Err(e) => {
             return Err(format!(
-                "get_zone_encryption_config(MESSAGES_SERVICE) failed — likely a different PCS service is needed for StatusKit: {:?}",
+                "get_zone_encryption_config(STATUSKIT_SERVICE) failed: {:?}",
                 e
             ));
         }
@@ -809,7 +834,7 @@ async fn decrypt_with_keychain_fallback<P: omnisette::AnisetteProvider>(
     let record_protection = PCSShareProtection::from_protection_info(protection);
     let keychain_state = cm.keychain.state.read().await;
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        record_protection.decrypt_with_keychain(&keychain_state, &MESSAGES_SERVICE, false)
+        record_protection.decrypt_with_keychain(&keychain_state, &STATUSKIT_SERVICE, false)
     }));
     match result {
         Ok(Ok((pcs_keys, _))) => {
