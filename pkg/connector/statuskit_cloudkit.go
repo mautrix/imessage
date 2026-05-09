@@ -338,88 +338,149 @@ func (c *IMClient) syncCloudStatusKitPeers(ctx context.Context, log zerolog.Logg
 		}
 	}()
 
-	page, err := safeFFICall("CloudSyncStatuskitPeers", func() (rustpushgo.CloudSyncStatusKitPage, error) {
-		return c.client.CloudSyncStatuskitPeers(cachedZone, sinceToken)
-	})
-	if err != nil {
-		ffiErr = err
-		hint := extractRetryAfterHint(err)
-		nextErrs := meta.ConsecutiveErrs + 1
-		nextMeta := statusKitPassMeta{LastAttempt: attemptStart, ConsecutiveErrs: nextErrs}
-		log.Info().
-			Err(err).
-			Int("consecutive_errors", nextErrs).
-			Dur("retry_after_hint", hint).
-			Time("next_allowed", nextMeta.nextAllowedAt(hint)).
-			Msg("StatusKit-CloudKit pass: FFI returned error — applying inter-pass backoff")
-		return fmt.Errorf("CloudSyncStatuskitPeers: %w", err)
-	}
+	// Drain all pages within this single pass. Each FFI call returns one
+	// page with at most one Apple-side fetch round-trip; the continuation
+	// token in the response tells us whether more pages exist. Looping
+	// here means a single bootstrap pass ingests every available record
+	// instead of stranding pages behind the 12h success floor (the
+	// chat/message backfill paths get hit hundreds of times per session
+	// so they drain naturally; StatusKit doesn't, and architecturally
+	// pretending it does was the bug).
+	//
+	// Safety cap of 30 pages with a 1s pause between iterations keeps
+	// the per-pass CKKS round-trip count bounded even if Apple keeps
+	// returning continuation tokens — far below the per-pass budget that
+	// produced the early-testing clique-kick.
+	const (
+		maxPagesPerPass = 30
+		interPageDelay  = 1 * time.Second
+	)
+	var (
+		totalFetched      uint32
+		totalInserted     uint32
+		totalAlreadyKnown uint32
+		totalDecodeFailed uint32
+		totalRecordsSeen  uint32
+		injectedHandles   []string
+	)
+	currentZone := cachedZone
+	currentToken := sinceToken
 
-	logEntry := log.Info().
-		Uint32("fetched", page.Fetched).
-		Uint32("inserted", page.Inserted).
-		Uint32("already_known", page.AlreadyKnown).
-		Uint32("decode_failed", page.DecodeFailed).
-		Uint32("records_seen", page.RecordsSeen).
-		Int("injected_handles_count", len(page.InjectedHandles))
-	if page.ResolvedZone != nil {
-		logEntry = logEntry.Str("resolved_zone", *page.ResolvedZone)
-	}
-	if page.DiscoverySummary != nil {
-		logEntry = logEntry.Str("discovery_summary", *page.DiscoverySummary)
-	}
-	if len(page.InjectedHandles) > 0 {
-		logEntry = logEntry.Strs("injected_handles", page.InjectedHandles)
-	}
-	logEntry.Msg("StatusKit-CloudKit pass: FFI returned")
+	for pageNum := 1; pageNum <= maxPagesPerPass; pageNum++ {
+		page, err := safeFFICall("CloudSyncStatuskitPeers", func() (rustpushgo.CloudSyncStatusKitPage, error) {
+			return c.client.CloudSyncStatuskitPeers(currentZone, currentToken)
+		})
+		if err != nil {
+			ffiErr = err
+			hint := extractRetryAfterHint(err)
+			nextErrs := meta.ConsecutiveErrs + 1
+			nextMeta := statusKitPassMeta{LastAttempt: attemptStart, ConsecutiveErrs: nextErrs}
+			log.Info().
+				Err(err).
+				Int("page", pageNum).
+				Int("consecutive_errors", nextErrs).
+				Dur("retry_after_hint", hint).
+				Time("next_allowed", nextMeta.nextAllowedAt(hint)).
+				Msg("StatusKit-CloudKit pass: FFI returned error — applying inter-pass backoff")
+			return fmt.Errorf("CloudSyncStatuskitPeers (page %d): %w", pageNum, err)
+		}
 
-	// Persist resolved zone name. If FFI returned ResolvedZone=nil, treat
-	// that as a directive to clear the cached zone (e.g. discovery found
-	// nothing, or the cached zone is stale and fetch failed).
-	if page.ResolvedZone == nil {
-		if cachedZone != nil {
-			if err := c.cloudStore.clearZoneToken(ctx, statusKitCloudZoneRow); err != nil {
-				log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to clear cached zone row")
+		totalFetched += page.Fetched
+		totalInserted += page.Inserted
+		totalAlreadyKnown += page.AlreadyKnown
+		totalDecodeFailed += page.DecodeFailed
+		totalRecordsSeen += page.RecordsSeen
+		if len(page.InjectedHandles) > 0 {
+			injectedHandles = append(injectedHandles, page.InjectedHandles...)
+		}
+
+		pageLog := log.Info().
+			Int("page", pageNum).
+			Uint32("fetched", page.Fetched).
+			Uint32("inserted", page.Inserted).
+			Uint32("already_known", page.AlreadyKnown).
+			Uint32("decode_failed", page.DecodeFailed).
+			Uint32("records_seen", page.RecordsSeen).
+			Int("injected_handles_count", len(page.InjectedHandles))
+		if page.ResolvedZone != nil {
+			pageLog = pageLog.Str("resolved_zone", *page.ResolvedZone)
+		}
+		if page.DiscoverySummary != nil {
+			pageLog = pageLog.Str("discovery_summary", *page.DiscoverySummary)
+		}
+		if len(page.InjectedHandles) > 0 {
+			pageLog = pageLog.Strs("injected_handles", page.InjectedHandles)
+		}
+		pageLog.Msg("StatusKit-CloudKit pass: page returned")
+
+		// Persist resolved zone name. If FFI returned ResolvedZone=nil,
+		// treat that as a directive to clear the cached zone (discovery
+		// found nothing, or the cached zone is stale and fetch failed).
+		if page.ResolvedZone == nil {
+			if currentZone != nil {
+				if err := c.cloudStore.clearZoneToken(ctx, statusKitCloudZoneRow); err != nil {
+					log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to clear cached zone row")
+				} else {
+					log.Info().Msg("StatusKit-CloudKit pass: cleared cached zone (FFI returned ResolvedZone=nil)")
+				}
+				currentZone = nil
+			}
+		} else if currentZone == nil || *currentZone != *page.ResolvedZone {
+			zoneStr := *page.ResolvedZone
+			if err := c.cloudStore.setSyncStateSuccess(ctx, statusKitCloudZoneRow, &zoneStr); err != nil {
+				log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to persist resolved zone name")
 			} else {
-				log.Info().Msg("StatusKit-CloudKit pass: cleared cached zone (FFI returned ResolvedZone=nil)")
+				log.Info().Str("zone", zoneStr).Msg("StatusKit-CloudKit pass: cached resolved zone name for future passes")
+			}
+			currentZone = &zoneStr
+		}
+
+		// Persist (or clear) the continuation token after every page so a
+		// crash mid-drain doesn't lose progress — the next pass resumes
+		// from the persisted token.
+		if page.NextToken != nil && len(*page.NextToken) > 0 {
+			encoded := base64.StdEncoding.EncodeToString(*page.NextToken)
+			if err := c.cloudStore.setSyncStateSuccess(ctx, statusKitCloudTokenRow, &encoded); err != nil {
+				log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to persist next continuation token")
+			}
+		} else if page.ResolvedZone == nil && currentToken != nil {
+			// FFI signalled re-discovery. Drop the stale token so the
+			// next pass starts fresh.
+			if err := c.cloudStore.clearZoneToken(ctx, statusKitCloudTokenRow); err != nil {
+				log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to clear stale continuation token")
 			}
 		}
-	} else if cachedZone == nil || *cachedZone != *page.ResolvedZone {
-		zoneStr := *page.ResolvedZone
-		if err := c.cloudStore.setSyncStateSuccess(ctx, statusKitCloudZoneRow, &zoneStr); err != nil {
-			log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to persist resolved zone name")
-		} else {
-			log.Info().Str("zone", zoneStr).Msg("StatusKit-CloudKit pass: cached resolved zone name for future passes")
+
+		// Stop draining when there are no more pages, or when this page
+		// returned no records (steady-state empty fetch).
+		if page.NextToken == nil || len(*page.NextToken) == 0 || page.Fetched == 0 {
+			break
+		}
+		currentToken = page.NextToken
+
+		// Pace the next page fetch — keeps the per-pass CKKS round-trip
+		// rate gentle even on a long initial drain.
+		select {
+		case <-time.After(interPageDelay):
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 
-	// Persist (or clear) continuation token. We always update because the
-	// FFI may return a fresh token even when no records were injected.
-	if page.NextToken != nil && len(*page.NextToken) > 0 {
-		encoded := base64.StdEncoding.EncodeToString(*page.NextToken)
-		if err := c.cloudStore.setSyncStateSuccess(ctx, statusKitCloudTokenRow, &encoded); err != nil {
-			log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to persist next continuation token")
-		} else {
-			log.Info().Int("token_b64_len", len(encoded)).Msg("StatusKit-CloudKit pass: persisted next continuation token")
-		}
-	} else if page.ResolvedZone == nil && sinceToken != nil {
-		// FFI signalled re-discovery. Drop the stale token so the next
-		// pass starts fresh.
-		if err := c.cloudStore.clearZoneToken(ctx, statusKitCloudTokenRow); err != nil {
-			log.Info().Err(err).Msg("StatusKit-CloudKit pass: failed to clear stale continuation token")
-		} else {
-			log.Info().Msg("StatusKit-CloudKit pass: cleared stale continuation token after re-discovery signal")
-		}
-	}
+	log.Info().
+		Uint32("total_fetched", totalFetched).
+		Uint32("total_inserted", totalInserted).
+		Uint32("total_already_known", totalAlreadyKnown).
+		Uint32("total_decode_failed", totalDecodeFailed).
+		Uint32("total_records_seen", totalRecordsSeen).
+		Int("total_injected_handles", len(injectedHandles)).
+		Msg("StatusKit-CloudKit pass: drain complete")
 
-	// If we injected new peer keys, fire a presence-resubscribe so APNs
-	// interest tokens cover the new channels immediately. Without this,
-	// status updates from CloudKit-injected peers would only land after
-	// the next periodic re-subscribe (subscribeAfterInit / connect).
-	if page.Inserted > 0 {
-		log.Info().Uint32("inserted", page.Inserted).Msg("StatusKit-CloudKit pass: triggering presence resubscribe for newly-injected peers")
-		// subscribeToContactPresence is async-friendly; run inline to
-		// keep ordering deterministic with the surrounding sync cycle.
+	// If we injected any new peer keys (across all drained pages), fire a
+	// presence-resubscribe so APNs interest tokens cover the new channels
+	// immediately rather than waiting for the next subscribeAfterInit cycle.
+	if totalInserted > 0 {
+		log.Info().Uint32("total_inserted", totalInserted).Msg("StatusKit-CloudKit pass: triggering presence resubscribe for newly-injected peers")
 		c.subscribeToContactPresence(log)
 	}
 
