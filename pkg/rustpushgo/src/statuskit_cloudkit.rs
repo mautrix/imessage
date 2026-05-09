@@ -109,7 +109,26 @@ use rustpush::{
     },
 };
 
-use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
+use crate::{persist_plist_state, read_plist_state, subsystem_state_path, Client, WrappedError};
+
+/// On-disk path for the persistent CD_Channel.record_id → CD_identifier
+/// map. Lives in the same xdg_data_dir as `statuskit-state.plist` and
+/// `facetime-state.plist`. CD_Channel and CD_ReceivedInvitation records
+/// arrive in unrelated fetch pages — when an invitation references a
+/// channel that landed on a different page, the in-pass map can't
+/// resolve the FK and decode fails with "CD_channel FK '...' not
+/// present". Persisting the map across passes converges decode_failed
+/// to ~0 over a few cycles.
+///
+/// Pure local state — never sent to Apple, has zero impact on CKKS or
+/// CloudKit request volume.
+const STATUSKIT_CHANNEL_MAP_FILE: &str = "statuskit-cloud-channel-map.plist";
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct PersistedChannelMap {
+    #[serde(default)]
+    entries: HashMap<String, String>,
+}
 
 /// PCS service constants for the StatusKit zone, transcribed verbatim from
 /// `/System/Library/Preferences/ProtectedCloudStorage/Identities/com.apple.statuskit.plist`
@@ -289,10 +308,29 @@ impl Client {
         let mut decoded: Vec<DecodedPeer> = Vec::new();
         let mut decode_failed: u32 = 0;
 
+        // Load persisted CD_Channel.record_id → CD_identifier map from
+        // disk. Apple paginates invitations and their parent channels
+        // separately, so an invitation on this page may reference a
+        // channel that arrived several passes ago. Without persistence,
+        // those FK lookups fail and the records are reported as
+        // decode_failed even though the data is reachable.
+        let channel_map_path = subsystem_state_path(STATUSKIT_CHANNEL_MAP_FILE);
+        let persisted: PersistedChannelMap =
+            read_plist_state(&channel_map_path).unwrap_or_default();
+
         // Build channel_id map (CD_Channel.record_id → CD_identifier). Each
         // CD_Channel record carries its own protection_info, so we decrypt
         // CD_identifier through a per-record PCS encryptor inside the helper.
-        let channel_map = build_channel_id_map(&opened, &cm, &hit.records).await;
+        let in_pass_map = build_channel_id_map(&opened, &cm, &hit.records).await;
+
+        // Union: persisted ∪ in-pass. In-pass wins on collision so a
+        // freshly-decoded value overrides any stale persisted one (Apple
+        // can roll channel ids; trust the newer fetch).
+        let mut channel_map: HashMap<String, String> = persisted.entries.clone();
+        for (k, v) in &in_pass_map {
+            channel_map.insert(k.clone(), v.clone());
+        }
+        let persisted_size_before = persisted.entries.len();
 
         // Per-record decode failures are summarized in the DONE line at
         // the end. No per-record success/skip logging — we'd otherwise emit
@@ -317,12 +355,25 @@ impl Client {
 
         let inject_stats = inject_into_state(self, decoded).await?;
 
+        // Persist the merged map for the next pass. Skip the write when
+        // nothing changed — avoids touching disk on a pass with no new
+        // CD_Channel records and an unchanged persisted set.
+        let channel_map_grew = channel_map.len() > persisted_size_before;
+        if channel_map_grew {
+            let to_persist = PersistedChannelMap {
+                entries: channel_map.clone(),
+            };
+            persist_plist_state(&channel_map_path, &to_persist);
+        }
+
         info!(
-            "StatusKit-CloudKit pass: DONE container_idx={} zone='{}' fetched={} channel_map={} inserted={} already_known={} decode_failed={} failure_examples={:?} injected_handles={:?}",
+            "StatusKit-CloudKit pass: DONE container_idx={} zone='{}' fetched={} channel_map={} (persisted={}, in_pass={}) inserted={} already_known={} decode_failed={} failure_examples={:?} injected_handles={:?}",
             hit.container_idx,
             hit.zone_name,
             hit.records.len(),
             channel_map.len(),
+            persisted_size_before,
+            in_pass_map.len(),
             inject_stats.inserted,
             inject_stats.already_known,
             decode_failed,
