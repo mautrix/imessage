@@ -45,11 +45,24 @@
 //!
 //! ## Decryption flow
 //!
-//! `CD_invitationPayload` is the same plist-encoded
-//! `StatusKitRawSharedDevice` blob the peer iPhone received via APNs (cmd
-//! 224/225 keysharing reshare). PCS-unwrap it → plist::from_bytes →
-//! base64-decode the embedded `keys` field → SharedMessage protobuf →
-//! reconstruct StatusKitSharedDevice via plist serialization round-trip.
+//! For each `CD_ReceivedInvitation` record:
+//!   1. Build a per-record PCS encryptor (zone-key + record protection_info).
+//!   2. Decrypt `CD_senderHandle` (encrypted STRING_TYPE → plaintext is an
+//!      `EncryptedValue` proto wrapping the actual string).
+//!   3. Decrypt `CD_channel` (same shape — gives the CD_Channel record_id).
+//!   4. Decrypt `CD_invitationPayload` (ENCRYPTED_BYTES_TYPE → raw bytes).
+//!   5. Decode payload as a bare `SharedMessage` protobuf. NSPersistent-
+//!      CloudKitContainer splits sender/channel/etc. into their own Core
+//!      Data fields, so the inner payload only carries the cryptographic
+//!      material — it is **not** the IDS-format
+//!      `StatusKitRawSharedDevice` plist (that shape is wire-only for cmd
+//!      224/225 reshares).
+//!   6. Look up the channel base64 id via the CD_Channel.CD_identifier map
+//!      built from the same fetch (each CD_Channel needs its own per-record
+//!      PCS encryptor because they each carry their own `protection_info`).
+//!   7. Reconstruct `StatusKitSharedDevice` via plist serialization
+//!      round-trip (sender + sigKey-as-DER + protobuf-encoded SharedKey
+//!      blobs + empty StatusKitPersonalConfig).
 //!
 //! ## Why a plist round-trip rather than a direct constructor
 //!
@@ -89,7 +102,6 @@ use rustpush::{
         StatusKitSharedDevice,
     },
 };
-use serde::{Deserialize, Serialize};
 
 use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 
@@ -283,8 +295,10 @@ impl Client {
         let mut decoded: Vec<DecodedPeer> = Vec::new();
         let mut decode_failed: u32 = 0;
 
-        // Build channel_id map (CD_Channel.record_id → CD_identifier).
-        let channel_map = build_channel_id_map(&hit.records);
+        // Build channel_id map (CD_Channel.record_id → CD_identifier). Each
+        // CD_Channel record carries its own protection_info, so we decrypt
+        // CD_identifier through a per-record PCS encryptor inside the helper.
+        let channel_map = build_channel_id_map(&opened, &cm, &hit.records).await;
         info!(
             "StatusKit-CloudKit pass: built channel_id map with {} CD_Channel record(s)",
             channel_map.len()
@@ -552,10 +566,17 @@ fn log_record_schema(
     );
 }
 
-/// Map CD_Channel record_id → CD_identifier (the base64 channel id used as
+/// Map CD_Channel.record_id → CD_identifier (the base64 channel id used as
 /// the key in `state.keys`). Used to translate a CD_ReceivedInvitation's
-/// CD_channel foreign key into the actual channel id.
-fn build_channel_id_map(
+/// CD_channel foreign-key string into the actual channel id we'll insert
+/// under in `statuskit-state.plist`.
+///
+/// `CD_identifier` is itself an encrypted STRING_TYPE field, and each
+/// CD_Channel record carries its own `protection_info`, so we have to
+/// build a per-record PCS encryptor to read it.
+async fn build_channel_id_map<P: omnisette::AnisetteProvider>(
+    opened: &CloudKitOpenContainer<'_, P>,
+    cm: &rustpush::cloud_messages::CloudMessagesClient<P>,
     records: &[cloudkit_proto::retrieve_changes_response::RecordChange],
 ) -> HashMap<String, String> {
     let mut map = HashMap::new();
@@ -567,33 +588,73 @@ fn build_channel_id_map(
             Some(s) => s.to_string(),
             None => continue,
         };
-        if let Some(ident) = extract_string_field(rec, "CD_identifier") {
-            map.insert(id, ident);
+        let record = match &rec.record {
+            Some(r) => r,
+            None => continue,
+        };
+        let zone_id = match rec
+            .identifier
+            .as_ref()
+            .and_then(|i| i.zone_identifier.clone())
+        {
+            Some(z) => z,
+            None => continue,
+        };
+        let zone_key = match opened
+            .get_zone_encryption_config(&zone_id, &cm.keychain, &STATUSKIT_SERVICE)
+            .await
+        {
+            Ok(k) => k,
+            Err(e) => {
+                info!(
+                    "StatusKit-CloudKit channel_map: get_zone_encryption_config failed for CD_Channel '{}': {:?}",
+                    id, e
+                );
+                continue;
+            }
+        };
+        let encryptor = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            pcs_keys_for_record(record, &zone_key)
+        })) {
+            Ok(Ok(enc)) => enc,
+            Ok(Err(e)) => {
+                info!(
+                    "StatusKit-CloudKit channel_map: pcs_keys_for_record returned error for CD_Channel '{}': {:?} — trying keychain fallback",
+                    id, e
+                );
+                match decrypt_with_keychain_fallback(record, cm).await {
+                    Some(enc) => enc,
+                    None => continue,
+                }
+            }
+            Err(_) => {
+                info!(
+                    "StatusKit-CloudKit channel_map: pcs_keys_for_record panicked for CD_Channel '{}' — trying keychain fallback",
+                    id
+                );
+                match decrypt_with_keychain_fallback(record, cm).await {
+                    Some(enc) => enc,
+                    None => continue,
+                }
+            }
+        };
+        match decrypt_string_field(rec, "CD_identifier", &encryptor) {
+            Some(ident) => {
+                info!(
+                    "StatusKit-CloudKit channel_map: CD_Channel '{}' → '{}'",
+                    id, ident
+                );
+                map.insert(id, ident);
+            }
+            None => {
+                info!(
+                    "StatusKit-CloudKit channel_map: failed to decrypt CD_identifier for CD_Channel '{}'",
+                    id
+                );
+            }
         }
     }
     map
-}
-
-/// Find a STRING_TYPE field's value. Returns the plaintext if available,
-/// otherwise None — encrypted strings need to be decrypted via the PCS
-/// encryptor (see `decrypt_string_field`).
-fn extract_string_field(
-    rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
-    name: &str,
-) -> Option<String> {
-    let record = rec.record.as_ref()?;
-    for f in &record.record_field {
-        let fname = f.identifier.as_ref().and_then(|i| i.name.as_deref());
-        if fname == Some(name) {
-            let v = f.value.as_ref()?;
-            // For unencrypted strings, string_value is populated directly.
-            if let Some(s) = &v.string_value {
-                return Some(s.clone());
-            }
-            return None;
-        }
-    }
-    None
 }
 
 /// Locate a record field by identifier name.
@@ -668,23 +729,6 @@ struct DecodedPeer {
     device: StatusKitSharedDevice,
 }
 
-/// Mirror of the private upstream `StatusKitRawSharedDevice` used as the
-/// IDS-payload wire format for keysharing reshares (cmd 224). The same
-/// plist is what the iPhone stored in `CD_invitationPayload`.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct InvitationPayloadMirror {
-    #[serde(rename = "r")]
-    keys: String, // base64 of SharedMessage protobuf
-    #[serde(rename = "d")]
-    time_sent_s: f64,
-    #[serde(rename = "p")]
-    personal_config: String, // base64 of plist of StatusKitPersonalConfig
-    #[serde(rename = "s")]
-    bundle: String,
-    #[serde(rename = "c")]
-    channel: String, // base64 channel id
-}
-
 async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
     _client: &Client,
     opened: &CloudKitOpenContainer<'_, P>,
@@ -712,10 +756,21 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
     let has_sender = find_field(rec, "CD_senderHandle").is_some();
     let has_channel = find_field(rec, "CD_channel").is_some();
     let has_payload = find_field(rec, "CD_invitationPayload").is_some();
-    if !has_sender || !has_channel || !has_payload {
+    if !has_sender || !has_channel {
         info!(
-            "StatusKit-CloudKit decode: missing required fields (sender={}, channel_fk={}, payload={})",
-            has_sender, has_channel, has_payload
+            "StatusKit-CloudKit decode: missing required fields (sender={}, channel_fk={})",
+            has_sender, has_channel
+        );
+        return Ok(None);
+    }
+    if !has_payload {
+        // Variant schema: some CD_ReceivedInvitation rows store CD_peerKey /
+        // CD_serverKey / CD_channelToken instead of an embedded payload.
+        // We don't yet know how to assemble a StatusKitSharedDevice from
+        // those primitives — log loudly and skip so the user knows we saw
+        // them.
+        info!(
+            "StatusKit-CloudKit decode: variant record without CD_invitationPayload — skipping (CD_peerKey/CD_serverKey path TBD)"
         );
         return Ok(None);
     }
@@ -786,21 +841,14 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         plaintext.len()
     );
 
-    // Parse the IDS-format plist.
-    let parsed: InvitationPayloadMirror = plist::from_bytes(&plaintext)
-        .map_err(|e| format!("plist::from_bytes(InvitationPayloadMirror) failed: {:?}", e))?;
-    info!(
-        "StatusKit-CloudKit decode: parsed payload bundle='{}' time_sent_s={} channel_b64_len={}",
-        parsed.bundle,
-        parsed.time_sent_s,
-        parsed.channel.len()
-    );
-
-    // Decode the SharedMessage protobuf.
-    let share_message_bytes = B64
-        .decode(&parsed.keys)
-        .map_err(|e| format!("base64 decode SharedMessage: {:?}", e))?;
-    let share_message = SharedMessage::decode(Cursor::new(&share_message_bytes))
+    // CloudKit stores `CD_invitationPayload` as a raw `SharedMessage`
+    // protobuf — NOT the IDS-format `StatusKitRawSharedDevice` plist
+    // (that's only the wire shape for cmd 224 reshares). NSPersistentCloud-
+    // KitContainer pulls sender/channel/etc. out into separate Core Data
+    // columns, so the inner payload only carries the cryptographic
+    // material. Observed sizes (42/49/97 bytes) are consistent with a bare
+    // SharedMessage, not a multi-base64-string plist.
+    let share_message = SharedMessage::decode(Cursor::new(&plaintext))
         .map_err(|e| format!("SharedMessage::decode failed: {:?}", e))?;
 
     if share_message.sig_key.len() != 32 {
@@ -810,34 +858,27 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         ));
     }
 
-    // The base64 channel from the payload is the canonical channel id.
-    // CD_channel FK + channel_map is a sanity cross-check; log if they
-    // disagree but trust the embedded value (it's what the keysharing
-    // protocol uses on the wire).
-    if let Some(mapped) = channel_map.get(&channel_fk) {
-        if mapped != &parsed.channel {
-            info!(
-                "StatusKit-CloudKit decode: CD_channel FK→identifier mismatch (mapped='{}', payload='{}') — trusting payload",
-                mapped, parsed.channel
-            );
+    // Resolve channel_id via the CD_Channel.CD_identifier map. The base64
+    // channel id is the key under which `state.keys` indexes peer devices,
+    // so without this lookup we have no way to file the entry.
+    let channel_id = match channel_map.get(&channel_fk) {
+        Some(s) => s.clone(),
+        None => {
+            return Err(format!(
+                "CD_channel FK '{}' not present in channel_map ({} entries)",
+                channel_fk,
+                channel_map.len()
+            ));
         }
-    } else {
-        info!(
-            "StatusKit-CloudKit decode: CD_channel FK '{}' not in channel_map (have {} entries)",
-            channel_fk,
-            channel_map.len()
-        );
-    }
+    };
 
-    // Reconstruct the StatusKitSharedDevice via plist round-trip.
-    let device = build_shared_device(
-        sender_handle.clone(),
-        &share_message,
-        &parsed.personal_config,
-    )?;
+    // CloudKit doesn't store the personal_config string (it lives only on
+    // the live IDS payload). Pass empty — `build_shared_device` synthesizes
+    // an empty StatusKitPersonalConfig in that case.
+    let device = build_shared_device(sender_handle.clone(), &share_message, "")?;
 
     Ok(Some(DecodedPeer {
-        channel_id: parsed.channel,
+        channel_id,
         from: sender_handle,
         device,
     }))
