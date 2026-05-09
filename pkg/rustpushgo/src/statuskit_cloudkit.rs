@@ -73,90 +73,124 @@ use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 /// probe list now exclusively targets `com.apple.statuskit` with a wider
 /// set of plausible reader bundle IDs and also tries `SharedDb` scope
 /// (StatusKit is conceptually cross-account shared state, not private).
+/// Helper: container struct for a (bundle, db scope) pair against the
+/// confirmed `com.apple.statuskit` container in Production env.
+const fn ck(
+    bundleid: &'static str,
+    db: cloudkit_proto::request_operation::header::Database,
+) -> CloudKitContainer<'static> {
+    CloudKitContainer {
+        database_type: db,
+        bundleid,
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    }
+}
+
+/// Like `ck` but lets the container id vary too — for testing the
+/// `iCloud.com.apple.statuskit` prefix theory etc.
+const fn ck_alt(
+    bundleid: &'static str,
+    containerid: &'static str,
+    db: cloudkit_proto::request_operation::header::Database,
+) -> CloudKitContainer<'static> {
+    CloudKitContainer {
+        database_type: db,
+        bundleid,
+        containerid,
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    }
+}
+
+const PRIVATE: cloudkit_proto::request_operation::header::Database =
+    cloudkit_proto::request_operation::header::Database::PrivateDb;
+const SHARED: cloudkit_proto::request_operation::header::Database =
+    cloudkit_proto::request_operation::header::Database::SharedDb;
+
 const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
-    // PrivateDb attempts — wider bundle hunt against the confirmed container.
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.statuskit.statusservice",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.statuskit",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.identityservicesd",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.MobileSMS",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.duetexpertd",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.cloudd",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.bird",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.passd",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.icloud.statuskit",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    // SharedDb attempts — same bundles, different DB scope. StatusKit is
-    // semantically a shared-channel feature, so the SharedDb scope is
-    // worth probing even though it costs more HTTP round-trips.
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
-        bundleid: "com.apple.statuskitd",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
-        bundleid: "com.apple.imagent",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
-        bundleid: "com.apple.identityservicesd",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    // PublicDb — long shot, but cheap to probe.
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PublicDb,
-        bundleid: "com.apple.statuskitd",
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
+    // ---- Focus / DND framework daemons ----
+    // StatusKit is iOS 18's evolution of Focus/DND sharing; the daemon
+    // backing it is most likely a focus/donotdisturb-named system daemon.
+    ck("com.apple.donotdisturbd", PRIVATE),
+    ck("com.apple.donotdisturb", PRIVATE),
+    ck("com.apple.dnd", PRIVATE),
+    ck("com.apple.focus", PRIVATE),
+    ck("com.apple.focusd", PRIVATE),
+    ck("com.apple.focusfilters", PRIVATE),
+    ck("com.apple.icloud.focus", PRIVATE),
+    ck("com.apple.icloud.dnd", PRIVATE),
+
+    // ---- StatusKit-named variants we haven't tried ----
+    ck("com.apple.icloud.statuskit.statusservice", PRIVATE),
+    ck("com.apple.icloud.statuskitd", PRIVATE),
+    ck("com.apple.private.statuskit", PRIVATE),
+    ck("com.apple.private.statuskitd", PRIVATE),
+    ck("com.apple.private.statuskit.statusservice", PRIVATE),
+    ck("com.apple.statuskit.shared", PRIVATE),
+    ck("com.apple.statuskit.peer", PRIVATE),
+    ck("com.apple.StatusKit", PRIVATE),
+    ck("com.apple.StatusKitFramework", PRIVATE),
+
+    // ---- IDS / keysharing daemons ----
+    // StatusKit's keysharing-channel mechanism rides on IDS sub-services;
+    // the IDS bundle ids are well-documented and worth probing.
+    ck("com.apple.IDSDaemon", PRIVATE),
+    ck("com.apple.IDS", PRIVATE),
+    ck("com.apple.identityservices", PRIVATE),
+    ck("com.apple.private.alloy.status.keysharing", PRIVATE),
+    ck("com.apple.private.alloy.multiplex1", PRIVATE),
+
+    // ---- Apple account / iCloud system daemons ----
+    ck("com.apple.akd", PRIVATE),
+    ck("com.apple.appleaccount", PRIVATE),
+    ck("com.apple.AppleAccount", PRIVATE),
+    ck("com.apple.iCloud.daemon", PRIVATE),
+    ck("com.apple.icloud.daemon", PRIVATE),
+    ck("com.apple.icloudpd", PRIVATE),
+    ck("com.apple.iCloudHelper", PRIVATE),
+    ck("com.apple.familyd", PRIVATE),
+    ck("com.apple.familycircled", PRIVATE),
+    ck("com.apple.gsa", PRIVATE),
+    ck("com.apple.gss", PRIVATE),
+
+    // ---- Sharing / notifications / context daemons ----
+    ck("com.apple.sharingd", PRIVATE),
+    ck("com.apple.icloudsharing", PRIVATE),
+    ck("com.apple.notifyd", PRIVATE),
+    ck("com.apple.usernotificationsd", PRIVATE),
+    ck("com.apple.UserNotifications", PRIVATE),
+    ck("com.apple.intelligencecontextd", PRIVATE),
+    ck("com.apple.assistantd", PRIVATE),
+    ck("com.apple.coreduetd", PRIVATE),
+    ck("com.apple.searchpartyd", PRIVATE),
+    ck("com.apple.routined", PRIVATE),
+    ck("com.apple.swcd", PRIVATE),
+    ck("com.apple.dasd", PRIVATE),
+    ck("com.apple.preferencesd", PRIVATE),
+    ck("com.apple.preferences", PRIVATE),
+
+    // ---- SharedDb scope ---- (StatusKit is conceptually shared state)
+    // Re-try the most plausible bundles in SharedDb in case authorization
+    // is scope-specific.
+    ck("com.apple.donotdisturbd", SHARED),
+    ck("com.apple.focusd", SHARED),
+    ck("com.apple.icloud.statuskit.statusservice", SHARED),
+    ck("com.apple.private.alloy.status.keysharing", SHARED),
+    ck("com.apple.IDSDaemon", SHARED),
+    ck("com.apple.akd", SHARED),
+
+    // ---- Alternate container ID: with iCloud prefix ----
+    // Standard CK 3rd-party containers use `iCloud.X` prefix — test the
+    // theory that StatusKit's container is actually exposed under that
+    // canonical prefix and the bundles that authorize it are the same.
+    ck_alt("com.apple.statuskitd", "iCloud.com.apple.statuskit", PRIVATE),
+    ck_alt("com.apple.donotdisturbd", "iCloud.com.apple.statuskit", PRIVATE),
+    ck_alt("com.apple.focusd", "iCloud.com.apple.statuskit", PRIVATE),
+    ck_alt(
+        "com.apple.private.alloy.status.keysharing",
+        "iCloud.com.apple.statuskit",
+        PRIVATE,
+    ),
 ];
 
 /// Result of one CloudKit-pull pass for StatusKit peer keys.
