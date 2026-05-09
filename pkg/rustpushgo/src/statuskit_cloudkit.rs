@@ -37,8 +37,8 @@ use log::{info, warn};
 use rustpush::{
     cloud_messages::MESSAGES_SERVICE,
     cloudkit::{
-        pcs_keys_for_record, CloudKitSession, FetchRecordChangesOperation,
-        FetchZoneChangesOperation, NO_ASSETS,
+        pcs_keys_for_record, CloudKitContainer, CloudKitSession,
+        FetchRecordChangesOperation, FetchZoneChangesOperation, NO_ASSETS,
     },
     cloudkit_proto,
     pcs::PCSShareProtection,
@@ -73,32 +73,32 @@ use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 /// probe list now exclusively targets `com.apple.statuskit` with a wider
 /// set of plausible reader bundle IDs and also tries `SharedDb` scope
 /// (StatusKit is conceptually cross-account shared state, not private).
-/// Non-baseline iMessage zones to fetch records from.
+/// Bundle ID + container target for StatusKit's CloudKit storage.
 ///
-/// The bridge has working CK auth for `com.apple.imagent /
-/// com.apple.messages.cloud`. The 13 zones in that container are:
+/// Confirmed by `codesign --entitlements -` on the user's MBP (Session 14):
+/// the entitlement `com.apple.application-identifier` of the binary that
+/// makes CK calls against `com.apple.statuskit` is literally
+/// `com.apple.StatusKit.subscribe`. This is the bundle ID Apple's CK
+/// signature chain validates — every other bundle we tried (50+ heuristic
+/// guesses including `donotdisturbd`, `statuskitd`, `focus`, etc.) returned
+/// `InvalidBundleId` because Apple's gateway echoes the bundle string back
+/// in the error but actually validates against the signed entitlement chain.
 ///
-///   chatManateeZone, messageManateeZone, attachmentManateeZone,
-///   recoverableMessageDeleteZone, chatBotMessageZone, chatBotAttachmentZone,
-///   chatBotRecoverableMessageDeleteZone  ← well-known iMessage data
-///
-///   chat1ManateeZone, message1ManateeZone, scheduledMessageZone,
-///   analyticManateeZone, messageUpdateZone, RecordKeyManateeZone  ← unknown
-///
-/// We've never fetched records from the unknown ones. The hypothesis driving
-/// the pivot: StatusKit keys may piggyback on the iMessage container's
-/// existing CK auth rather than living in a separately-authorized
-/// `com.apple.statuskit` container. The bundle hunt against
-/// `com.apple.statuskit` produced 57 identical `ckff9mnw` rejections — that
-/// door is closed. But we have a confirmed open door into the iMessage
-/// container, and `RecordKeyManateeZone` literally has "Key" in the name.
-const NONBASELINE_IMESSAGE_ZONES: &[&str] = &[
-    "RecordKeyManateeZone",  // primary suspect — "Key" in zone name
-    "scheduledMessageZone",
-    "analyticManateeZone",
-    "messageUpdateZone",
-    "message1ManateeZone",   // "1" suffix — different from messageManateeZone
-    "chat1ManateeZone",      // "1" suffix — different from chatManateeZone
+/// We try PrivateDb first; SharedDb is a fallback in case StatusKit's
+/// shared-channel state lives there.
+const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.StatusKit.subscribe",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
+        bundleid: "com.apple.StatusKit.subscribe",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
 ];
 
 /// Result of one CloudKit-pull pass for StatusKit peer keys.
@@ -297,27 +297,12 @@ impl Client {
     }
 }
 
-/// Pivot from bundle-hunt to record-fetch.
+/// Discover the StatusKit zone in `com.apple.statuskit` using the bundle ID
+/// confirmed via codesign on the user's MBP: `com.apple.StatusKit.subscribe`.
 ///
-/// 57 probes against `com.apple.statuskit` with every plausible bundle
-/// returned identical `ckff9mnw` `InvalidBundleId` errors — including
-/// `com.apple.donotdisturbd`, the daemon empirically observed making CK
-/// calls on the user's MBP. Apple isn't gating on the bundle string;
-/// the rejection happens at a layer above bundle authorization.
-///
-/// We DO have working CK auth for `com.apple.imagent /
-/// com.apple.messages.cloud`. That container has 13 zones, 6 of which
-/// we've never fetched records from — most notably `RecordKeyManateeZone`
-/// (the word "Key" is literally in the name). The new hypothesis:
-/// StatusKit shared keys may piggyback on the iMessage container's
-/// existing CK auth.
-///
-/// This function:
-///   1. Lists zones in the iMessage container (existing behaviour).
-///   2. For each non-baseline zone, calls FetchRecordChangesOperation
-///      and logs the schemas of the first 10 records.
-///   3. Returns None — discovery is still diagnostic-only; Phase 2
-///      writes a real decoder once we see a StatusKit-shaped record.
+/// Returns `Some(zone_name)` if a candidate zone was identified, `None`
+/// otherwise. On success, the caller fetches records from that zone via
+/// `fetch_zone_records`.
 async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, String> {
     let cm = client
         .get_or_init_cloud_messages_client()
@@ -327,81 +312,72 @@ async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, Stri
     let mut all_pairs: Vec<String> = Vec::new();
     let mut keyword_matches: Vec<String> = Vec::new();
 
-    info!(
-        "StatusKit-CloudKit discovery: enumerating zones in baseline iMessage container (bundleid='com.apple.imagent', containerid='com.apple.messages.cloud')"
-    );
-    match cm.get_container().await {
-        Ok(open) => {
-            log_zones_for_container(
-                "com.apple.imagent / com.apple.messages.cloud",
-                &*open,
-                &mut all_pairs,
-                &mut keyword_matches,
-            )
-            .await;
-        }
-        Err(e) => {
-            warn!(
-                "StatusKit-CloudKit discovery: baseline iMessage container open failed: {:?}",
-                e
-            );
-            return Ok(None);
-        }
+    for (idx, candidate) in CANDIDATE_CONTAINERS.iter().enumerate() {
+        let scope = match candidate.database_type {
+            cloudkit_proto::request_operation::header::Database::PrivateDb => "PrivateDb",
+            cloudkit_proto::request_operation::header::Database::SharedDb => "SharedDb",
+            cloudkit_proto::request_operation::header::Database::PublicDb => "PublicDb",
+        };
+        let label = format!(
+            "{} / {} [{}]",
+            candidate.bundleid, candidate.containerid, scope
+        );
+        info!(
+            "StatusKit-CloudKit discovery: probing candidate[{}] ({})",
+            idx, label
+        );
+        let opened = match candidate.init(cm.client.clone()).await {
+            Ok(c) => c,
+            Err(e) => {
+                let cls = classify_init_error(&format!("{:?}", e));
+                info!(
+                    "StatusKit-CloudKit discovery: candidate[{}] INIT-{} ({}): {:?} — skipping",
+                    idx, cls, label, e
+                );
+                continue;
+            }
+        };
+        info!(
+            "StatusKit-CloudKit discovery: candidate[{}] INIT-OK ({}) — proceeding to do_sync",
+            idx, label
+        );
+        log_zones_for_container(&label, &opened, &mut all_pairs, &mut keyword_matches).await;
     }
 
     info!(
-        "StatusKit-CloudKit discovery: full zone inventory ({} entries): [{}]",
+        "StatusKit-CloudKit discovery: zone inventory ({} entries): [{}]",
         all_pairs.len(),
         all_pairs.join(" | ")
     );
 
-    // PIVOT: fetch records from each non-baseline iMessage zone and dump
-    // schemas. The bundle hunt is dead — Apple isn't gating on the bundle
-    // string. But we have a confirmed open door into the iMessage container,
-    // and StatusKit keys may live in zones we haven't looked inside yet.
-    info!(
-        "StatusKit-CloudKit pivot: probing {} non-baseline iMessage zones for records (RecordKeyManateeZone has 'Key' in the name — primary suspect)",
-        NONBASELINE_IMESSAGE_ZONES.len()
-    );
-    for zone_name in NONBASELINE_IMESSAGE_ZONES {
+    // If do_sync succeeded against any candidate, we have the full zone list
+    // for that container. Pick the first non-default zone (every CK container
+    // has a `_defaultZone` we want to skip) — StatusKit's data zone(s) will
+    // be among the rest. If keyword_matches identified a specific match
+    // (status / presence / sharedchannel / focus / keysharing), prefer that.
+    if let Some(matched) = keyword_matches.into_iter().next() {
         info!(
-            "StatusKit-CloudKit pivot: fetching records from zone='{}'",
-            zone_name
+            "StatusKit-CloudKit discovery: picked keyword-matching zone='{}'",
+            matched
         );
-        match fetch_zone_records(client, zone_name, None).await {
-            Ok((records, _next_token, status)) => {
-                info!(
-                    "StatusKit-CloudKit pivot: zone='{}' status={} record_count={}",
-                    zone_name,
-                    status,
-                    records.len()
-                );
-                let log_count = records.len().min(10);
-                for (idx, rec) in records.iter().take(log_count).enumerate() {
-                    log_record_schema(idx, zone_name, rec);
-                }
-                if records.len() > log_count {
-                    info!(
-                        "StatusKit-CloudKit pivot: zone='{}' truncated schema log to first {} records of {}",
-                        zone_name,
-                        log_count,
-                        records.len()
-                    );
-                }
-            }
-            Err(e) => {
-                info!(
-                    "StatusKit-CloudKit pivot: zone='{}' fetch failed: {} — zone may not be authorized for our bundle, or may not exist on this account",
-                    zone_name, e
-                );
-            }
-        }
+        return Ok(Some(matched));
     }
-
-    info!(
-        "StatusKit-CloudKit pivot: record-schema dump complete; user inspection of the schemas above is needed to identify which zone (if any) carries StatusKit-shaped records"
-    );
-    Ok(None)
+    let first_real_zone = all_pairs
+        .iter()
+        .filter_map(|p| p.split("::").nth(1))
+        .find(|z| *z != "_defaultZone")
+        .map(|s| s.to_string());
+    if let Some(z) = &first_real_zone {
+        info!(
+            "StatusKit-CloudKit discovery: no keyword match — falling back to first non-default zone='{}'",
+            z
+        );
+    } else {
+        info!(
+            "StatusKit-CloudKit discovery: NO zones returned from any candidate — bundle/container/auth still wrong"
+        );
+    }
+    Ok(first_real_zone)
 }
 
 /// Distinguish init failure modes so logs say *why* a probe failed.
@@ -456,6 +432,7 @@ async fn log_zones_for_container<P: omnisette::AnisetteProvider>(
         "chatBotRecoverableMessageDeleteZone",
         "_defaultZone",
     ];
+    let mut zone_names: Vec<String> = Vec::new();
     for z in &zones {
         let zname = match z
             .identifier
@@ -478,13 +455,77 @@ async fn log_zones_for_container<P: omnisette::AnisetteProvider>(
         let is_status_kw = nm_lc.contains("status")
             || nm_lc.contains("presence")
             || nm_lc.contains("sharedchannel")
-            || nm_lc.contains("focus");
+            || nm_lc.contains("focus")
+            || nm_lc.contains("keysharing")
+            || nm_lc.contains("subscribe");
         info!(
             "StatusKit-CloudKit discovery: container='{}' zone='{}' known_messages_zone={} status_keyword_match={} change_type={:?} is_anonymous={:?}",
             container_label, zname, is_known, is_status_kw, z.change_type, z.is_annonymous
         );
         if is_status_kw && !is_known {
-            keyword_matches.push(zname);
+            keyword_matches.push(zname.clone());
+        }
+        if zname != "_defaultZone" {
+            zone_names.push(zname);
+        }
+    }
+
+    // For every non-default zone in this container, fetch a page of records
+    // and dump schemas. This is done while we still have the opened container
+    // handle so we don't have to re-init or thread the container through to
+    // a second function. The schema log is enough to identify StatusKit-shape
+    // records (`from`, `signature`, `keys`, `personal_config`) from the
+    // surrounding noise.
+    for zname in &zone_names {
+        let zone_id = open.private_zone(zname.clone());
+        info!(
+            "StatusKit-CloudKit fetch: container='{}' zone='{}' attempting record fetch",
+            container_label, zname
+        );
+        match open
+            .perform(
+                &CloudKitSession::new(),
+                FetchRecordChangesOperation(cloudkit_proto::RetrieveChangesRequest {
+                    sync_continuation_token: None,
+                    zone_identifier: Some(zone_id),
+                    requested_changes_types: Some(3),
+                    assets_to_download: Some(NO_ASSETS.clone()),
+                    newest_first: Some(true),
+                    ..Default::default()
+                }),
+            )
+            .await
+        {
+            Ok((_assets, response)) => {
+                let status = response.status.unwrap_or(0);
+                let records: Vec<_> = response.change.into_iter().collect();
+                info!(
+                    "StatusKit-CloudKit fetch: container='{}' zone='{}' status={} record_count={}",
+                    container_label,
+                    zname,
+                    status,
+                    records.len()
+                );
+                let log_count = records.len().min(10);
+                for (idx, rec) in records.iter().take(log_count).enumerate() {
+                    log_record_schema(idx, zname, rec);
+                }
+                if records.len() > log_count {
+                    info!(
+                        "StatusKit-CloudKit fetch: container='{}' zone='{}' truncated schema log to first {} of {}",
+                        container_label,
+                        zname,
+                        log_count,
+                        records.len()
+                    );
+                }
+            }
+            Err(e) => {
+                info!(
+                    "StatusKit-CloudKit fetch: container='{}' zone='{}' fetch failed: {:?}",
+                    container_label, zname, e
+                );
+            }
         }
     }
 }
