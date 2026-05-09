@@ -184,6 +184,29 @@ type IMClient struct {
 	// homeserver so re-installs across sessions are harmless but redundant.
 	statusKitBotRulePushed atomic.Bool
 
+	// inviteInFlight tracks handles with an in-flight StatusKit invite.
+	// The DB-side dispatch latch (statusKitInvitedOkKeyPrefix) is written
+	// *after* the FFI returns, so two concurrent paths (sweep + new-portal
+	// hook + post-backfill hook) can both miss the latch at startup and
+	// double-invoke InviteToStatusSharing for the same peer. Peer iOS
+	// treats repeat invites as spam, so LoadOrStore-then-skip provides
+	// in-memory single-flight per handle. Entry is deleted in a defer.
+	inviteInFlight sync.Map // map[string]struct{}
+
+	// statusKitSweepRunning is true while inviteContactsToStatusSharingOpts
+	// is iterating its paced loop. The new-portal hook checks this and
+	// skips during a sweep so a burst of fresh portals doesn't spawn
+	// unpaced concurrent FFI calls alongside the sweep's 1.5s-paced ones.
+	// The next sweep (or the soft-expired re-invite path) picks up the
+	// missed handles, so skipping is safe.
+	statusKitSweepRunning atomic.Bool
+
+	// statusKitShareMu serializes the cooldown-check / publish /
+	// cooldown-write sequence in publishStatusKitAvailableAfterInvite.
+	// Without it two concurrent callers can both pass the cooldown check
+	// and double-publish ShareStatus.
+	statusKitShareMu sync.Mutex
+
 	// lastPresenceSubscribe timestamps the most recent call to
 	// subscribeToContactPresence. OnKeysReceived triggers re-subscription
 	// when new keys arrive, but multiple key-sharing messages can arrive in
@@ -1092,6 +1115,14 @@ func (c *IMClient) Connect(ctx context.Context) {
 						log.Warn().Err(err).Msg("StatusKit startup share_status failed")
 						return
 					}
+					// Stamp the post-invite cooldown key so the sweep's
+					// publishStatusKitAvailableAfterInvite (which fires
+					// seconds later when the bootstrap sweep finishes
+					// invites) coalesces with this publish instead of
+					// firing a redundant ShareStatus. Restart-within-5min
+					// is the only case that "loses" a publish; the next
+					// state change or sweep republishes.
+					c.Main.Bridge.DB.KV.Set(context.Background(), database.Key(statusKitLastPostInviteShareKey), time.Now().Format(time.RFC3339))
 					log.Info().Msg("StatusKit startup share_status(available) published")
 				}()
 			} else {

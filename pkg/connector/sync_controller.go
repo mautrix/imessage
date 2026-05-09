@@ -927,8 +927,15 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 		log.Warn().Bool("client_nil", c.client == nil).Str("handle", c.handle).Msg("StatusKit invite: skipped (client or handle not ready)")
 		return
 	}
+	// Mark the sweep as running so the new-portal hook
+	// (inviteSingleHandleToStatusSharing) skips its FFI call during this
+	// window. The sweep paces invites at statusKitInterInviteDelay; without
+	// this gate, a bootstrap burst of fresh DM portals would race the sweep
+	// and spawn unpaced concurrent invites.
+	c.statusKitSweepRunning.Store(true)
 	log.Info().Str("handle", c.handle).Msg("StatusKit invite: starting")
 	defer func() {
+		c.statusKitSweepRunning.Store(false)
 		if r := recover(); r != nil {
 			log.Warn().Interface("panic", r).Msg("inviteContactsToStatusSharing panicked — skipped")
 		}
@@ -1081,8 +1088,19 @@ func (c *IMClient) inviteContactsToStatusSharingOpts(log zerolog.Logger, respect
 	const perInviteTimeout = 30 * time.Second
 
 	for i, h := range pending {
+		// In-memory single-flight: skip if another path (new-portal hook,
+		// post-backfill hook, prior sweep iteration) already has an FFI
+		// call in flight for this handle. The DB-side dispatch latch is
+		// written after the FFI returns, so without this guard concurrent
+		// callers both miss the latch and double-invoke. Peer iOS treats
+		// repeat invites as spam.
+		if _, loaded := c.inviteInFlight.LoadOrStore(h, struct{}{}); loaded {
+			log.Debug().Str("handle", h).Int("i", i+1).Int("total", len(pending)).Msg("StatusKit invite: skipping — already in flight")
+			continue
+		}
 		inviteDone := make(chan error, 1)
 		go func(handle string) {
+			defer c.inviteInFlight.Delete(handle)
 			// Per-handle panic isolation: a panic inside the FFI must not
 			// crash the bridge or leave the parent select waiting forever
 			// (the channel is unbuffered enough that a missed send hangs
@@ -1141,6 +1159,13 @@ func (c *IMClient) publishStatusKitAvailableAfterInvite(log zerolog.Logger, reas
 	if c.client == nil {
 		return
 	}
+	// Serialize the cooldown read / publish / cooldown write across
+	// concurrent callers. Without this, two callers (e.g. a sweep finishing
+	// at the same time as a new-portal hook) can both pass the cooldown
+	// check while the KV row is still empty/stale and double-publish.
+	c.statusKitShareMu.Lock()
+	defer c.statusKitShareMu.Unlock()
+
 	ctx := context.Background()
 	now := time.Now()
 	last := c.Main.Bridge.DB.KV.Get(ctx, database.Key(statusKitLastPostInviteShareKey))
@@ -1190,7 +1215,7 @@ func (c *IMClient) inviteSingleHandleToStatusSharing(log zerolog.Logger, handle 
 		}
 	}()
 
-	if c.client == nil || c.handle == "" {
+	if c.client == nil || c.handle == "" || c.UserLogin == nil {
 		return
 	}
 	if handle == "" || isGroupPortalID(handle) {
@@ -1203,6 +1228,16 @@ func (c *IMClient) inviteSingleHandleToStatusSharing(log zerolog.Logger, handle 
 		if h == handle {
 			return
 		}
+	}
+
+	// Skip while a sweep is running. The sweep paces invites at
+	// statusKitInterInviteDelay and writes the DB latch after each FFI
+	// call; running this hook concurrently would race the latch and
+	// emit unpaced FFI calls. The next sweep (or the soft-expired
+	// re-invite path) will pick this peer up if needed.
+	if c.statusKitSweepRunning.Load() {
+		log.Debug().Str("handle", handle).Msg("StatusKit invite (new portal): sweep in progress; skipping")
+		return
 	}
 
 	ctx := context.Background()
@@ -1235,12 +1270,26 @@ func (c *IMClient) inviteSingleHandleToStatusSharing(log zerolog.Logger, handle 
 		}
 	}
 
+	// In-memory single-flight: claim the slot after the cheap DB checks
+	// but before dispatching the FFI. Two concurrent callers (e.g. sweep
+	// reaching this handle while the new-portal hook also fires for the
+	// same fresh portal) would otherwise both pass the latch check (since
+	// the DB latch is written *after* the FFI returns) and double-invoke.
+	// Delete is on the FFI goroutine's defer, not this function's: the
+	// parent select can return on its 30s timeout while the FFI is still
+	// running, and we must not free the slot until the FFI itself ends.
+	if _, loaded := c.inviteInFlight.LoadOrStore(handle, struct{}{}); loaded {
+		log.Debug().Str("handle", handle).Msg("StatusKit invite (new portal): already in flight; skipping")
+		return
+	}
+
 	sender := c.handle
 	log.Info().Str("sender", sender).Str("handle", handle).Msg("StatusKit invite (new portal): dispatching")
 
 	const perInviteTimeout = 30 * time.Second
 	inviteDone := make(chan error, 1)
 	go func() {
+		defer c.inviteInFlight.Delete(handle)
 		// Per-handle panic isolation — same shape as the sweep's loop
 		// goroutine. A panic inside the FFI must not crash the bridge.
 		defer func() {
