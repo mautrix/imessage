@@ -90,7 +90,7 @@ use std::io::Cursor;
 use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
 use log::info;
 use openssl::{
-    bn::BigNumContext,
+    bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
     nid::Nid,
 };
@@ -232,7 +232,6 @@ impl Client {
                 "{} / {} [{}]",
                 candidate.bundleid, candidate.containerid, scope
             );
-            info!("StatusKit-CloudKit pass: probing candidate[{}] ({})", idx, label);
             let opened = match candidate.init(cm.client.clone()).await {
                 Ok(c) => c,
                 Err(e) => {
@@ -254,21 +253,10 @@ impl Client {
             .await
             {
                 Ok(Some(h)) => {
-                    info!(
-                        "StatusKit-CloudKit pass: HIT candidate[{}] zone='{}' record_count={}",
-                        idx,
-                        h.zone_name,
-                        h.records.len()
-                    );
                     hit = Some(h);
                     break;
                 }
-                Ok(None) => {
-                    info!(
-                        "StatusKit-CloudKit pass: candidate[{}] returned no usable records",
-                        idx
-                    );
-                }
+                Ok(None) => {}
                 Err(e) => {
                     info!(
                         "StatusKit-CloudKit pass: candidate[{}] fetch error: {}",
@@ -305,40 +293,24 @@ impl Client {
         // CD_Channel record carries its own protection_info, so we decrypt
         // CD_identifier through a per-record PCS encryptor inside the helper.
         let channel_map = build_channel_id_map(&opened, &cm, &hit.records).await;
-        info!(
-            "StatusKit-CloudKit pass: built channel_id map with {} CD_Channel record(s)",
-            channel_map.len()
-        );
 
-        for (idx, rec) in hit.records.iter().enumerate() {
+        // Per-record decode failures are summarized in the DONE line at
+        // the end. No per-record success/skip logging — we'd otherwise emit
+        // hundreds of lines per pass.
+        let mut failure_examples: Vec<String> = Vec::new();
+        for rec in hit.records.iter() {
             let rec_type = record_type_name(rec).unwrap_or("<no-type>");
             if rec_type != "CD_ReceivedInvitation" {
                 continue;
             }
-            log_record_schema(idx, &hit.zone_name, rec);
             match decode_invitation_record(self, &opened, &cm, rec, &channel_map).await {
-                Ok(Some(p)) => {
-                    info!(
-                        "StatusKit-CloudKit decode[{}]: zone='{}' OK from='{}' channel_b64_len={}",
-                        idx,
-                        hit.zone_name,
-                        p.from,
-                        p.channel_id.len()
-                    );
-                    decoded.push(p);
-                }
-                Ok(None) => {
-                    info!(
-                        "StatusKit-CloudKit decode[{}]: zone='{}' SKIPPED (see preceding log line)",
-                        idx, hit.zone_name
-                    );
-                }
+                Ok(Some(p)) => decoded.push(p),
+                Ok(None) => {}
                 Err(e) => {
                     decode_failed += 1;
-                    info!(
-                        "StatusKit-CloudKit decode[{}]: zone='{}' FAILED: {}",
-                        idx, hit.zone_name, e
-                    );
+                    if failure_examples.len() < 3 {
+                        failure_examples.push(e);
+                    }
                 }
             }
         }
@@ -346,13 +318,15 @@ impl Client {
         let inject_stats = inject_into_state(self, decoded).await?;
 
         info!(
-            "StatusKit-CloudKit pass: DONE container_idx={} zone='{}' fetched={} inserted={} already_known={} decode_failed={} injected_handles={:?}",
+            "StatusKit-CloudKit pass: DONE container_idx={} zone='{}' fetched={} channel_map={} inserted={} already_known={} decode_failed={} failure_examples={:?} injected_handles={:?}",
             hit.container_idx,
             hit.zone_name,
             hit.records.len(),
+            channel_map.len(),
             inject_stats.inserted,
             inject_stats.already_known,
             decode_failed,
+            failure_examples,
             inject_stats.injected_handles
         );
 
@@ -426,11 +400,6 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
             return Ok(None);
         }
     };
-    info!(
-        "StatusKit-CloudKit fetch: container='{}' returned {} zone(s)",
-        label,
-        zones.len()
-    );
 
     let mut zone_names: Vec<String> = Vec::new();
     for z in &zones {
@@ -443,10 +412,6 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
             Some(n) => n.to_string(),
             None => continue,
         };
-        info!(
-            "StatusKit-CloudKit fetch: container='{}' zone='{}' change_type={:?}",
-            label, zname, z.change_type
-        );
         if zname != "_defaultZone" {
             zone_names.push(zname);
         }
@@ -455,24 +420,12 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
     // Pick zone(s) to try. If we have a cached name, prefer it; else try all.
     let try_zones: Vec<String> = match cached_zone_name {
         Some(name) if zone_names.iter().any(|z| z == name) => vec![name.to_string()],
-        Some(name) => {
-            info!(
-                "StatusKit-CloudKit fetch: cached zone='{}' not found in container — falling back to discovery",
-                name
-            );
-            zone_names.clone()
-        }
+        Some(_) => zone_names.clone(),
         None => zone_names.clone(),
     };
 
     for zname in try_zones {
         let zone_id = opened.private_zone(zname.clone());
-        info!(
-            "StatusKit-CloudKit fetch: container='{}' zone='{}' attempting record fetch (has_token={})",
-            label,
-            zname,
-            since_token.is_some()
-        );
         let fetch_result = opened
             .perform(
                 &CloudKitSession::new(),
@@ -488,17 +441,8 @@ async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
             .await;
         match fetch_result {
             Ok((_assets, response)) => {
-                let status = response.status.unwrap_or(0);
                 let next_token = response.sync_continuation_token.clone();
                 let records: Vec<_> = response.change.into_iter().collect();
-                info!(
-                    "StatusKit-CloudKit fetch: container='{}' zone='{}' status={} record_count={} next_token_present={}",
-                    label,
-                    zname,
-                    status,
-                    records.len(),
-                    next_token.is_some()
-                );
                 if records.is_empty() {
                     continue;
                 }
@@ -537,39 +481,6 @@ fn record_id_name(
         .as_ref()
         .and_then(|i| i.value.as_ref())
         .and_then(|v| v.name.as_deref())
-}
-
-fn log_record_schema(
-    idx: usize,
-    zone: &str,
-    rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
-) {
-    let id = record_id_name(rec).unwrap_or("<no-name>");
-    let rec_type = record_type_name(rec).unwrap_or("<no-type>");
-    let has_protection = rec
-        .record
-        .as_ref()
-        .map(|r| r.protection_info.is_some())
-        .unwrap_or(false);
-    let field_count = rec
-        .record
-        .as_ref()
-        .map(|r| r.record_field.len())
-        .unwrap_or(0);
-    let field_names: Vec<&str> = rec
-        .record
-        .as_ref()
-        .map(|r| {
-            r.record_field
-                .iter()
-                .filter_map(|f| f.identifier.as_ref().and_then(|i| i.name.as_deref()))
-                .collect()
-        })
-        .unwrap_or_default();
-    info!(
-        "StatusKit-CloudKit schema[{}]: zone='{}' record_id='{}' record_type='{}' has_protection_info={} field_count={} field_names={:?}",
-        idx, zone, id, rec_type, has_protection, field_count, field_names
-    );
 }
 
 /// Map CD_Channel.record_id → CD_identifier (the base64 channel id used as
@@ -611,53 +522,19 @@ async fn build_channel_id_map<P: omnisette::AnisetteProvider>(
             .await
         {
             Ok(k) => k,
-            Err(e) => {
-                info!(
-                    "StatusKit-CloudKit channel_map: get_zone_encryption_config failed for CD_Channel '{}': {:?}",
-                    id, e
-                );
-                continue;
-            }
+            Err(_) => continue,
         };
         let encryptor = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             pcs_keys_for_record(record, &zone_key)
         })) {
             Ok(Ok(enc)) => enc,
-            Ok(Err(e)) => {
-                info!(
-                    "StatusKit-CloudKit channel_map: pcs_keys_for_record returned error for CD_Channel '{}': {:?} — trying keychain fallback",
-                    id, e
-                );
-                match decrypt_with_keychain_fallback(record, cm).await {
-                    Some(enc) => enc,
-                    None => continue,
-                }
-            }
-            Err(_) => {
-                info!(
-                    "StatusKit-CloudKit channel_map: pcs_keys_for_record panicked for CD_Channel '{}' — trying keychain fallback",
-                    id
-                );
-                match decrypt_with_keychain_fallback(record, cm).await {
-                    Some(enc) => enc,
-                    None => continue,
-                }
-            }
+            Ok(Err(_)) | Err(_) => match decrypt_with_keychain_fallback(record, cm).await {
+                Some(enc) => enc,
+                None => continue,
+            },
         };
-        match decrypt_string_field(rec, "CD_identifier", &encryptor) {
-            Some(ident) => {
-                info!(
-                    "StatusKit-CloudKit channel_map: CD_Channel '{}' → '{}'",
-                    id, ident
-                );
-                map.insert(id, ident);
-            }
-            None => {
-                info!(
-                    "StatusKit-CloudKit channel_map: failed to decrypt CD_identifier for CD_Channel '{}'",
-                    id
-                );
-            }
+        if let Some(ident) = decrypt_string_field(rec, "CD_identifier", &encryptor) {
+            map.insert(id, ident);
         }
     }
     map
@@ -705,64 +582,6 @@ fn decrypt_string_field(
     };
     let ev = cloudkit_proto::record::field::EncryptedValue::decode(&plaintext[..]).ok()?;
     ev.string_value
-}
-
-/// Diagnostic helper: walk every field in the record, decrypt each
-/// ENCRYPTED_BYTES_TYPE through the supplied encryptor, and log the
-/// plaintext as hex. Truncates very long values so logs stay bounded.
-/// Used to identify which encrypted-bytes field actually carries the
-/// peer-key material across CD_ReceivedInvitation variants.
-fn dump_encrypted_bytes_fields(
-    record: &cloudkit_proto::Record,
-    encryptor: &rustpush::pcs::PCSEncryptor,
-) {
-    for f in &record.record_field {
-        let fname = match f.identifier.as_ref().and_then(|i| i.name.as_deref()) {
-            Some(s) => s,
-            None => continue,
-        };
-        let v = match f.value.as_ref() {
-            Some(v) => v,
-            None => continue,
-        };
-        if v.r#type != Some(FieldType::EncryptedBytesType as i32) {
-            continue;
-        }
-        let ct = match v.bytes_value.as_deref() {
-            Some(b) => b,
-            None => continue,
-        };
-        let pt = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            encryptor.decrypt_data(ct, fname)
-        })) {
-            Ok(b) if !b.is_empty() => b,
-            Ok(_) => {
-                info!(
-                    "StatusKit-CloudKit decode: encrypted_bytes_field='{}' decrypt returned empty",
-                    fname
-                );
-                continue;
-            }
-            Err(_) => {
-                info!(
-                    "StatusKit-CloudKit decode: encrypted_bytes_field='{}' decrypt panicked",
-                    fname
-                );
-                continue;
-            }
-        };
-        const MAX_HEX_BYTES: usize = 256;
-        let truncated = pt.len() > MAX_HEX_BYTES;
-        let to_show = if truncated { &pt[..MAX_HEX_BYTES] } else { &pt[..] };
-        let hex: String = to_show.iter().map(|b| format!("{:02x}", b)).collect();
-        info!(
-            "StatusKit-CloudKit decode: encrypted_bytes_field='{}' bytes={} hex={}{}",
-            fname,
-            pt.len(),
-            hex,
-            if truncated { "..." } else { "" }
-        );
-    }
 }
 
 /// Decrypt an ENCRYPTED_BYTES_TYPE field through the PCS encryptor.
@@ -814,17 +633,10 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         .clone()
         .ok_or("record missing zone_identifier")?;
 
-    // Quick presence check. We log presence based on the field identifier
-    // alone — the values are all encrypted under PCS and only readable
-    // after we build the encryptor below.
     let has_sender = find_field(rec, "CD_senderHandle").is_some();
     let has_channel = find_field(rec, "CD_channel").is_some();
     let has_payload = find_field(rec, "CD_invitationPayload").is_some();
     if !has_sender || !has_channel {
-        info!(
-            "StatusKit-CloudKit decode: missing required fields (sender={}, channel_fk={})",
-            has_sender, has_channel
-        );
         return Ok(None);
     }
 
@@ -849,45 +661,23 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         }
     };
 
-    // Try pcs_keys_for_record first; if it panics or fails, fall back to
-    // direct keychain decrypt. Mirrors cloud_sync_attachments pattern.
+    // Try pcs_keys_for_record first; if it panics or fails, silently fall
+    // back to direct keychain decrypt. Mirrors cloud_sync_attachments
+    // pattern. Only the final outcome surfaces in the DONE summary.
     let encryptor = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         pcs_keys_for_record(record, &zone_key)
     })) {
         Ok(Ok(enc)) => enc,
-        Ok(Err(e)) => {
-            info!(
-                "StatusKit-CloudKit decode: pcs_keys_for_record returned error: {:?} — trying keychain fallback",
-                e
-            );
-            match decrypt_with_keychain_fallback(record, cm).await {
-                Some(enc) => enc,
-                None => return Err(format!("PCS unwrap failed (both paths)")),
-            }
-        }
-        Err(_) => {
-            info!(
-                "StatusKit-CloudKit decode: pcs_keys_for_record panicked — trying keychain fallback"
-            );
-            match decrypt_with_keychain_fallback(record, cm).await {
-                Some(enc) => enc,
-                None => return Err(format!("PCS unwrap panicked, keychain fallback failed")),
-            }
-        }
+        Ok(Err(_)) | Err(_) => match decrypt_with_keychain_fallback(record, cm).await {
+            Some(enc) => enc,
+            None => return Err("PCS unwrap failed (both paths)".into()),
+        },
     };
-
-    // Diagnostic: dump every encrypted-bytes field's hex through this
-    // encryptor. Lets us see where the peer-key material actually lives
-    // for both variants.
-    dump_encrypted_bytes_fields(record, &encryptor);
 
     if !has_payload {
         // 10-field variant: CD_peerKey/CD_serverKey/CD_channelToken instead
-        // of CD_invitationPayload. Skip until we know the assembly format —
-        // but the dump above will have logged their plaintext hex.
-        info!(
-            "StatusKit-CloudKit decode: 10-field variant (no CD_invitationPayload) — skipping after diagnostic dump"
-        );
+        // of CD_invitationPayload + CD_incomingRatchetState. Assembly path
+        // for that schema is still TBD; skip silently.
         return Ok(None);
     }
 
@@ -913,13 +703,6 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         Some(b) => b,
         None => return Err("decrypt CD_incomingRatchetState returned None".into()),
     };
-    info!(
-        "StatusKit-CloudKit decode: PCS-decrypted record sender='{}' channel_fk='{}' ratchet_bytes={}",
-        sender_handle,
-        channel_fk,
-        plaintext.len()
-    );
-
     let share_message = SharedMessage::decode(Cursor::new(&plaintext))
         .map_err(|e| format!("SharedMessage::decode failed: {:?}", e))?;
 
@@ -956,8 +739,9 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
     }))
 }
 
-/// Try the same keychain-decrypt fallback that cloud_sync_attachments uses
-/// when pcs_keys_for_record panics. Returns None on any failure.
+/// Keychain-decrypt fallback that cloud_sync_attachments uses when
+/// `pcs_keys_for_record` panics or errors. Returns None on any failure;
+/// the surrounding decode reports the failure via the DONE summary.
 async fn decrypt_with_keychain_fallback<P: omnisette::AnisetteProvider>(
     record: &cloudkit_proto::Record,
     cm: &rustpush::cloud_messages::CloudMessagesClient<P>,
@@ -970,24 +754,13 @@ async fn decrypt_with_keychain_fallback<P: omnisette::AnisetteProvider>(
     }));
     match result {
         Ok(Ok((pcs_keys, _))) => {
-            info!("StatusKit-CloudKit decode: keychain fallback PCS unwrap OK");
             let record_id = record.record_identifier.clone()?;
             Some(rustpush::pcs::PCSEncryptor {
                 keys: pcs_keys,
                 record_id,
             })
         }
-        Ok(Err(e)) => {
-            info!(
-                "StatusKit-CloudKit decode: keychain fallback PCS unwrap returned error: {:?}",
-                e
-            );
-            None
-        }
-        Err(_) => {
-            info!("StatusKit-CloudKit decode: keychain fallback PCS unwrap panicked");
-            None
-        }
+        _ => None,
     }
 }
 
@@ -1000,8 +773,8 @@ fn build_shared_device(
     personal_config_b64: &str,
 ) -> Result<StatusKitSharedDevice, String> {
     // signature: convert 32-byte X9.62 raw → 33-byte compressed → DER bytes.
-    let sig_der = compressed_pubkey_to_der(&share_message.sig_key)
-        .map_err(|e| format!("compressed_pubkey_to_der: {:?}", e))?;
+    let sig_der = compact_pubkey_to_der(&share_message.sig_key)
+        .map_err(|e| format!("compact_pubkey_to_der: {:?}", e))?;
 
     // keys: each SharedKey re-encoded as protobuf; wrapped as plist::Data.
     let keys_protos: Vec<Vec<u8>> = match &share_message.keys {
@@ -1044,16 +817,39 @@ fn build_shared_device(
         .map_err(|e| format!("plist::from_bytes(StatusKitSharedDevice) round-trip: {:?}", e))
 }
 
-/// Take a 32-byte X9.62 raw EC public key (P-256), prepend the 0x03 compressed
-/// prefix, decompress to an `EcPoint`, then output X9.62 DER. Mirrors
-/// `CompactECKey::decompress(...).public_key_to_der()`.
-fn compressed_pubkey_to_der(raw_32: &[u8]) -> Result<Vec<u8>, openssl::error::ErrorStack> {
+/// Take a 32-byte X9.62 raw EC public key (P-256, "compact" form: just the
+/// X coord) and convert to X9.62 DER. Mirrors upstream `CompactECKey::
+/// decompress(...).public_key_to_der()` exactly — including the parity
+/// flip that enforces the `2y < p` compact-key invariant.
+///
+/// Without the flip, the round-trip fails upstream's `try_from(EcKey)`
+/// validation with `BadCompactECKey` (util.rs:1664-1681) for ~half of all
+/// inputs (those whose canonical decompressed y lands in the upper half
+/// of the field). The flip negates y (y → p - y) when needed.
+fn compact_pubkey_to_der(raw_32: &[u8]) -> Result<Vec<u8>, openssl::error::ErrorStack> {
     let mut compressed = [0u8; 33];
     compressed[0] = 0x03;
     compressed[1..].copy_from_slice(raw_32);
     let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
     let mut ctx = BigNumContext::new()?;
-    let point = EcPoint::from_bytes(&group, &compressed, &mut ctx)?;
+    let mut point = EcPoint::from_bytes(&group, &compressed, &mut ctx)?;
+
+    let mut x = BigNum::new()?;
+    let mut y = BigNum::new()?;
+    let mut p = BigNum::new()?;
+    let mut a_unused = BigNum::new()?;
+    let mut b_unused = BigNum::new()?;
+    group.components_gfp(&mut p, &mut a_unused, &mut b_unused, &mut ctx)?;
+    point.affine_coordinates(&group, &mut x, &mut y, &mut ctx)?;
+
+    let mut doubled = BigNum::new()?;
+    doubled.checked_add(&y, &y)?;
+    if doubled >= p {
+        let mut flipped = BigNum::new()?;
+        flipped.checked_sub(&p, &y)?;
+        point.set_affine_coordinates_gfp(&group, &x, &flipped, &mut ctx)?;
+    }
+
     let key = EcKey::from_public_key(&group, &point)?;
     key.public_key_to_der()
 }
