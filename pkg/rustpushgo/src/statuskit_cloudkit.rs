@@ -265,6 +265,25 @@ impl Client {
                         "StatusKit-CloudKit pass: candidate[{}] INIT-{} ({}): {:?}",
                         idx, cls, label, e
                     );
+                    // Init failure on a cached-path candidate is the same
+                    // shape as DOSYNC/FETCH errors below — Apple-side
+                    // signal against a previously-working configuration
+                    // (auth/PET, container reachability, rate-limit). With
+                    // a cached path, candidates_to_try is just this one
+                    // candidate, so `continue` exits the loop into an
+                    // empty success page that would apply the 12h floor.
+                    // Propagate so the Go-side gate applies failure
+                    // backoff. In discovery mode (no cached_zone_name)
+                    // continuing to the next candidate is the correct
+                    // fallback.
+                    if cached_zone_name.is_some() {
+                        return Err(WrappedError::GenericError {
+                            msg: format!(
+                                "StatusKit-CloudKit cached-path init failed (idx={}, INIT-{}): {:?}",
+                                idx, cls, e
+                            ),
+                        });
+                    }
                     continue;
                 }
             };
