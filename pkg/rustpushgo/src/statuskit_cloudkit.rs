@@ -835,10 +835,11 @@ async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
         None => return Err("decrypt CD_invitationPayload returned None".into()),
     };
     info!(
-        "StatusKit-CloudKit decode: PCS-decrypted record sender='{}' channel_fk='{}' payload_bytes={}",
+        "StatusKit-CloudKit decode: PCS-decrypted record sender='{}' channel_fk='{}' payload_bytes={} payload_hex={}",
         sender_handle,
         channel_fk,
-        plaintext.len()
+        plaintext.len(),
+        plaintext.iter().map(|b| format!("{:02x}", b)).collect::<String>()
     );
 
     // CloudKit stores `CD_invitationPayload` as a raw `SharedMessage`
