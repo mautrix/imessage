@@ -201,6 +201,17 @@ type IMClient struct {
 	// missed handles, so skipping is safe.
 	statusKitSweepRunning atomic.Bool
 
+	// statusKitCloudPassFirstCallDone gates the inter-pass-backoff bypass
+	// for the first StatusKit-CloudKit pass after process startup. If a
+	// prior session left the persistent backoff state in "in-failure"
+	// (e.g. the bridge was kicked from the iCloud trust circle), the user
+	// would otherwise be locked out for up to statusKitPassMaxBackoff
+	// even after fixing trust on another Apple device and restarting the
+	// bridge. Letting one pass through per process start gives restart
+	// its natural "let me try again" semantics; if that pass also fails,
+	// the persisted backoff resumes and steady-state behavior takes over.
+	statusKitCloudPassFirstCallDone atomic.Bool
+
 	// statusKitShareMu serializes the cooldown-check / publish /
 	// cooldown-write sequence in publishStatusKitAvailableAfterInvite.
 	// Without it two concurrent callers can both pass the cooldown check

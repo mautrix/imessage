@@ -220,7 +220,13 @@ impl Client {
         };
         let cached_zone_name: Option<String> = parsed_cache.map(|(_, n)| n);
 
+        // Hold the winning `opened` container across the discovery loop and
+        // the decode pass. Doing one ckAppInit per pass — instead of two —
+        // halves the CKKS request volume per cycle, which directly reduces
+        // the per-pass burst that today's testing iteration tripped Apple's
+        // rate-limit defense on.
         let mut hit: Option<DiscoveryHit> = None;
+        let mut opened_hit: Option<CloudKitOpenContainer<'_, _>> = None;
         for &idx in &candidates_to_try {
             let candidate = &CANDIDATE_CONTAINERS[idx];
             let scope = match candidate.database_type {
@@ -254,6 +260,7 @@ impl Client {
             {
                 Ok(Some(h)) => {
                     hit = Some(h);
+                    opened_hit = Some(opened);
                     break;
                 }
                 Ok(None) => {}
@@ -275,16 +282,9 @@ impl Client {
                 ));
             }
         };
-
-        // Decode + inject. We need the opened container in scope for PCS
-        // unwrap (zone-level encryption config lookup), so re-open it.
-        let candidate = &CANDIDATE_CONTAINERS[hit.container_idx];
-        let opened = candidate
-            .init(cm.client.clone())
-            .await
-            .map_err(|e| WrappedError::GenericError {
-                msg: format!("StatusKit-CloudKit re-open container failed: {:?}", e),
-            })?;
+        // Both Options are set together when a hit lands in the loop above,
+        // so this expect() is unreachable in practice.
+        let opened = opened_hit.expect("opened_hit set whenever hit is set");
 
         let mut decoded: Vec<DecodedPeer> = Vec::new();
         let mut decode_failed: u32 = 0;
