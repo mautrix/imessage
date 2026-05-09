@@ -75,27 +75,32 @@ use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 /// (StatusKit is conceptually cross-account shared state, not private).
 /// Bundle ID + container target for StatusKit's CloudKit storage.
 ///
-/// Confirmed by `codesign --entitlements -` on the user's MBP (Session 14):
-/// the entitlement `com.apple.application-identifier` of the binary that
-/// makes CK calls against `com.apple.statuskit` is literally
-/// `com.apple.StatusKit.subscribe`. This is the bundle ID Apple's CK
-/// signature chain validates — every other bundle we tried (50+ heuristic
-/// guesses including `donotdisturbd`, `statuskitd`, `focus`, etc.) returned
-/// `InvalidBundleId` because Apple's gateway echoes the bundle string back
-/// in the error but actually validates against the signed entitlement chain.
+/// Confirmed by `codesign --entitlements -` on
+/// `/System/Library/PrivateFrameworks/StatusKit.framework/StatusKitAgent`
+/// (the daemon hosting `com.apple.aps.StatusKit.CloudKitMirroring` —
+/// the smoking-gun mach service from the LaunchAgents plist):
 ///
-/// We try PrivateDb first; SharedDb is a fallback in case StatusKit's
-/// shared-channel state lives there.
+///   com.apple.application-identifier = com.apple.StatusKitAgent
+///   com.apple.private.cloudkit.serviceNameForContainerMap
+///       = { "com.apple.statuskit": "com.apple.statuskit" }
+///   com.apple.developer.icloud-container-environment = Production
+///   com.apple.developer.icloud-services = [CloudKit]
+///
+/// The trap that ate the previous 60 probes: `com.apple.StatusKit.subscribe`
+/// is a mach service NAME (XPC), not the bundle ID. Spotlight has it as a
+/// mach-lookup CONSUMER; the actual SERVER hosting that XPC service is
+/// `StatusKitAgent`, and *its* bundle ID is what Apple's CK signature
+/// chain validates.
 const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
     CloudKitContainer {
         database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.StatusKit.subscribe",
+        bundleid: "com.apple.StatusKitAgent",
         containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
     CloudKitContainer {
         database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
-        bundleid: "com.apple.StatusKit.subscribe",
+        bundleid: "com.apple.StatusKitAgent",
         containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
