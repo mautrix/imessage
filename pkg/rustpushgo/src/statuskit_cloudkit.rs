@@ -49,69 +49,112 @@ use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 
 /// Candidate CloudKit containers to probe for StatusKit data.
 ///
-/// We don't know which container Apple uses, so we try a curated list each
-/// pass and log results. The first run on the user's account determined
-/// that the iMessage container ("com.apple.messages.cloud" / bundle
-/// "com.apple.imagent") has 13 zones and ZERO StatusKit-shaped data, so
-/// we now also probe these alternates. Each is identified as
-/// "(bundleid, containerid)" pairs in logs.
+/// First production run (May 9) showed the iMessage container
+/// ("com.apple.messages.cloud" / bundle "com.apple.imagent") has 13 zones
+/// and ZERO StatusKit-shaped data. Second run probed 7 alternates:
+///   - `com.apple.icloud.presence` (4 different bundles): all 4 returned a
+///     parse error on init (no `cloudKitUserId` field) → container ID
+///     does NOT exist at the CK setup endpoint.
+///   - `com.apple.icloud.sharedchannels`: same parse error → not a real
+///     container ID either.
+///   - `com.apple.security.keychain` (SECURITYD bundle): init OK,
+///     `RetrieveZoneChanges` returned `NotSupported` ("Optional feature
+///     disabled for this container") — keychain CK uses cuttlefish flow,
+///     not zone changes; not workable for StatusKit pull.
+///   - `com.apple.statuskit` (2 different bundles, `com.apple.statuskitd`
+///     and `com.apple.imagent`): init SUCCEEDED (got cloudKitUserId), but
+///     `do_sync` returned `InvalidBundleId` ("Invalid bundle ID for
+///     container").
 ///
-/// Naming hypotheses, in priority order:
-///   1. `com.apple.icloud.presence` — matches APNs topic
-///      `com.apple.icloud.presence.channel.management` used by StatusKit.
-///   2. `com.apple.statuskit` with `com.apple.statuskitd` daemon, mirroring
-///      Apple's `<feature>` / `<feature>d` daemon convention.
-///   3. `com.apple.identityservicesd` bundle owning a presence-shaped
-///      container — IDS handles the keysharing topic, so its daemon may
-///      own the storage.
-///   4. `com.apple.security.keychain` — the iCloud keychain container.
-///      StatusKit `SharedKey` material is keychain-shaped (32-byte
-///      symmetric seed); plausible if Apple syncs StatusKit keys via
-///      the keychain rail.
-///   5. `com.apple.icloud.sharedchannels` — StatusKit channels are a
-///      shared-channels feature (per the
-///      `com.apple.gs.sharedchannels.auth` GSA token name).
+/// **Conclusion: `com.apple.statuskit` is the right container ID, we
+/// just don't have the right bundle ID yet.** Apple's CK applies
+/// per-bundle authorization on each operation; some bundles can `init`
+/// the container but aren't entitled for `RetrieveZoneChanges`. This
+/// probe list now exclusively targets `com.apple.statuskit` with a wider
+/// set of plausible reader bundle IDs and also tries `SharedDb` scope
+/// (StatusKit is conceptually cross-account shared state, not private).
 const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
+    // PrivateDb attempts — wider bundle hunt against the confirmed container.
     CloudKitContainer {
         database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.imagent",
-        containerid: "com.apple.icloud.presence",
+        bundleid: "com.apple.statuskit.statusservice",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.statuskit",
+        containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
     CloudKitContainer {
         database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
         bundleid: "com.apple.identityservicesd",
-        containerid: "com.apple.icloud.presence",
+        containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
     CloudKitContainer {
         database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.MobileSMS",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.duetexpertd",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.cloudd",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.bird",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.passd",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        bundleid: "com.apple.icloud.statuskit",
+        containerid: "com.apple.statuskit",
+        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
+    },
+    // SharedDb attempts — same bundles, different DB scope. StatusKit is
+    // semantically a shared-channel feature, so the SharedDb scope is
+    // worth probing even though it costs more HTTP round-trips.
+    CloudKitContainer {
+        database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
         bundleid: "com.apple.statuskitd",
         containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
     CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
         bundleid: "com.apple.imagent",
         containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
     CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
+        database_type: cloudkit_proto::request_operation::header::Database::SharedDb,
         bundleid: "com.apple.identityservicesd",
-        containerid: "com.apple.icloud.sharedchannels",
+        containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
+    // PublicDb — long shot, but cheap to probe.
     CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.icloud.presence",
-        containerid: "com.apple.icloud.presence",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    },
-    CloudKitContainer {
-        database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
-        bundleid: "com.apple.securityd",
-        containerid: "com.apple.security.keychain",
+        database_type: cloudkit_proto::request_operation::header::Database::PublicDb,
+        bundleid: "com.apple.statuskitd",
+        containerid: "com.apple.statuskit",
         env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
     },
 ];
@@ -357,25 +400,48 @@ async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, Stri
     }
 
     // Probe 2..N: candidate containers. Each is independent — failures are
-    // logged and we continue. The `init` call hits Apple's setup endpoint
-    // with the bundleid + containerid in headers, so a wrong pair will
-    // typically 4xx and we move on.
+    // logged and we continue. Three failure modes worth distinguishing
+    // for diagnosis:
+    //
+    //   - "init parse error" (no `cloudKitUserId` in setup response) →
+    //     container ID does not exist at Apple's CK setup endpoint.
+    //   - "do_sync InvalidBundleId" → container exists but the bundle ID
+    //     isn't entitled for RetrieveZoneChanges. Try a different bundle.
+    //   - "do_sync NotSupported" → container exists, bundle entitled,
+    //     but RetrieveZoneChanges isn't supported on that container/DB
+    //     scope (e.g. keychain CK uses cuttlefish, not zone changes).
+    //
+    // The label format below includes DB scope so logs can distinguish
+    // PrivateDb vs SharedDb vs PublicDb attempts on the same container.
     for (idx, candidate) in CANDIDATE_CONTAINERS.iter().enumerate() {
-        let label = format!("{} / {}", candidate.bundleid, candidate.containerid);
+        let scope = match candidate.database_type {
+            cloudkit_proto::request_operation::header::Database::PrivateDb => "PrivateDb",
+            cloudkit_proto::request_operation::header::Database::SharedDb => "SharedDb",
+            cloudkit_proto::request_operation::header::Database::PublicDb => "PublicDb",
+        };
+        let label = format!(
+            "{} / {} [{}]",
+            candidate.bundleid, candidate.containerid, scope
+        );
         info!(
-            "StatusKit-CloudKit discovery: probing candidate[{}] container ({})",
+            "StatusKit-CloudKit discovery: probing candidate[{}] ({})",
             idx, label
         );
         let opened = match candidate.init(cm.client.clone()).await {
             Ok(c) => c,
             Err(e) => {
+                let cls = classify_init_error(&format!("{:?}", e));
                 info!(
-                    "StatusKit-CloudKit discovery: candidate[{}] init FAILED ({}): {:?} — skipping",
-                    idx, label, e
+                    "StatusKit-CloudKit discovery: candidate[{}] INIT-{} ({}): {:?} — skipping",
+                    idx, cls, label, e
                 );
                 continue;
             }
         };
+        info!(
+            "StatusKit-CloudKit discovery: candidate[{}] INIT-OK ({}) — proceeding to do_sync",
+            idx, label
+        );
         log_zones_for_container(&label, &opened, &mut all_pairs, &mut keyword_matches).await;
     }
 
@@ -401,6 +467,19 @@ async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, Stri
     Ok(Some(keyword_matches.into_iter().next().unwrap()))
 }
 
+/// Distinguish init failure modes so logs say *why* a probe failed.
+fn classify_init_error(dbg: &str) -> &'static str {
+    if dbg.contains("missing field `cloudKitUserId`") {
+        "BAD-CONTAINER-ID"
+    } else if dbg.contains("InvalidBundleId") {
+        "INVALID-BUNDLE"
+    } else if dbg.contains("NotSupported") {
+        "NOT-SUPPORTED"
+    } else {
+        "OTHER"
+    }
+}
+
 /// Helper: list every zone in the given opened container, log each one,
 /// and append container/zone labels to the running summaries. Skips zones
 /// the iMessage container is known to own so noise stays manageable, but
@@ -414,9 +493,15 @@ async fn log_zones_for_container<P: omnisette::AnisetteProvider>(
     let zones = match FetchZoneChangesOperation::do_sync(open, None).await {
         Ok((z, _tok)) => z,
         Err(e) => {
-            warn!(
-                "StatusKit-CloudKit discovery: do_sync against '{}' failed: {:?}",
-                container_label, e
+            let dbg = format!("{:?}", e);
+            let cls = classify_init_error(&dbg);
+            // BAD-CONTAINER-ID can never come from do_sync (it's an init
+            // failure), so this is really do-sync-shaped categorization:
+            // INVALID-BUNDLE = container exists, our bundle isn't entitled.
+            // NOT-SUPPORTED = wrong DB scope or operation type.
+            info!(
+                "StatusKit-CloudKit discovery: do_sync against '{}' DOSYNC-{}: {:?}",
+                container_label, cls, e
             );
             return;
         }
