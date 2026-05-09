@@ -47,13 +47,14 @@ const (
 	statusKitCloudPassMetaRow = "_statuskit_pass_meta"
 )
 
-// statusKitPassMinInterval is the minimum spacing between two successful
-// passes. Apple updates the LimitedPeersAllowed view far less frequently
-// than the bridge's outer cloud-sync cadence (which can fire several times
-// in the first minutes after restart and again on every !resync). 15 min is
-// well below Apple's expected refresh-on-status-change latency for peer iOS
-// reshares while staying conservative on CKKS request volume.
-const statusKitPassMinInterval = 15 * time.Minute
+// statusKitFailureBackoffBase is the base delay used when the previous
+// pass failed. The actual delay scales exponentially with consecutive
+// errors (15m → 30m → 1h → 2h capped). On a successful pass we apply NO
+// inter-pass floor — the bridge's chat/message backfill paths in
+// sync_controller.go run on every cloud-sync cycle without one and are
+// empirically calibrated to Apple's tolerance, so matching that cadence
+// for steady-state StatusKit is the right baseline.
+const statusKitFailureBackoffBase = 15 * time.Minute
 
 // statusKitPassMaxBackoff caps the exponential backoff after consecutive
 // errors. Two hours is long enough that a transient CKKS rate-limit window
@@ -103,21 +104,25 @@ func (m statusKitPassMeta) encode() string {
 }
 
 // nextAllowedAt returns the earliest time at which a new pass may run.
-// Successful passes use the steady-state min interval; failed passes use
-// exponential backoff (15m → 30m → 1h → 2h capped) plus any retry-after
-// hint extracted from the last error.
+// On a successful previous pass with no Apple retry-after hint, returns
+// the zero time — no gate, the next outer cloud-sync cycle is free to
+// fire. On failure, applies exponential backoff (15m → 30m → 1h → 2h
+// capped) honoring any larger retry-after hint.
 func (m statusKitPassMeta) nextAllowedAt(retryAfterHint time.Duration) time.Time {
 	if m.LastAttempt.IsZero() {
 		return time.Time{}
 	}
-	delay := statusKitPassMinInterval
+	if m.ConsecutiveErrs == 0 && retryAfterHint == 0 {
+		return time.Time{}
+	}
+	delay := statusKitFailureBackoffBase
 	if m.ConsecutiveErrs > 0 {
 		// 15m * 2^(n-1), capped. n=1 → 15m, n=2 → 30m, n=3 → 1h, n=4 → 2h.
 		shift := m.ConsecutiveErrs - 1
 		if shift > 6 {
 			shift = 6
 		}
-		delay = statusKitPassMinInterval << shift
+		delay = statusKitFailureBackoffBase << shift
 		if delay > statusKitPassMaxBackoff {
 			delay = statusKitPassMaxBackoff
 		}
