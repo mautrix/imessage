@@ -37,8 +37,8 @@ use log::{info, warn};
 use rustpush::{
     cloud_messages::MESSAGES_SERVICE,
     cloudkit::{
-        pcs_keys_for_record, CloudKitContainer, CloudKitSession,
-        FetchRecordChangesOperation, FetchZoneChangesOperation, NO_ASSETS,
+        pcs_keys_for_record, CloudKitSession, FetchRecordChangesOperation,
+        FetchZoneChangesOperation, NO_ASSETS,
     },
     cloudkit_proto,
     pcs::PCSShareProtection,
@@ -73,124 +73,32 @@ use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 /// probe list now exclusively targets `com.apple.statuskit` with a wider
 /// set of plausible reader bundle IDs and also tries `SharedDb` scope
 /// (StatusKit is conceptually cross-account shared state, not private).
-/// Helper: container struct for a (bundle, db scope) pair against the
-/// confirmed `com.apple.statuskit` container in Production env.
-const fn ck(
-    bundleid: &'static str,
-    db: cloudkit_proto::request_operation::header::Database,
-) -> CloudKitContainer<'static> {
-    CloudKitContainer {
-        database_type: db,
-        bundleid,
-        containerid: "com.apple.statuskit",
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    }
-}
-
-/// Like `ck` but lets the container id vary too — for testing the
-/// `iCloud.com.apple.statuskit` prefix theory etc.
-const fn ck_alt(
-    bundleid: &'static str,
-    containerid: &'static str,
-    db: cloudkit_proto::request_operation::header::Database,
-) -> CloudKitContainer<'static> {
-    CloudKitContainer {
-        database_type: db,
-        bundleid,
-        containerid,
-        env: cloudkit_proto::request_operation::header::ContainerEnvironment::Production,
-    }
-}
-
-const PRIVATE: cloudkit_proto::request_operation::header::Database =
-    cloudkit_proto::request_operation::header::Database::PrivateDb;
-const SHARED: cloudkit_proto::request_operation::header::Database =
-    cloudkit_proto::request_operation::header::Database::SharedDb;
-
-const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
-    // ---- Focus / DND framework daemons ----
-    // StatusKit is iOS 18's evolution of Focus/DND sharing; the daemon
-    // backing it is most likely a focus/donotdisturb-named system daemon.
-    ck("com.apple.donotdisturbd", PRIVATE),
-    ck("com.apple.donotdisturb", PRIVATE),
-    ck("com.apple.dnd", PRIVATE),
-    ck("com.apple.focus", PRIVATE),
-    ck("com.apple.focusd", PRIVATE),
-    ck("com.apple.focusfilters", PRIVATE),
-    ck("com.apple.icloud.focus", PRIVATE),
-    ck("com.apple.icloud.dnd", PRIVATE),
-
-    // ---- StatusKit-named variants we haven't tried ----
-    ck("com.apple.icloud.statuskit.statusservice", PRIVATE),
-    ck("com.apple.icloud.statuskitd", PRIVATE),
-    ck("com.apple.private.statuskit", PRIVATE),
-    ck("com.apple.private.statuskitd", PRIVATE),
-    ck("com.apple.private.statuskit.statusservice", PRIVATE),
-    ck("com.apple.statuskit.shared", PRIVATE),
-    ck("com.apple.statuskit.peer", PRIVATE),
-    ck("com.apple.StatusKit", PRIVATE),
-    ck("com.apple.StatusKitFramework", PRIVATE),
-
-    // ---- IDS / keysharing daemons ----
-    // StatusKit's keysharing-channel mechanism rides on IDS sub-services;
-    // the IDS bundle ids are well-documented and worth probing.
-    ck("com.apple.IDSDaemon", PRIVATE),
-    ck("com.apple.IDS", PRIVATE),
-    ck("com.apple.identityservices", PRIVATE),
-    ck("com.apple.private.alloy.status.keysharing", PRIVATE),
-    ck("com.apple.private.alloy.multiplex1", PRIVATE),
-
-    // ---- Apple account / iCloud system daemons ----
-    ck("com.apple.akd", PRIVATE),
-    ck("com.apple.appleaccount", PRIVATE),
-    ck("com.apple.AppleAccount", PRIVATE),
-    ck("com.apple.iCloud.daemon", PRIVATE),
-    ck("com.apple.icloud.daemon", PRIVATE),
-    ck("com.apple.icloudpd", PRIVATE),
-    ck("com.apple.iCloudHelper", PRIVATE),
-    ck("com.apple.familyd", PRIVATE),
-    ck("com.apple.familycircled", PRIVATE),
-    ck("com.apple.gsa", PRIVATE),
-    ck("com.apple.gss", PRIVATE),
-
-    // ---- Sharing / notifications / context daemons ----
-    ck("com.apple.sharingd", PRIVATE),
-    ck("com.apple.icloudsharing", PRIVATE),
-    ck("com.apple.notifyd", PRIVATE),
-    ck("com.apple.usernotificationsd", PRIVATE),
-    ck("com.apple.UserNotifications", PRIVATE),
-    ck("com.apple.intelligencecontextd", PRIVATE),
-    ck("com.apple.assistantd", PRIVATE),
-    ck("com.apple.coreduetd", PRIVATE),
-    ck("com.apple.searchpartyd", PRIVATE),
-    ck("com.apple.routined", PRIVATE),
-    ck("com.apple.swcd", PRIVATE),
-    ck("com.apple.dasd", PRIVATE),
-    ck("com.apple.preferencesd", PRIVATE),
-    ck("com.apple.preferences", PRIVATE),
-
-    // ---- SharedDb scope ---- (StatusKit is conceptually shared state)
-    // Re-try the most plausible bundles in SharedDb in case authorization
-    // is scope-specific.
-    ck("com.apple.donotdisturbd", SHARED),
-    ck("com.apple.focusd", SHARED),
-    ck("com.apple.icloud.statuskit.statusservice", SHARED),
-    ck("com.apple.private.alloy.status.keysharing", SHARED),
-    ck("com.apple.IDSDaemon", SHARED),
-    ck("com.apple.akd", SHARED),
-
-    // ---- Alternate container ID: with iCloud prefix ----
-    // Standard CK 3rd-party containers use `iCloud.X` prefix — test the
-    // theory that StatusKit's container is actually exposed under that
-    // canonical prefix and the bundles that authorize it are the same.
-    ck_alt("com.apple.statuskitd", "iCloud.com.apple.statuskit", PRIVATE),
-    ck_alt("com.apple.donotdisturbd", "iCloud.com.apple.statuskit", PRIVATE),
-    ck_alt("com.apple.focusd", "iCloud.com.apple.statuskit", PRIVATE),
-    ck_alt(
-        "com.apple.private.alloy.status.keysharing",
-        "iCloud.com.apple.statuskit",
-        PRIVATE,
-    ),
+/// Non-baseline iMessage zones to fetch records from.
+///
+/// The bridge has working CK auth for `com.apple.imagent /
+/// com.apple.messages.cloud`. The 13 zones in that container are:
+///
+///   chatManateeZone, messageManateeZone, attachmentManateeZone,
+///   recoverableMessageDeleteZone, chatBotMessageZone, chatBotAttachmentZone,
+///   chatBotRecoverableMessageDeleteZone  ← well-known iMessage data
+///
+///   chat1ManateeZone, message1ManateeZone, scheduledMessageZone,
+///   analyticManateeZone, messageUpdateZone, RecordKeyManateeZone  ← unknown
+///
+/// We've never fetched records from the unknown ones. The hypothesis driving
+/// the pivot: StatusKit keys may piggyback on the iMessage container's
+/// existing CK auth rather than living in a separately-authorized
+/// `com.apple.statuskit` container. The bundle hunt against
+/// `com.apple.statuskit` produced 57 identical `ckff9mnw` rejections — that
+/// door is closed. But we have a confirmed open door into the iMessage
+/// container, and `RecordKeyManateeZone` literally has "Key" in the name.
+const NONBASELINE_IMESSAGE_ZONES: &[&str] = &[
+    "RecordKeyManateeZone",  // primary suspect — "Key" in zone name
+    "scheduledMessageZone",
+    "analyticManateeZone",
+    "messageUpdateZone",
+    "message1ManateeZone",   // "1" suffix — different from messageManateeZone
+    "chat1ManateeZone",      // "1" suffix — different from chatManateeZone
 ];
 
 /// Result of one CloudKit-pull pass for StatusKit peer keys.
@@ -389,31 +297,38 @@ impl Client {
     }
 }
 
-/// Iterate candidate CloudKit containers, list each container's zones, and
-/// pick a zone whose name matches StatusKit-shaped keywords. The iMessage
-/// container's zones are listed too as a baseline; experience on the test
-/// account showed it has ZERO StatusKit zones, so the alternates in
-/// `CANDIDATE_CONTAINERS` matter more.
+/// Pivot from bundle-hunt to record-fetch.
 ///
-/// Returns `Some(zone_name)` if a candidate zone was identified, `None`
-/// otherwise. Currently only returns the zone name — Phase 2 will need to
-/// also remember which container owns it. For Phase 1 the iMessage
-/// container is implicitly assumed.
+/// 57 probes against `com.apple.statuskit` with every plausible bundle
+/// returned identical `ckff9mnw` `InvalidBundleId` errors — including
+/// `com.apple.donotdisturbd`, the daemon empirically observed making CK
+/// calls on the user's MBP. Apple isn't gating on the bundle string;
+/// the rejection happens at a layer above bundle authorization.
+///
+/// We DO have working CK auth for `com.apple.imagent /
+/// com.apple.messages.cloud`. That container has 13 zones, 6 of which
+/// we've never fetched records from — most notably `RecordKeyManateeZone`
+/// (the word "Key" is literally in the name). The new hypothesis:
+/// StatusKit shared keys may piggyback on the iMessage container's
+/// existing CK auth.
+///
+/// This function:
+///   1. Lists zones in the iMessage container (existing behaviour).
+///   2. For each non-baseline zone, calls FetchRecordChangesOperation
+///      and logs the schemas of the first 10 records.
+///   3. Returns None — discovery is still diagnostic-only; Phase 2
+///      writes a real decoder once we see a StatusKit-shaped record.
 async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, String> {
     let cm = client
         .get_or_init_cloud_messages_client()
         .await
         .map_err(|e| format!("cloud_messages init failed: {:?}", e))?;
 
-    // Track every (container, zone) pair logged so we can summarize at the
-    // end if nothing matches.
     let mut all_pairs: Vec<String> = Vec::new();
     let mut keyword_matches: Vec<String> = Vec::new();
 
-    // Probe 1: existing iMessage container (proves the discovery path is
-    // working even if we don't expect StatusKit zones here).
     info!(
-        "StatusKit-CloudKit discovery: probing baseline iMessage container (bundleid='com.apple.imagent', containerid='com.apple.messages.cloud')"
+        "StatusKit-CloudKit discovery: enumerating zones in baseline iMessage container (bundleid='com.apple.imagent', containerid='com.apple.messages.cloud')"
     );
     match cm.get_container().await {
         Ok(open) => {
@@ -430,75 +345,63 @@ async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, Stri
                 "StatusKit-CloudKit discovery: baseline iMessage container open failed: {:?}",
                 e
             );
+            return Ok(None);
         }
     }
 
-    // Probe 2..N: candidate containers. Each is independent — failures are
-    // logged and we continue. Three failure modes worth distinguishing
-    // for diagnosis:
-    //
-    //   - "init parse error" (no `cloudKitUserId` in setup response) →
-    //     container ID does not exist at Apple's CK setup endpoint.
-    //   - "do_sync InvalidBundleId" → container exists but the bundle ID
-    //     isn't entitled for RetrieveZoneChanges. Try a different bundle.
-    //   - "do_sync NotSupported" → container exists, bundle entitled,
-    //     but RetrieveZoneChanges isn't supported on that container/DB
-    //     scope (e.g. keychain CK uses cuttlefish, not zone changes).
-    //
-    // The label format below includes DB scope so logs can distinguish
-    // PrivateDb vs SharedDb vs PublicDb attempts on the same container.
-    for (idx, candidate) in CANDIDATE_CONTAINERS.iter().enumerate() {
-        let scope = match candidate.database_type {
-            cloudkit_proto::request_operation::header::Database::PrivateDb => "PrivateDb",
-            cloudkit_proto::request_operation::header::Database::SharedDb => "SharedDb",
-            cloudkit_proto::request_operation::header::Database::PublicDb => "PublicDb",
-        };
-        let label = format!(
-            "{} / {} [{}]",
-            candidate.bundleid, candidate.containerid, scope
-        );
-        info!(
-            "StatusKit-CloudKit discovery: probing candidate[{}] ({})",
-            idx, label
-        );
-        let opened = match candidate.init(cm.client.clone()).await {
-            Ok(c) => c,
-            Err(e) => {
-                let cls = classify_init_error(&format!("{:?}", e));
-                info!(
-                    "StatusKit-CloudKit discovery: candidate[{}] INIT-{} ({}): {:?} — skipping",
-                    idx, cls, label, e
-                );
-                continue;
-            }
-        };
-        info!(
-            "StatusKit-CloudKit discovery: candidate[{}] INIT-OK ({}) — proceeding to do_sync",
-            idx, label
-        );
-        log_zones_for_container(&label, &opened, &mut all_pairs, &mut keyword_matches).await;
-    }
-
     info!(
-        "StatusKit-CloudKit discovery: full (container, zone) inventory ({} entries): [{}]",
+        "StatusKit-CloudKit discovery: full zone inventory ({} entries): [{}]",
         all_pairs.len(),
         all_pairs.join(" | ")
     );
 
-    if keyword_matches.is_empty() {
+    // PIVOT: fetch records from each non-baseline iMessage zone and dump
+    // schemas. The bundle hunt is dead — Apple isn't gating on the bundle
+    // string. But we have a confirmed open door into the iMessage container,
+    // and StatusKit keys may live in zones we haven't looked inside yet.
+    info!(
+        "StatusKit-CloudKit pivot: probing {} non-baseline iMessage zones for records (RecordKeyManateeZone has 'Key' in the name — primary suspect)",
+        NONBASELINE_IMESSAGE_ZONES.len()
+    );
+    for zone_name in NONBASELINE_IMESSAGE_ZONES {
         info!(
-            "StatusKit-CloudKit discovery: NO keyword-matching candidate zone found across {} probes; user inspection of the inventory above may identify the right one",
-            CANDIDATE_CONTAINERS.len() + 1
+            "StatusKit-CloudKit pivot: fetching records from zone='{}'",
+            zone_name
         );
-        return Ok(None);
+        match fetch_zone_records(client, zone_name, None).await {
+            Ok((records, _next_token, status)) => {
+                info!(
+                    "StatusKit-CloudKit pivot: zone='{}' status={} record_count={}",
+                    zone_name,
+                    status,
+                    records.len()
+                );
+                let log_count = records.len().min(10);
+                for (idx, rec) in records.iter().take(log_count).enumerate() {
+                    log_record_schema(idx, zone_name, rec);
+                }
+                if records.len() > log_count {
+                    info!(
+                        "StatusKit-CloudKit pivot: zone='{}' truncated schema log to first {} records of {}",
+                        zone_name,
+                        log_count,
+                        records.len()
+                    );
+                }
+            }
+            Err(e) => {
+                info!(
+                    "StatusKit-CloudKit pivot: zone='{}' fetch failed: {} — zone may not be authorized for our bundle, or may not exist on this account",
+                    zone_name, e
+                );
+            }
+        }
     }
 
     info!(
-        "StatusKit-CloudKit discovery: {} keyword-matching candidate(s): [{}]; picking first",
-        keyword_matches.len(),
-        keyword_matches.join(", ")
+        "StatusKit-CloudKit pivot: record-schema dump complete; user inspection of the schemas above is needed to identify which zone (if any) carries StatusKit-shaped records"
     );
-    Ok(Some(keyword_matches.into_iter().next().unwrap()))
+    Ok(None)
 }
 
 /// Distinguish init failure modes so logs say *why* a probe failed.
