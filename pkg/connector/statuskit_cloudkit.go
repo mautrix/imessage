@@ -394,6 +394,15 @@ func (c *IMClient) syncCloudStatusKitPeers(ctx context.Context, log zerolog.Logg
 			injectedHandles = append(injectedHandles, page.InjectedHandles...)
 		}
 
+		// Feed every successfully-decoded (channel_id, sender_handle) pair
+		// from this page into the persistent alias-cluster store. Catches
+		// peers whose only reshare arrived while the bridge was offline —
+		// those bypass the live OnReshareSender callback and would otherwise
+		// be invisible to alias correlation.
+		for _, obs := range page.ClusterObservations {
+			c.recordReshareObservation(ctx, log, obs.ChannelId, obs.SenderHandle)
+		}
+
 		pageLog := log.Info().
 			Int("page", pageNum).
 			Uint32("fetched", page.Fetched).

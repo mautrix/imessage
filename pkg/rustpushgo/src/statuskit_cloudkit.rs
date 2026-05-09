@@ -182,6 +182,17 @@ const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
     },
 ];
 
+/// One observed (channel_id, sender_handle) pair from a CD_ReceivedInvitation
+/// record. The Go side feeds these into the persistent alias cluster store so
+/// that two senders observed on the same channel id are correlated as aliases
+/// of the same peer. This catches peers that were keyed via CloudKit pull
+/// (offline reshares) where the on_reshare_sender callback never fires.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct StatusKitClusterObservation {
+    pub channel_id: String,
+    pub sender_handle: String,
+}
+
 /// Result of one CloudKit-pull pass for StatusKit peer keys.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CloudSyncStatusKitPage {
@@ -195,6 +206,12 @@ pub struct CloudSyncStatusKitPage {
     pub decode_failed: u32,
     pub records_seen: u32,
     pub injected_handles: Vec<String>,
+    /// Every (channel_id, sender_handle) pair successfully decoded from this
+    /// page's CD_ReceivedInvitation records, regardless of whether the peer
+    /// was newly inserted or already known. Surfaces the full alias graph to
+    /// the bridge so its persistent cluster store can correlate aliases that
+    /// share a channel id.
+    pub cluster_observations: Vec<StatusKitClusterObservation>,
     pub discovery_summary: Option<String>,
 }
 
@@ -209,6 +226,7 @@ impl CloudSyncStatusKitPage {
             decode_failed: 0,
             records_seen: 0,
             injected_handles: Vec::new(),
+            cluster_observations: Vec::new(),
             discovery_summary: summary,
         }
     }
@@ -366,13 +384,24 @@ impl Client {
         // the end. No per-record success/skip logging — we'd otherwise emit
         // hundreds of lines per pass.
         let mut failure_examples: Vec<String> = Vec::new();
+        let mut cluster_observations: Vec<StatusKitClusterObservation> = Vec::new();
         for rec in hit.records.iter() {
             let rec_type = record_type_name(rec).unwrap_or("<no-type>");
             if rec_type != "CD_ReceivedInvitation" {
                 continue;
             }
             match decode_invitation_record(self, &opened, &cm, rec, &channel_map).await {
-                Ok(Some(p)) => decoded.push(p),
+                Ok(Some(p)) => {
+                    // Record the (channel_id, sender) before inject_into_state
+                    // moves the peer. Surface it to the Go cluster store
+                    // regardless of whether the peer is newly inserted or
+                    // already known — both signals feed alias correlation.
+                    cluster_observations.push(StatusKitClusterObservation {
+                        channel_id: p.channel_id.clone(),
+                        sender_handle: p.from.clone(),
+                    });
+                    decoded.push(p);
+                }
                 Ok(None) => {}
                 Err(e) => {
                     decode_failed += 1;
@@ -420,6 +449,7 @@ impl Client {
             decode_failed,
             records_seen: hit.records.len() as u32,
             injected_handles: inject_stats.injected_handles,
+            cluster_observations,
             discovery_summary: None,
         })
     }

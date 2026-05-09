@@ -1836,7 +1836,7 @@ func uniffiCheckChecksums() {
 		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
 			return C.uniffi_rustpushgo_checksum_method_statuscallback_on_reshare_sender(uniffiStatus)
 		})
-		if checksum != 38947 {
+		if checksum != 1024 {
 			// If this happens try cleaning and rebuilding your project
 			panic("rustpushgo: uniffi_rustpushgo_checksum_method_statuscallback_on_reshare_sender: UniFFI API checksum mismatch")
 		}
@@ -6258,15 +6258,16 @@ func (_ FfiDestroyerTypeAccountPersistData) Destroy(value AccountPersistData) {
 }
 
 type CloudSyncStatusKitPage struct {
-	ResolvedZone     *string
-	NextToken        *[]byte
-	Fetched          uint32
-	Inserted         uint32
-	AlreadyKnown     uint32
-	DecodeFailed     uint32
-	RecordsSeen      uint32
-	InjectedHandles  []string
-	DiscoverySummary *string
+	ResolvedZone        *string
+	NextToken           *[]byte
+	Fetched             uint32
+	Inserted            uint32
+	AlreadyKnown        uint32
+	DecodeFailed        uint32
+	RecordsSeen         uint32
+	InjectedHandles     []string
+	ClusterObservations []StatusKitClusterObservation
+	DiscoverySummary    *string
 }
 
 func (r *CloudSyncStatusKitPage) Destroy() {
@@ -6278,6 +6279,7 @@ func (r *CloudSyncStatusKitPage) Destroy() {
 	FfiDestroyerUint32{}.Destroy(r.DecodeFailed)
 	FfiDestroyerUint32{}.Destroy(r.RecordsSeen)
 	FfiDestroyerSequenceString{}.Destroy(r.InjectedHandles)
+	FfiDestroyerSequenceTypeStatusKitClusterObservation{}.Destroy(r.ClusterObservations)
 	FfiDestroyerOptionalString{}.Destroy(r.DiscoverySummary)
 }
 
@@ -6299,6 +6301,7 @@ func (c FfiConverterTypeCloudSyncStatusKitPage) Read(reader io.Reader) CloudSync
 		FfiConverterUint32INSTANCE.Read(reader),
 		FfiConverterUint32INSTANCE.Read(reader),
 		FfiConverterSequenceStringINSTANCE.Read(reader),
+		FfiConverterSequenceTypeStatusKitClusterObservationINSTANCE.Read(reader),
 		FfiConverterOptionalStringINSTANCE.Read(reader),
 	}
 }
@@ -6316,6 +6319,7 @@ func (c FfiConverterTypeCloudSyncStatusKitPage) Write(writer io.Writer, value Cl
 	FfiConverterUint32INSTANCE.Write(writer, value.DecodeFailed)
 	FfiConverterUint32INSTANCE.Write(writer, value.RecordsSeen)
 	FfiConverterSequenceStringINSTANCE.Write(writer, value.InjectedHandles)
+	FfiConverterSequenceTypeStatusKitClusterObservationINSTANCE.Write(writer, value.ClusterObservations)
 	FfiConverterOptionalStringINSTANCE.Write(writer, value.DiscoverySummary)
 }
 
@@ -6530,6 +6534,46 @@ func (c FfiConverterTypeSharedAssetInfo) Write(writer io.Writer, value SharedAss
 type FfiDestroyerTypeSharedAssetInfo struct{}
 
 func (_ FfiDestroyerTypeSharedAssetInfo) Destroy(value SharedAssetInfo) {
+	value.Destroy()
+}
+
+type StatusKitClusterObservation struct {
+	ChannelId    string
+	SenderHandle string
+}
+
+func (r *StatusKitClusterObservation) Destroy() {
+	FfiDestroyerString{}.Destroy(r.ChannelId)
+	FfiDestroyerString{}.Destroy(r.SenderHandle)
+}
+
+type FfiConverterTypeStatusKitClusterObservation struct{}
+
+var FfiConverterTypeStatusKitClusterObservationINSTANCE = FfiConverterTypeStatusKitClusterObservation{}
+
+func (c FfiConverterTypeStatusKitClusterObservation) Lift(rb RustBufferI) StatusKitClusterObservation {
+	return LiftFromRustBuffer[StatusKitClusterObservation](c, rb)
+}
+
+func (c FfiConverterTypeStatusKitClusterObservation) Read(reader io.Reader) StatusKitClusterObservation {
+	return StatusKitClusterObservation{
+		FfiConverterStringINSTANCE.Read(reader),
+		FfiConverterStringINSTANCE.Read(reader),
+	}
+}
+
+func (c FfiConverterTypeStatusKitClusterObservation) Lower(value StatusKitClusterObservation) RustBuffer {
+	return LowerIntoRustBuffer[StatusKitClusterObservation](c, value)
+}
+
+func (c FfiConverterTypeStatusKitClusterObservation) Write(writer io.Writer, value StatusKitClusterObservation) {
+	FfiConverterStringINSTANCE.Write(writer, value.ChannelId)
+	FfiConverterStringINSTANCE.Write(writer, value.SenderHandle)
+}
+
+type FfiDestroyerTypeStatusKitClusterObservation struct{}
+
+func (_ FfiDestroyerTypeStatusKitClusterObservation) Destroy(value StatusKitClusterObservation) {
 	value.Destroy()
 }
 
@@ -7990,7 +8034,7 @@ type StatusCallback interface {
 
 	OnKeysReceived()
 
-	OnReshareSender(sender string)
+	OnReshareSender(sender string, channelId string)
 }
 
 // foreignCallbackCallbackInterfaceStatusCallback cannot be callable be a compiled function at a same time
@@ -8044,7 +8088,7 @@ func (foreignCallbackCallbackInterfaceStatusCallback) InvokeOnKeysReceived(callb
 }
 func (foreignCallbackCallbackInterfaceStatusCallback) InvokeOnReshareSender(callback StatusCallback, args []byte, outBuf *C.RustBuffer) uniffiCallbackResult {
 	reader := bytes.NewReader(args)
-	callback.OnReshareSender(FfiConverterStringINSTANCE.Read(reader))
+	callback.OnReshareSender(FfiConverterStringINSTANCE.Read(reader), FfiConverterStringINSTANCE.Read(reader))
 
 	return uniffiCallbackResultSuccess
 }
@@ -8747,6 +8791,49 @@ type FfiDestroyerSequenceTypeSharedAssetInfo struct{}
 func (FfiDestroyerSequenceTypeSharedAssetInfo) Destroy(sequence []SharedAssetInfo) {
 	for _, value := range sequence {
 		FfiDestroyerTypeSharedAssetInfo{}.Destroy(value)
+	}
+}
+
+type FfiConverterSequenceTypeStatusKitClusterObservation struct{}
+
+var FfiConverterSequenceTypeStatusKitClusterObservationINSTANCE = FfiConverterSequenceTypeStatusKitClusterObservation{}
+
+func (c FfiConverterSequenceTypeStatusKitClusterObservation) Lift(rb RustBufferI) []StatusKitClusterObservation {
+	return LiftFromRustBuffer[[]StatusKitClusterObservation](c, rb)
+}
+
+func (c FfiConverterSequenceTypeStatusKitClusterObservation) Read(reader io.Reader) []StatusKitClusterObservation {
+	length := readInt32(reader)
+	if length == 0 {
+		return nil
+	}
+	result := make([]StatusKitClusterObservation, 0, length)
+	for i := int32(0); i < length; i++ {
+		result = append(result, FfiConverterTypeStatusKitClusterObservationINSTANCE.Read(reader))
+	}
+	return result
+}
+
+func (c FfiConverterSequenceTypeStatusKitClusterObservation) Lower(value []StatusKitClusterObservation) RustBuffer {
+	return LowerIntoRustBuffer[[]StatusKitClusterObservation](c, value)
+}
+
+func (c FfiConverterSequenceTypeStatusKitClusterObservation) Write(writer io.Writer, value []StatusKitClusterObservation) {
+	if len(value) > math.MaxInt32 {
+		panic("[]StatusKitClusterObservation is too large to fit into Int32")
+	}
+
+	writeInt32(writer, int32(len(value)))
+	for _, item := range value {
+		FfiConverterTypeStatusKitClusterObservationINSTANCE.Write(writer, item)
+	}
+}
+
+type FfiDestroyerSequenceTypeStatusKitClusterObservation struct{}
+
+func (FfiDestroyerSequenceTypeStatusKitClusterObservation) Destroy(sequence []StatusKitClusterObservation) {
+	for _, value := range sequence {
+		FfiDestroyerTypeStatusKitClusterObservation{}.Destroy(value)
 	}
 }
 

@@ -938,6 +938,21 @@ func (c *IMClient) Connect(ctx context.Context) {
 	}
 	c.client = client
 
+	// Hydrate the persistent alias→portal cache and pre-warm from the ghost
+	// table so the first StatusKit presence update after a restart can
+	// resolve previously-known aliases without IDS round-trips. Both
+	// helpers are read-only and safe to run before StatusKit init.
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Warn().Interface("panic", r).Msg("StatusKit alias-resolver init panicked")
+			}
+		}()
+		bgCtx := context.Background()
+		c.hydrateAliasPortalCacheFromKV(bgCtx, log)
+		c.prewarmAliasPortalCache(bgCtx, log)
+	}()
+
 	// GSA /circle "Apple Device" announce intentionally DISABLED.
 	//
 	// update_postdata("Apple Device", ["icloud","imessage","facetime"]) posts
@@ -1610,6 +1625,18 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 				}
 			}
 
+			// (2.5) Cluster transitive lookup. Fires when contacts and IDS
+			// both came up empty — common for hidden-alias mailto:s where
+			// Apple's IDS returns LookupFailed (6001). Looks for sibling
+			// handles on the same StatusKit channel id; the first one that
+			// resolves via the live chain (or persisted alias→portal) hands
+			// the unknown handle its portal.
+			if portal == nil {
+				if p := c.resolveViaCluster(ctx, log, user); p != nil {
+					portal = p
+				}
+			}
+
 			// (3) mailto: portal as last resort.
 			if portal == nil {
 				if p := findPortal(networkid.PortalID(normalizedUser)); p != nil {
@@ -1637,6 +1664,15 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 							break
 						}
 					}
+				}
+			}
+
+			// Cluster transitive lookup for the tel: branch too — covers
+			// peers who publish from a tel: alias the bridge has not seen
+			// before but who share a channel id with a known sibling.
+			if portal == nil {
+				if p := c.resolveViaCluster(ctx, log, user); p != nil {
+					portal = p
 				}
 			}
 		}
@@ -2001,7 +2037,7 @@ func (c *IMClient) findPortalForAliases(ctx context.Context, log zerolog.Logger,
 					Str("alias", alias).
 					Str("resolved_portal_id", string(aliasPortalID)).
 					Msg("StatusKit: resolved DM portal via IDS correlation")
-				c.statusKitPortalCache.Store(user, aliasPortalID)
+				c.rememberAliasPortal(ctx, user, aliasPortalID)
 				return altPortal
 			}
 		}
@@ -2033,7 +2069,7 @@ func (c *IMClient) OnKeysReceived() {
 // and stamping it into statusKitPortalCache preserves the mapping across
 // overwrites so OnStatusUpdate's cache lookup always hits regardless of which
 // alias Apple routes the next presence message to.
-func (c *IMClient) OnReshareSender(sender string) {
+func (c *IMClient) OnReshareSender(sender string, channelId string) {
 	if sender == "" {
 		return
 	}
@@ -2048,6 +2084,18 @@ func (c *IMClient) OnReshareSender(sender string) {
 	c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitReshareSeenKeyPrefix+sender), now)
 	if normalized != sender {
 		c.Main.Bridge.DB.KV.Set(ctx, database.Key(statusKitReshareSeenKeyPrefix+normalized), now)
+	}
+	clusterLog := c.UserLogin.Log.With().
+		Str("component", "statuskit").
+		Str("sender", sender).
+		Str("channel_id", channelId).
+		Logger()
+	// Persist the cluster observation regardless of whether the sender is
+	// already cached as resolved — alias correlation feeds off the full
+	// observation history, not just first sightings.
+	c.recordReshareObservation(ctx, clusterLog, channelId, sender)
+	if normalized != sender {
+		c.recordReshareObservation(ctx, clusterLog, channelId, normalized)
 	}
 	if _, ok := c.statusKitPortalCache.Load(sender); ok {
 		return
@@ -2089,18 +2137,19 @@ func (c *IMClient) eagerResolveReshareSender(sender, normalizedUser string, log 
 					continue
 				}
 				if p := findPortal(networkid.PortalID(altID)); p != nil {
-					c.statusKitPortalCache.Store(sender, p.ID)
+					c.rememberAliasPortal(ctx, sender, p.ID)
 					log.Info().Str("resolved_portal_id", string(p.ID)).Msg("StatusKit: eager-resolved reshare sender via address book")
 					return
 				}
 			}
 		}
 		if altPortal := c.resolveStatusPortalViaIDS(ctx, log, sender); altPortal != nil {
+			c.rememberAliasPortal(ctx, sender, altPortal.ID)
 			log.Info().Str("resolved_portal_id", string(altPortal.ID)).Msg("StatusKit: eager-resolved reshare sender via IDS correlation")
 			return
 		}
 		if p := findPortal(networkid.PortalID(normalizedUser)); p != nil {
-			c.statusKitPortalCache.Store(sender, p.ID)
+			c.rememberAliasPortal(ctx, sender, p.ID)
 			log.Info().Str("resolved_portal_id", string(p.ID)).Msg("StatusKit: eager-resolved reshare sender via direct mailto: portal")
 			return
 		}
@@ -2108,10 +2157,17 @@ func (c *IMClient) eagerResolveReshareSender(sender, normalizedUser string, log 
 		portalID := c.resolveContactPortalID(normalizedUser)
 		portalID = c.resolveExistingDMPortalID(string(portalID))
 		if p := findPortal(portalID); p != nil {
-			c.statusKitPortalCache.Store(sender, p.ID)
+			c.rememberAliasPortal(ctx, sender, p.ID)
 			log.Info().Str("resolved_portal_id", string(p.ID)).Msg("StatusKit: eager-resolved reshare sender (tel: direct)")
 			return
 		}
+	}
+	// No live chain hit. The cluster transitive resolver may still find a
+	// portal via a sibling alias once another sender on the same channel
+	// has been resolved.
+	if portal := c.resolveViaCluster(ctx, log, sender); portal != nil {
+		log.Info().Str("resolved_portal_id", string(portal.ID)).Msg("StatusKit: eager-resolved reshare sender via cluster transitive lookup")
+		return
 	}
 	log.Debug().Msg("StatusKit: eager-resolve found no portal for reshare sender — will retry when presence arrives")
 }
@@ -2436,7 +2492,7 @@ func (c *IMClient) handleMessage(log zerolog.Logger, msg rustpushgo.WrappedMessa
 	// stamping the cache on every inbound 1:1 message, we ensure any peer
 	// who's ever messaged bridge has a direct lookup path for presence.
 	if msg.Sender != nil && *msg.Sender != "" && !isGroupPortalID(string(portalKey.ID)) && portalKey.ID != "unknown" {
-		c.statusKitPortalCache.Store(*msg.Sender, portalKey.ID)
+		c.rememberAliasPortal(context.Background(), *msg.Sender, portalKey.ID)
 	}
 
 	// Drop messages that couldn't be resolved to a real portal.

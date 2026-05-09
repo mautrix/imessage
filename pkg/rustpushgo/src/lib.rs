@@ -4757,7 +4757,15 @@ pub trait StatusCallback: Send + Sync {
     /// the Go side only learns ONE alias per peer and cannot resolve presence
     /// updates that arrive on any of the others. Stamping each sender into the
     /// learned-sender cache preserves all aliases across overwrites.
-    fn on_reshare_sender(&self, sender: String);
+    ///
+    /// `channel_id` is the StatusKit channel the reshare carried. Pairing it
+    /// with the sender handle lets the Go side build a (channel_id ↔ aliases)
+    /// cluster across all reshare events: two senders observed on the same
+    /// channel id are aliases of the same peer. The cluster powers a
+    /// transitive resolver that maps presence updates from a previously-
+    /// unknown alias to the DM portal of any sibling alias that does
+    /// resolve via the standard chain.
+    fn on_reshare_sender(&self, sender: String, channel_id: String);
 }
 
 // ============================================================================
@@ -7051,8 +7059,10 @@ pub async fn new_client(
                                     // upstream's HashMap only keeps the last
                                     // `from`, so without this, presence
                                     // updates for overwritten aliases have
-                                    // no portal mapping.
-                                    cb.on_reshare_sender(sender.clone());
+                                    // no portal mapping. Channel id is
+                                    // forwarded so the Go side can cluster
+                                    // (channel_id ↔ aliases) across reshares.
+                                    cb.on_reshare_sender(sender.clone(), parsed.channel.clone());
                                     cb.on_keys_received();
                                 }
                                 Ok(true)
@@ -7256,7 +7266,16 @@ pub async fn new_client(
                                         info!("StatusKit key-sharing message received — state.keys gained {} new channel(s), sender={:?}", new_channels.len(), upstream_sender);
                                         if let Some(cb) = status_cb_for_recv.read().await.as_ref() {
                                             if let Some(sender) = upstream_sender {
-                                                cb.on_reshare_sender(sender);
+                                                // Fire one callback per newly-added
+                                                // channel so the Go-side cluster
+                                                // captures (channel_id, sender) for
+                                                // each. A single keysharing message
+                                                // typically adds exactly one channel,
+                                                // but iterating handles the rare
+                                                // multi-channel case correctly.
+                                                for channel_id in &new_channels {
+                                                    cb.on_reshare_sender(sender.clone(), (*channel_id).clone());
+                                                }
                                             }
                                             cb.on_keys_received();
                                         } else {
