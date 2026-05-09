@@ -1860,6 +1860,14 @@ func (c *IMClient) runCloudSyncOnce(ctx context.Context, log zerolog.Logger, isB
 		Dur("elapsed", time.Since(backfillStart)).
 		Msg("CloudKit sync pass complete")
 
+	// Fourth phase: pull StatusKit peer keys from CloudKit. Runs alongside
+	// the existing chat/message/attachment passes so it shares the regular
+	// CloudKit sync cadence rather than being on its own goroutine.
+	// Best-effort — a failure here doesn't block the rest of the cycle.
+	if err := c.syncCloudStatusKitPeers(ctx, log); err != nil {
+		log.Info().Err(err).Msg("StatusKit-CloudKit phase: errored (continuing)")
+	}
+
 	// Only persist sync version if the sync actually received data.
 	// If the re-sync returned 0 records (e.g. CloudKit changes feed
 	// considers records already delivered), leave the version unsaved

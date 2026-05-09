@@ -565,6 +565,15 @@ func uniffiCheckChecksums() {
 	}
 	{
 		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
+			return C.uniffi_rustpushgo_checksum_method_client_cloud_sync_statuskit_peers(uniffiStatus)
+		})
+		if checksum != 30755 {
+			// If this happens try cleaning and rebuilding your project
+			panic("rustpushgo: uniffi_rustpushgo_checksum_method_client_cloud_sync_statuskit_peers: UniFFI API checksum mismatch")
+		}
+	}
+	{
+		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
 			return C.uniffi_rustpushgo_checksum_method_client_debug_recoverable_zones(uniffiStatus)
 		})
 		if checksum != 46761 {
@@ -2401,6 +2410,31 @@ func (_self *Client) CloudSyncMessages(continuationToken *string) (WrappedCloudS
 			return rustBufferFromC(C.ffi_rustpushgo_rust_future_complete_rust_buffer(unsafe.Pointer(handle), status))
 		},
 		FfiConverterTypeWrappedCloudSyncMessagesPageINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
+			// freeFunc
+			C.ffi_rustpushgo_rust_future_free_rust_buffer(unsafe.Pointer(rustFuture), status)
+		})
+}
+
+func (_self *Client) CloudSyncStatuskitPeers(cachedZone *string, sinceToken *[]byte) (CloudSyncStatusKitPage, error) {
+	_pointer := _self.ffiObject.incrementPointer("*Client")
+	defer _self.ffiObject.decrementPointer()
+	return uniffiRustCallAsyncWithErrorAndResult(
+		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
+			// rustFutureFunc
+			return (*C.void)(C.uniffi_rustpushgo_fn_method_client_cloud_sync_statuskit_peers(
+				_pointer, rustBufferToC(FfiConverterOptionalStringINSTANCE.Lower(cachedZone)), rustBufferToC(FfiConverterOptionalBytesINSTANCE.Lower(sinceToken)),
+				status,
+			))
+		},
+		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
+			// pollFunc
+			C.ffi_rustpushgo_rust_future_poll_rust_buffer(unsafe.Pointer(handle), ptr, status)
+		},
+		func(handle *C.void, status *C.RustCallStatus) RustBufferI {
+			// completeFunc
+			return rustBufferFromC(C.ffi_rustpushgo_rust_future_complete_rust_buffer(unsafe.Pointer(handle), status))
+		},
+		FfiConverterTypeCloudSyncStatusKitPageINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
 			// freeFunc
 			C.ffi_rustpushgo_rust_future_free_rust_buffer(unsafe.Pointer(rustFuture), status)
 		})
@@ -6220,6 +6254,74 @@ func (c FfiConverterTypeAccountPersistData) Write(writer io.Writer, value Accoun
 type FfiDestroyerTypeAccountPersistData struct{}
 
 func (_ FfiDestroyerTypeAccountPersistData) Destroy(value AccountPersistData) {
+	value.Destroy()
+}
+
+type CloudSyncStatusKitPage struct {
+	ResolvedZone     *string
+	NextToken        *[]byte
+	Fetched          uint32
+	Inserted         uint32
+	AlreadyKnown     uint32
+	DecodeFailed     uint32
+	RecordsSeen      uint32
+	InjectedHandles  []string
+	DiscoverySummary *string
+}
+
+func (r *CloudSyncStatusKitPage) Destroy() {
+	FfiDestroyerOptionalString{}.Destroy(r.ResolvedZone)
+	FfiDestroyerOptionalBytes{}.Destroy(r.NextToken)
+	FfiDestroyerUint32{}.Destroy(r.Fetched)
+	FfiDestroyerUint32{}.Destroy(r.Inserted)
+	FfiDestroyerUint32{}.Destroy(r.AlreadyKnown)
+	FfiDestroyerUint32{}.Destroy(r.DecodeFailed)
+	FfiDestroyerUint32{}.Destroy(r.RecordsSeen)
+	FfiDestroyerSequenceString{}.Destroy(r.InjectedHandles)
+	FfiDestroyerOptionalString{}.Destroy(r.DiscoverySummary)
+}
+
+type FfiConverterTypeCloudSyncStatusKitPage struct{}
+
+var FfiConverterTypeCloudSyncStatusKitPageINSTANCE = FfiConverterTypeCloudSyncStatusKitPage{}
+
+func (c FfiConverterTypeCloudSyncStatusKitPage) Lift(rb RustBufferI) CloudSyncStatusKitPage {
+	return LiftFromRustBuffer[CloudSyncStatusKitPage](c, rb)
+}
+
+func (c FfiConverterTypeCloudSyncStatusKitPage) Read(reader io.Reader) CloudSyncStatusKitPage {
+	return CloudSyncStatusKitPage{
+		FfiConverterOptionalStringINSTANCE.Read(reader),
+		FfiConverterOptionalBytesINSTANCE.Read(reader),
+		FfiConverterUint32INSTANCE.Read(reader),
+		FfiConverterUint32INSTANCE.Read(reader),
+		FfiConverterUint32INSTANCE.Read(reader),
+		FfiConverterUint32INSTANCE.Read(reader),
+		FfiConverterUint32INSTANCE.Read(reader),
+		FfiConverterSequenceStringINSTANCE.Read(reader),
+		FfiConverterOptionalStringINSTANCE.Read(reader),
+	}
+}
+
+func (c FfiConverterTypeCloudSyncStatusKitPage) Lower(value CloudSyncStatusKitPage) RustBuffer {
+	return LowerIntoRustBuffer[CloudSyncStatusKitPage](c, value)
+}
+
+func (c FfiConverterTypeCloudSyncStatusKitPage) Write(writer io.Writer, value CloudSyncStatusKitPage) {
+	FfiConverterOptionalStringINSTANCE.Write(writer, value.ResolvedZone)
+	FfiConverterOptionalBytesINSTANCE.Write(writer, value.NextToken)
+	FfiConverterUint32INSTANCE.Write(writer, value.Fetched)
+	FfiConverterUint32INSTANCE.Write(writer, value.Inserted)
+	FfiConverterUint32INSTANCE.Write(writer, value.AlreadyKnown)
+	FfiConverterUint32INSTANCE.Write(writer, value.DecodeFailed)
+	FfiConverterUint32INSTANCE.Write(writer, value.RecordsSeen)
+	FfiConverterSequenceStringINSTANCE.Write(writer, value.InjectedHandles)
+	FfiConverterOptionalStringINSTANCE.Write(writer, value.DiscoverySummary)
+}
+
+type FfiDestroyerTypeCloudSyncStatusKitPage struct{}
+
+func (_ FfiDestroyerTypeCloudSyncStatusKitPage) Destroy(value CloudSyncStatusKitPage) {
 	value.Destroy()
 }
 

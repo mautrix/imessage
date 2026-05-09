@@ -139,6 +139,13 @@ void* uniffi_rustpushgo_fn_method_client_cloud_sync_messages(
 	RustCallStatus* out_status
 );
 
+void* uniffi_rustpushgo_fn_method_client_cloud_sync_statuskit_peers(
+	void* ptr,
+	RustBuffer cached_zone,
+	RustBuffer since_token,
+	RustCallStatus* out_status
+);
+
 void* uniffi_rustpushgo_fn_method_client_debug_recoverable_zones(
 	void* ptr,
 	RustCallStatus* out_status
@@ -1564,6 +1571,10 @@ uint16_t uniffi_rustpushgo_checksum_method_client_cloud_sync_chats(
 );
 
 uint16_t uniffi_rustpushgo_checksum_method_client_cloud_sync_messages(
+	RustCallStatus* out_status
+);
+
+uint16_t uniffi_rustpushgo_checksum_method_client_cloud_sync_statuskit_peers(
 	RustCallStatus* out_status
 );
 

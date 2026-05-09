@@ -4,6 +4,7 @@ pub mod local_config;
 #[cfg(not(target_os = "macos"))]
 pub mod anisette;
 mod statuskitgo;
+mod statuskit_cloudkit;
 #[cfg(test)]
 mod test_hwinfo;
 
@@ -4893,13 +4894,13 @@ fn resolve_xdg_data_dir() -> String {
     "state".to_string()
 }
 
-fn subsystem_state_path(file_name: &str) -> String {
+pub(crate) fn subsystem_state_path(file_name: &str) -> String {
     let xdg_dir = resolve_xdg_data_dir();
     let _ = std::fs::create_dir_all(&xdg_dir);
     format!("{}/{}", xdg_dir, file_name)
 }
 
-fn read_plist_state<T: serde::de::DeserializeOwned>(path: &str) -> Option<T> {
+pub(crate) fn read_plist_state<T: serde::de::DeserializeOwned>(path: &str) -> Option<T> {
     match std::fs::read(path) {
         Ok(data) => match plist::from_bytes(&data) {
             Ok(state) => Some(state),
@@ -4916,7 +4917,7 @@ fn read_plist_state<T: serde::de::DeserializeOwned>(path: &str) -> Option<T> {
     }
 }
 
-fn persist_plist_state<T: serde::Serialize>(path: &str, state: &T) {
+pub(crate) fn persist_plist_state<T: serde::Serialize>(path: &str, state: &T) {
     // Write to a sibling tmp file, then atomic-rename. Sidesteps EACCES
     // when the existing file at `path` is owned by a UID different from
     // the current bridge process (stranded from a prior deploy under a
@@ -6274,7 +6275,7 @@ impl WrappedPasswordsClient {
 
 #[derive(uniffi::Object)]
 pub struct WrappedStatusKitClient {
-    inner: Arc<rustpush::statuskit::StatusKitClient<BridgeDefaultAnisetteProvider>>,
+    pub(crate) inner: Arc<rustpush::statuskit::StatusKitClient<BridgeDefaultAnisetteProvider>>,
     interests: tokio::sync::Mutex<Vec<rustpush::statuskit::ChannelInterestToken>>,
 }
 
@@ -7537,7 +7538,7 @@ pub async fn new_client(
 }
 
 impl Client {
-    async fn get_or_init_cloud_messages_client(&self) -> Result<Arc<rustpush::cloud_messages::CloudMessagesClient<BridgeDefaultAnisetteProvider>>, WrappedError> {
+    pub(crate) async fn get_or_init_cloud_messages_client(&self) -> Result<Arc<rustpush::cloud_messages::CloudMessagesClient<BridgeDefaultAnisetteProvider>>, WrappedError> {
         // Fast path: return cached client without doing any slow work.
         // IMPORTANT: the lock is released before any network calls so that
         // tokio timeouts can fire and concurrent callers are never blocked by
@@ -7803,7 +7804,7 @@ impl Client {
         Ok(wrapped)
     }
 
-    async fn get_or_init_statuskit_client(&self) -> Result<Arc<WrappedStatusKitClient>, WrappedError> {
+    pub(crate) async fn get_or_init_statuskit_client(&self) -> Result<Arc<WrappedStatusKitClient>, WrappedError> {
         // Fast path: return cached client without holding the lock during init.
         {
             let locked = self.statuskit_client.lock().await;
