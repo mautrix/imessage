@@ -1669,6 +1669,19 @@ func (c *IMClient) runCloudSyncController(log zerolog.Logger) {
 	// Run after bootstrap so the cleanup doesn't delay portal creation.
 	c.runPostSyncHousekeeping(ctx, log)
 
+	// StatusKit-CloudKit pull is the last bootstrap step. It depends on
+	// ghosts existing so subscribeToContactPresence (fired from inside the
+	// pull when keys are injected) actually has handles to subscribe to —
+	// before createPortalsFromCloudSync the ghost table is empty and the
+	// subscribe is a no-op, leaving the bridge with keys it never wires up.
+	// The bootstrap-side runCloudSyncOnce defers this phase to here for
+	// the same reason; steady-state cycles fire it from inside
+	// runCloudSyncOnce normally. The first-call-after-startup bypass on
+	// the gate ensures this pass isn't blocked by stale persisted backoff.
+	if err := c.syncCloudStatusKitPeers(ctx, log); err != nil {
+		log.Info().Err(err).Msg("StatusKit-CloudKit bootstrap pass: errored (continuing)")
+	}
+
 	// Delayed incremental re-syncs: catch CloudKit messages that propagated
 	// after the bootstrap sync completed. Messages sent in the last few minutes
 	// may not be in the CloudKit changes feed yet (propagation delay). APNs
@@ -1860,12 +1873,17 @@ func (c *IMClient) runCloudSyncOnce(ctx context.Context, log zerolog.Logger, isB
 		Dur("elapsed", time.Since(backfillStart)).
 		Msg("CloudKit sync pass complete")
 
-	// Fourth phase: pull StatusKit peer keys from CloudKit. Runs alongside
-	// the existing chat/message/attachment passes so it shares the regular
-	// CloudKit sync cadence rather than being on its own goroutine.
+	// Fourth phase: pull StatusKit peer keys from CloudKit. On the bootstrap
+	// path, this phase is deferred to the end of runCloudSyncController
+	// (after portals + ghosts exist) so subscribeToContactPresence has
+	// handles to subscribe to — calling it during bootstrap would subscribe
+	// to an empty ghost table and leave injected keys un-wired. Steady-state
+	// cycles fire it from here normally.
 	// Best-effort — a failure here doesn't block the rest of the cycle.
-	if err := c.syncCloudStatusKitPeers(ctx, log); err != nil {
-		log.Info().Err(err).Msg("StatusKit-CloudKit phase: errored (continuing)")
+	if !isBootstrap {
+		if err := c.syncCloudStatusKitPeers(ctx, log); err != nil {
+			log.Info().Err(err).Msg("StatusKit-CloudKit phase: errored (continuing)")
+		}
 	}
 
 	// Only persist sync version if the sync actually received data.
