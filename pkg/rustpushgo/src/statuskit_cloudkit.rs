@@ -111,8 +111,17 @@ use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 /// "Manatee") and looking up the wrong service key id.
 const STATUSKIT_SERVICE: PCSService = PCSService {
     name: "com.apple.statuskit",
+    // ViewHint in the on-disk plist is "LimitedPeersAllowed" — that's the
+    // KEYCHAIN VIEW the items live in. The `Manatee: true` flag is a
+    // separate security-domain marker; for StatusKit the two diverge,
+    // unlike FIND_MY where both fields are "Manatee".
+    //
+    // rustpush uses `zone` for both `sync_keychain(&[zone, "ProtectedCloudStorage"])`
+    // (which view to sync from server) AND for the in-memory lookup
+    // `keychain.items[service.zone]` (per pcs.rs:703). We need both
+    // hitting "LimitedPeersAllowed" or the share-key lookup misses.
     view_hint: "LimitedPeersAllowed",
-    zone: "Manatee",
+    zone: "LimitedPeersAllowed",
     r#type: 200,
     keychain_type: 200,
     v2: true,
@@ -527,9 +536,19 @@ fn log_record_schema(
         .as_ref()
         .map(|r| r.record_field.len())
         .unwrap_or(0);
+    let field_names: Vec<&str> = rec
+        .record
+        .as_ref()
+        .map(|r| {
+            r.record_field
+                .iter()
+                .filter_map(|f| f.identifier.as_ref().and_then(|i| i.name.as_deref()))
+                .collect()
+        })
+        .unwrap_or_default();
     info!(
-        "StatusKit-CloudKit schema[{}]: zone='{}' record_id='{}' record_type='{}' has_protection_info={} field_count={}",
-        idx, zone, id, rec_type, has_protection, field_count
+        "StatusKit-CloudKit schema[{}]: zone='{}' record_id='{}' record_type='{}' has_protection_info={} field_count={} field_names={:?}",
+        idx, zone, id, rec_type, has_protection, field_count, field_names
     );
 }
 
