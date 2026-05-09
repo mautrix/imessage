@@ -1725,16 +1725,23 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 				return fmt.Errorf("invalid target portal")
 			}
 
-			// Anchor each notice timestamp 1ms before the last real iMessage in
-			// the target room so room ordering doesn't jump on passive status updates.
+			// Anchor each notice 1ms before the last real iMessage so room
+			// ordering does NOT jump on passive status updates. This is
+			// always preferred over `now - 1ms`, no matter how old the
+			// last message is — pinning the notice to a stale timestamp
+			// is fine, what matters is that the room isn't bumped to the
+			// top every time a contact toggles Focus mode.
+			//
+			// Only fall back to `now - 1ms` if the room has literally no
+			// prior message at all (newly-created portal). Even then we
+			// avoid the present moment to keep behavior consistent.
 			noticeTS := time.Now().Add(-1 * time.Millisecond)
 			if lastMsg, dbErr := c.Main.Bridge.DB.Message.GetLastNonFakePartAtOrBeforeTime(
 				ctx, targetPortal.PortalKey, time.Now(),
 			); dbErr != nil {
 				log.Warn().Err(dbErr).Str("portal_id", string(targetPortal.ID)).
 					Msg("StatusKit: failed to query last message timestamp, using now-1ms")
-			} else if lastMsg != nil && !lastMsg.Timestamp.IsZero() &&
-				time.Since(lastMsg.Timestamp) < 24*time.Hour {
+			} else if lastMsg != nil && !lastMsg.Timestamp.IsZero() {
 				noticeTS = lastMsg.Timestamp.Add(-1 * time.Millisecond)
 			}
 

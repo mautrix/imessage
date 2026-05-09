@@ -4,93 +4,98 @@
 //! instead of waiting for an APNs reshare from the peer iPhone. APNs reshare
 //! is too unreliable in bridge-only-cluster setups.
 //!
-//! ## Status: Phase 1 (discovery + diagnostic logging)
+//! ## Status: Phase 2 — full pull → decrypt → inject pipeline
 //!
-//! The exact CloudKit zone name and record schema Apple uses for StatusKit
-//! peer keys are NOT yet known. The rustpush developer confirmed the keys
-//! are in CloudKit but did not share the schema. This module therefore:
+//! Phase 1 (Session 14) confirmed the container/zone:
 //!
-//!   1. Lists every zone in the user's private database via
-//!      `FetchZoneChangesOperation::do_sync` (the same call CloudKit zone
-//!      sync uses) and logs each at info level so the user can pull
-//!      production logs and identify the StatusKit zone.
-//!   2. Picks the first zone whose name contains a StatusKit-shaped keyword
-//!      (`status`, `presence`, `sharedchannel`, `focus`) and pages records
-//!      out of it via `FetchRecordChangesOperation`.
-//!   3. Logs each record's full schema (record_type, field names, has_protection_info)
-//!      at info level — also for the user to share back.
-//!   4. Has a stub `decode_peer_record` that always returns `None` because
-//!      we do not yet know how Apple's record fields map onto
-//!      `StatusKitSharedDevice { from, signature, keys, personal_config }`.
+//!   bundleid       = "com.apple.StatusKitAgent"
+//!   containerid    = "com.apple.statuskit"
+//!   database       = PrivateDb (production)
+//!   zone           = "com.apple.coredata.cloudkit.zone"
 //!
-//! Phase 2 fills in `decode_peer_record` once we have a confirmed schema.
-//! Until then, the pass is a high-fidelity diagnostic: every run produces
-//! a complete log of zones + record schemas without mutating any state.
+//! Identified by `codesign --entitlements -` on
+//! `/System/Library/PrivateFrameworks/StatusKit.framework/StatusKitAgent`
+//! (the daemon hosting the `com.apple.aps.StatusKit.CloudKitMirroring` mach
+//! service). The zone is the standard NSPersistentCloudKitContainer Core Data
+//! mirroring zone — every record-type starts with `CD_`.
 //!
-//! ## Logging convention
+//! Schema (confirmed via inline schema dump):
 //!
-//! Everything load-bearing is at `log::info!`. `warn!` is reserved for
-//! genuine errors. Grep for `StatusKit-CloudKit` in production logs to find
-//! all output from this module.
+//!   CD_ReceivedInvitation (the one we care about):
+//!     CD_senderHandle               string         peer handle (mailto:/tel:)
+//!     CD_invitationIdentifier       string         invite UUID
+//!     CD_invitationPayload          encrypted_bytes  ← THE PCS-PROTECTED PAYLOAD
+//!     CD_channel                    string         FK → CD_Channel.record_id
+//!     CD_statusTypeIdentifier       string         "com.apple.focus.status"
+//!     CD_dateInvitationCreated      date
+//!     CD_invitedHandle              string         our handle
+//!     CD_entityName                 string
+//!     CD_incomingRatchetState       encrypted_bytes  (separate ratchet — not used for keysharing)
+//!
+//!   CD_Channel:
+//!     CD_channelType                int64
+//!     CD_personal                   int64
+//!     CD_decomissioned              int64
+//!     CD_identifier                 string         the actual base64 channel-id
+//!     CD_statusType                 string
+//!     CD_entityName                 string
+//!     (extended): CD_dateChannelCreated date,
+//!                 CD_currentOutgoingRatchetState encrypted_bytes,
+//!                 CD_channelToken                encrypted_bytes
+//!
+//! ## Decryption flow
+//!
+//! `CD_invitationPayload` is the same plist-encoded
+//! `StatusKitRawSharedDevice` blob the peer iPhone received via APNs (cmd
+//! 224/225 keysharing reshare). PCS-unwrap it → plist::from_bytes →
+//! base64-decode the embedded `keys` field → SharedMessage protobuf →
+//! reconstruct StatusKitSharedDevice via plist serialization round-trip.
+//!
+//! ## Why a plist round-trip rather than a direct constructor
+//!
+//! `StatusKitSharedDevice` has private fields and no public constructor in
+//! upstream rustpush. The fields use custom serde adapters (DER-encoded EC
+//! key, protobuf-encoded SharedKey blobs). Rather than patching upstream,
+//! we synthesize the canonical serialized form (matching the adapters'
+//! output shape) and let `plist::from_bytes::<StatusKitSharedDevice>` do
+//! the construction for us.
+//!
+//! ## Logging
+//!
+//! Everything load-bearing is at `log::info!`. Grep for `StatusKit-CloudKit`
+//! to find all output from this module.
 
-use log::{info, warn};
+use std::collections::HashMap;
+use std::io::Cursor;
+
+use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use log::info;
+use openssl::{
+    bn::BigNumContext,
+    ec::{EcGroup, EcKey, EcPoint},
+    nid::Nid,
+};
+use plist::Value as PlistValue;
+use prost::Message;
 use rustpush::{
     cloud_messages::MESSAGES_SERVICE,
     cloudkit::{
-        pcs_keys_for_record, CloudKitContainer, CloudKitSession,
+        pcs_keys_for_record, CloudKitContainer, CloudKitOpenContainer, CloudKitSession,
         FetchRecordChangesOperation, FetchZoneChangesOperation, NO_ASSETS,
     },
-    cloudkit_proto,
+    cloudkit_proto::{self, record::field::value::Type as FieldType, CloudKitEncryptor},
     pcs::PCSShareProtection,
-    statuskit::StatusKitSharedDevice,
+    statuskit::{
+        statuskitp::{SharedKey, SharedMessage},
+        StatusKitSharedDevice,
+    },
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{persist_plist_state, subsystem_state_path, Client, WrappedError};
 
-/// Candidate CloudKit containers to probe for StatusKit data.
-///
-/// First production run (May 9) showed the iMessage container
-/// ("com.apple.messages.cloud" / bundle "com.apple.imagent") has 13 zones
-/// and ZERO StatusKit-shaped data. Second run probed 7 alternates:
-///   - `com.apple.icloud.presence` (4 different bundles): all 4 returned a
-///     parse error on init (no `cloudKitUserId` field) → container ID
-///     does NOT exist at the CK setup endpoint.
-///   - `com.apple.icloud.sharedchannels`: same parse error → not a real
-///     container ID either.
-///   - `com.apple.security.keychain` (SECURITYD bundle): init OK,
-///     `RetrieveZoneChanges` returned `NotSupported` ("Optional feature
-///     disabled for this container") — keychain CK uses cuttlefish flow,
-///     not zone changes; not workable for StatusKit pull.
-///   - `com.apple.statuskit` (2 different bundles, `com.apple.statuskitd`
-///     and `com.apple.imagent`): init SUCCEEDED (got cloudKitUserId), but
-///     `do_sync` returned `InvalidBundleId` ("Invalid bundle ID for
-///     container").
-///
-/// **Conclusion: `com.apple.statuskit` is the right container ID, we
-/// just don't have the right bundle ID yet.** Apple's CK applies
-/// per-bundle authorization on each operation; some bundles can `init`
-/// the container but aren't entitled for `RetrieveZoneChanges`. This
-/// probe list now exclusively targets `com.apple.statuskit` with a wider
-/// set of plausible reader bundle IDs and also tries `SharedDb` scope
-/// (StatusKit is conceptually cross-account shared state, not private).
-/// Bundle ID + container target for StatusKit's CloudKit storage.
-///
-/// Confirmed by `codesign --entitlements -` on
-/// `/System/Library/PrivateFrameworks/StatusKit.framework/StatusKitAgent`
-/// (the daemon hosting `com.apple.aps.StatusKit.CloudKitMirroring` —
-/// the smoking-gun mach service from the LaunchAgents plist):
-///
-///   com.apple.application-identifier = com.apple.StatusKitAgent
-///   com.apple.private.cloudkit.serviceNameForContainerMap
-///       = { "com.apple.statuskit": "com.apple.statuskit" }
-///   com.apple.developer.icloud-container-environment = Production
-///   com.apple.developer.icloud-services = [CloudKit]
-///
-/// The trap that ate the previous 60 probes: `com.apple.StatusKit.subscribe`
-/// is a mach service NAME (XPC), not the bundle ID. Spotlight has it as a
-/// mach-lookup CONSUMER; the actual SERVER hosting that XPC service is
-/// `StatusKitAgent`, and *its* bundle ID is what Apple's CK signature
-/// chain validates.
+/// Candidate CloudKit containers, ordered by likelihood. Index encoded in
+/// the cached_zone string so subsequent passes skip discovery.
 const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
     CloudKitContainer {
         database_type: cloudkit_proto::request_operation::header::Database::PrivateDb,
@@ -107,14 +112,10 @@ const CANDIDATE_CONTAINERS: &[CloudKitContainer<'static>] = &[
 ];
 
 /// Result of one CloudKit-pull pass for StatusKit peer keys.
-///
-/// `resolved_zone` is the actual zone name CloudKit served. The Go side
-/// caches it so subsequent passes skip discovery. If the zone fetch failed
-/// in a way that suggests the cached name is stale (e.g. ZoneNotFound), the
-/// Rust side returns `resolved_zone = None` so the Go side clears its cache
-/// and re-discovers next pass.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct CloudSyncStatusKitPage {
+    /// Encoded as "<container_idx>::<zone_name>" so subsequent passes can
+    /// skip discovery and resume from `since_token`.
     pub resolved_zone: Option<String>,
     pub next_token: Option<Vec<u8>>,
     pub fetched: u32,
@@ -123,8 +124,6 @@ pub struct CloudSyncStatusKitPage {
     pub decode_failed: u32,
     pub records_seen: u32,
     pub injected_handles: Vec<String>,
-    /// Free-form summary surfaced when there was nothing to do or something
-    /// abnormal happened (e.g. "no candidate zone found", "fetch failed").
     pub discovery_summary: Option<String>,
 }
 
@@ -146,13 +145,6 @@ impl CloudSyncStatusKitPage {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl Client {
-    /// Discover (if needed) and pull StatusKit peer keys from CloudKit.
-    ///
-    /// `cached_zone`: if Some, skip discovery and fetch directly from this
-    /// zone. If None, run discovery and pick a candidate.
-    ///
-    /// `since_token`: continuation token from a previous pass (per-zone),
-    /// passed through to `FetchRecordChangesOperation`.
     pub async fn cloud_sync_statuskit_peers(
         &self,
         cached_zone: Option<String>,
@@ -164,88 +156,118 @@ impl Client {
             since_token.is_some()
         );
 
-        let zone_name = match cached_zone {
-            Some(z) => {
-                info!("StatusKit-CloudKit pass: using cached zone='{}'", z);
-                z
-            }
-            None => {
-                info!(
-                    "StatusKit-CloudKit pass: no cached zone — running discovery against private DB"
-                );
-                match discover_statuskit_zone(self).await {
-                    Ok(Some(z)) => {
-                        info!(
-                            "StatusKit-CloudKit pass: discovery picked zone='{}'",
-                            z
-                        );
-                        z
-                    }
-                    Ok(None) => {
-                        info!(
-                            "StatusKit-CloudKit pass: discovery found NO candidate zone — returning empty page (see preceding zone list in logs)"
-                        );
-                        return Ok(CloudSyncStatusKitPage::empty(
-                            None,
-                            Some("no candidate zone found".into()),
-                        ));
-                    }
-                    Err(e) => {
-                        warn!("StatusKit-CloudKit pass: discovery errored: {}", e);
-                        return Ok(CloudSyncStatusKitPage::empty(
-                            None,
-                            Some(format!("discovery error: {}", e)),
-                        ));
-                    }
+        let cm = self.get_or_init_cloud_messages_client().await?;
+
+        // Decide which candidate(s) to try.
+        let parsed_cache: Option<(usize, String)> = cached_zone
+            .as_deref()
+            .and_then(parse_cached_zone);
+        let candidates_to_try: Vec<usize> = match &parsed_cache {
+            Some((idx, _)) => vec![*idx],
+            None => (0..CANDIDATE_CONTAINERS.len()).collect(),
+        };
+        let cached_zone_name: Option<String> = parsed_cache.map(|(_, n)| n);
+
+        let mut hit: Option<DiscoveryHit> = None;
+        for &idx in &candidates_to_try {
+            let candidate = &CANDIDATE_CONTAINERS[idx];
+            let scope = match candidate.database_type {
+                cloudkit_proto::request_operation::header::Database::PrivateDb => "PrivateDb",
+                cloudkit_proto::request_operation::header::Database::SharedDb => "SharedDb",
+                cloudkit_proto::request_operation::header::Database::PublicDb => "PublicDb",
+            };
+            let label = format!(
+                "{} / {} [{}]",
+                candidate.bundleid, candidate.containerid, scope
+            );
+            info!("StatusKit-CloudKit pass: probing candidate[{}] ({})", idx, label);
+            let opened = match candidate.init(cm.client.clone()).await {
+                Ok(c) => c,
+                Err(e) => {
+                    let cls = classify_error(&format!("{:?}", e));
+                    info!(
+                        "StatusKit-CloudKit pass: candidate[{}] INIT-{} ({}): {:?}",
+                        idx, cls, label, e
+                    );
+                    continue;
                 }
+            };
+            match try_fetch_zone(
+                &opened,
+                idx,
+                &label,
+                cached_zone_name.as_deref(),
+                since_token.clone(),
+            )
+            .await
+            {
+                Ok(Some(h)) => {
+                    info!(
+                        "StatusKit-CloudKit pass: HIT candidate[{}] zone='{}' record_count={}",
+                        idx,
+                        h.zone_name,
+                        h.records.len()
+                    );
+                    hit = Some(h);
+                    break;
+                }
+                Ok(None) => {
+                    info!(
+                        "StatusKit-CloudKit pass: candidate[{}] returned no usable records",
+                        idx
+                    );
+                }
+                Err(e) => {
+                    info!(
+                        "StatusKit-CloudKit pass: candidate[{}] fetch error: {}",
+                        idx, e
+                    );
+                }
+            }
+        }
+
+        let hit = match hit {
+            Some(h) => h,
+            None => {
+                return Ok(CloudSyncStatusKitPage::empty(
+                    None,
+                    Some("no candidate container/zone produced records".into()),
+                ));
             }
         };
 
-        let (records, next_token, status) =
-            match fetch_zone_records(self, &zone_name, since_token).await {
-                Ok(v) => v,
-                Err(e) => {
-                    warn!(
-                        "StatusKit-CloudKit pass: fetch zone='{}' failed: {} — clearing cached zone so next pass re-discovers",
-                        zone_name, e
-                    );
-                    // Surface to caller via resolved_zone=None so Go clears
-                    // its cache.
-                    return Ok(CloudSyncStatusKitPage {
-                        resolved_zone: None,
-                        next_token: None,
-                        fetched: 0,
-                        inserted: 0,
-                        already_known: 0,
-                        decode_failed: 0,
-                        records_seen: 0,
-                        injected_handles: Vec::new(),
-                        discovery_summary: Some(format!(
-                            "fetch failed (clearing cached zone): {}",
-                            e
-                        )),
-                    });
-                }
-            };
-
-        info!(
-            "StatusKit-CloudKit pass: zone='{}' response_status={} fetched_records={} has_next_token={}",
-            zone_name,
-            status,
-            records.len(),
-            next_token.is_some()
-        );
+        // Decode + inject. We need the opened container in scope for PCS
+        // unwrap (zone-level encryption config lookup), so re-open it.
+        let candidate = &CANDIDATE_CONTAINERS[hit.container_idx];
+        let opened = candidate
+            .init(cm.client.clone())
+            .await
+            .map_err(|e| WrappedError::GenericError {
+                msg: format!("StatusKit-CloudKit re-open container failed: {:?}", e),
+            })?;
 
         let mut decoded: Vec<DecodedPeer> = Vec::new();
         let mut decode_failed: u32 = 0;
-        for (idx, rec) in records.iter().enumerate() {
-            log_record_schema(idx, &zone_name, rec);
-            match decode_peer_record(self, rec).await {
+
+        // Build channel_id map (CD_Channel.record_id → CD_identifier).
+        let channel_map = build_channel_id_map(&hit.records);
+        info!(
+            "StatusKit-CloudKit pass: built channel_id map with {} CD_Channel record(s)",
+            channel_map.len()
+        );
+
+        for (idx, rec) in hit.records.iter().enumerate() {
+            let rec_type = record_type_name(rec).unwrap_or("<no-type>");
+            if rec_type != "CD_ReceivedInvitation" {
+                continue;
+            }
+            log_record_schema(idx, &hit.zone_name, rec);
+            match decode_invitation_record(self, &opened, &cm, rec, &channel_map).await {
                 Ok(Some(p)) => {
                     info!(
                         "StatusKit-CloudKit decode[{}]: zone='{}' OK from='{}' channel_b64_len={}",
                         idx,
-                        zone_name,
+                        hit.zone_name,
                         p.from,
                         p.channel_id.len()
                     );
@@ -253,35 +275,27 @@ impl Client {
                 }
                 Ok(None) => {
                     info!(
-                        "StatusKit-CloudKit decode[{}]: zone='{}' SKIPPED (record didn't carry decodable StatusKit shape — see schema dump above)",
-                        idx, zone_name
+                        "StatusKit-CloudKit decode[{}]: zone='{}' SKIPPED (see preceding log line)",
+                        idx, hit.zone_name
                     );
                 }
                 Err(e) => {
                     decode_failed += 1;
                     info!(
                         "StatusKit-CloudKit decode[{}]: zone='{}' FAILED: {}",
-                        idx, zone_name, e
+                        idx, hit.zone_name, e
                     );
                 }
             }
         }
 
-        let inject_stats = match inject_into_state(self, decoded).await {
-            Ok(s) => s,
-            Err(e) => {
-                warn!(
-                    "StatusKit-CloudKit pass: state injection failed: {:?}",
-                    e
-                );
-                return Err(e);
-            }
-        };
+        let inject_stats = inject_into_state(self, decoded).await?;
 
         info!(
-            "StatusKit-CloudKit pass: DONE zone='{}' fetched={} inserted={} already_known={} decode_failed={} injected_handles={:?}",
-            zone_name,
-            records.len(),
+            "StatusKit-CloudKit pass: DONE container_idx={} zone='{}' fetched={} inserted={} already_known={} decode_failed={} injected_handles={:?}",
+            hit.container_idx,
+            hit.zone_name,
+            hit.records.len(),
             inject_stats.inserted,
             inject_stats.already_known,
             decode_failed,
@@ -289,108 +303,38 @@ impl Client {
         );
 
         Ok(CloudSyncStatusKitPage {
-            resolved_zone: Some(zone_name),
-            next_token,
-            fetched: records.len() as u32,
+            resolved_zone: Some(format!("{}::{}", hit.container_idx, hit.zone_name)),
+            next_token: hit.next_token,
+            fetched: hit.records.len() as u32,
             inserted: inject_stats.inserted,
             already_known: inject_stats.already_known,
             decode_failed,
-            records_seen: records.len() as u32,
+            records_seen: hit.records.len() as u32,
             injected_handles: inject_stats.injected_handles,
             discovery_summary: None,
         })
     }
 }
 
-/// Discover the StatusKit zone in `com.apple.statuskit` using the bundle ID
-/// confirmed via codesign on the user's MBP: `com.apple.StatusKit.subscribe`.
-///
-/// Returns `Some(zone_name)` if a candidate zone was identified, `None`
-/// otherwise. On success, the caller fetches records from that zone via
-/// `fetch_zone_records`.
-async fn discover_statuskit_zone(client: &Client) -> Result<Option<String>, String> {
-    let cm = client
-        .get_or_init_cloud_messages_client()
-        .await
-        .map_err(|e| format!("cloud_messages init failed: {:?}", e))?;
-
-    let mut all_pairs: Vec<String> = Vec::new();
-    let mut keyword_matches: Vec<String> = Vec::new();
-
-    for (idx, candidate) in CANDIDATE_CONTAINERS.iter().enumerate() {
-        let scope = match candidate.database_type {
-            cloudkit_proto::request_operation::header::Database::PrivateDb => "PrivateDb",
-            cloudkit_proto::request_operation::header::Database::SharedDb => "SharedDb",
-            cloudkit_proto::request_operation::header::Database::PublicDb => "PublicDb",
-        };
-        let label = format!(
-            "{} / {} [{}]",
-            candidate.bundleid, candidate.containerid, scope
-        );
-        info!(
-            "StatusKit-CloudKit discovery: probing candidate[{}] ({})",
-            idx, label
-        );
-        let opened = match candidate.init(cm.client.clone()).await {
-            Ok(c) => c,
-            Err(e) => {
-                let cls = classify_init_error(&format!("{:?}", e));
-                info!(
-                    "StatusKit-CloudKit discovery: candidate[{}] INIT-{} ({}): {:?} — skipping",
-                    idx, cls, label, e
-                );
-                continue;
-            }
-        };
-        info!(
-            "StatusKit-CloudKit discovery: candidate[{}] INIT-OK ({}) — proceeding to do_sync",
-            idx, label
-        );
-        log_zones_for_container(&label, &opened, &mut all_pairs, &mut keyword_matches).await;
+/// Parse `"<idx>::<zone_name>"`. Backwards compatible: a bare zone name
+/// (no `::`) is treated as missing — so any cached value from the Phase-1
+/// build gets discarded and re-discovered.
+fn parse_cached_zone(s: &str) -> Option<(usize, String)> {
+    let (idx_str, zone) = s.split_once("::")?;
+    let idx: usize = idx_str.parse().ok()?;
+    if idx >= CANDIDATE_CONTAINERS.len() {
+        return None;
     }
-
-    info!(
-        "StatusKit-CloudKit discovery: zone inventory ({} entries): [{}]",
-        all_pairs.len(),
-        all_pairs.join(" | ")
-    );
-
-    // If do_sync succeeded against any candidate, we have the full zone list
-    // for that container. Pick the first non-default zone (every CK container
-    // has a `_defaultZone` we want to skip) — StatusKit's data zone(s) will
-    // be among the rest. If keyword_matches identified a specific match
-    // (status / presence / sharedchannel / focus / keysharing), prefer that.
-    if let Some(matched) = keyword_matches.into_iter().next() {
-        info!(
-            "StatusKit-CloudKit discovery: picked keyword-matching zone='{}'",
-            matched
-        );
-        return Ok(Some(matched));
-    }
-    let first_real_zone = all_pairs
-        .iter()
-        .filter_map(|p| p.split("::").nth(1))
-        .find(|z| *z != "_defaultZone")
-        .map(|s| s.to_string());
-    if let Some(z) = &first_real_zone {
-        info!(
-            "StatusKit-CloudKit discovery: no keyword match — falling back to first non-default zone='{}'",
-            z
-        );
-    } else {
-        info!(
-            "StatusKit-CloudKit discovery: NO zones returned from any candidate — bundle/container/auth still wrong"
-        );
-    }
-    Ok(first_real_zone)
+    Some((idx, zone.to_string()))
 }
 
-/// Distinguish init failure modes so logs say *why* a probe failed.
-fn classify_init_error(dbg: &str) -> &'static str {
+fn classify_error(dbg: &str) -> &'static str {
     if dbg.contains("missing field `cloudKitUserId`") {
         "BAD-CONTAINER-ID"
     } else if dbg.contains("InvalidBundleId") {
         "INVALID-BUNDLE"
+    } else if dbg.contains("ZoneNotFound") {
+        "ZONE-NOT-FOUND"
     } else if dbg.contains("NotSupported") {
         "NOT-SUPPORTED"
     } else {
@@ -398,45 +342,42 @@ fn classify_init_error(dbg: &str) -> &'static str {
     }
 }
 
-/// Helper: list every zone in the given opened container, log each one,
-/// and append container/zone labels to the running summaries. Skips zones
-/// the iMessage container is known to own so noise stays manageable, but
-/// still logs them.
-async fn log_zones_for_container<P: omnisette::AnisetteProvider>(
-    container_label: &str,
-    open: &rustpush::cloudkit::CloudKitOpenContainer<'_, P>,
-    all_pairs: &mut Vec<String>,
-    keyword_matches: &mut Vec<String>,
-) {
-    let zones = match FetchZoneChangesOperation::do_sync(open, None).await {
+/// Holds the records pulled from a successful zone fetch. Threaded out of
+/// discovery so the decode pipeline doesn't re-fetch.
+struct DiscoveryHit {
+    container_idx: usize,
+    zone_name: String,
+    records: Vec<cloudkit_proto::retrieve_changes_response::RecordChange>,
+    next_token: Option<Vec<u8>>,
+}
+
+/// Open container has already been initialized. Lists zones, picks one
+/// (cached name if provided, else the keyword-matching or first non-default
+/// zone), and fetches records. Returns `Ok(Some(hit))` if records came back.
+async fn try_fetch_zone<P: omnisette::AnisetteProvider>(
+    opened: &CloudKitOpenContainer<'_, P>,
+    container_idx: usize,
+    label: &str,
+    cached_zone_name: Option<&str>,
+    since_token: Option<Vec<u8>>,
+) -> Result<Option<DiscoveryHit>, String> {
+    let zones = match FetchZoneChangesOperation::do_sync(opened, None).await {
         Ok((z, _tok)) => z,
         Err(e) => {
-            let dbg = format!("{:?}", e);
-            let cls = classify_init_error(&dbg);
-            // BAD-CONTAINER-ID can never come from do_sync (it's an init
-            // failure), so this is really do-sync-shaped categorization:
-            // INVALID-BUNDLE = container exists, our bundle isn't entitled.
-            // NOT-SUPPORTED = wrong DB scope or operation type.
+            let cls = classify_error(&format!("{:?}", e));
             info!(
-                "StatusKit-CloudKit discovery: do_sync against '{}' DOSYNC-{}: {:?}",
-                container_label, cls, e
+                "StatusKit-CloudKit fetch: container='{}' DOSYNC-{}: {:?}",
+                label, cls, e
             );
-            return;
+            return Ok(None);
         }
     };
     info!(
-        "StatusKit-CloudKit discovery: container='{}' returned {} zone(s)",
-        container_label,
+        "StatusKit-CloudKit fetch: container='{}' returned {} zone(s)",
+        label,
         zones.len()
     );
-    let known_messages_zones = [
-        "chatManateeZone",
-        "messageManateeZone",
-        "attachmentManateeZone",
-        "recoverableMessageDeleteZone",
-        "chatBotRecoverableMessageDeleteZone",
-        "_defaultZone",
-    ];
+
     let mut zone_names: Vec<String> = Vec::new();
     for z in &zones {
         let zname = match z
@@ -446,52 +387,43 @@ async fn log_zones_for_container<P: omnisette::AnisetteProvider>(
             .and_then(|v| v.name.as_deref())
         {
             Some(n) => n.to_string(),
-            None => {
-                info!(
-                    "StatusKit-CloudKit discovery: container='{}' zone with no zone_name (change_type={:?})",
-                    container_label, z.change_type
-                );
-                continue;
-            }
+            None => continue,
         };
-        all_pairs.push(format!("{}::{}", container_label, zname));
-        let nm_lc = zname.to_lowercase();
-        let is_known = known_messages_zones.contains(&zname.as_str());
-        let is_status_kw = nm_lc.contains("status")
-            || nm_lc.contains("presence")
-            || nm_lc.contains("sharedchannel")
-            || nm_lc.contains("focus")
-            || nm_lc.contains("keysharing")
-            || nm_lc.contains("subscribe");
         info!(
-            "StatusKit-CloudKit discovery: container='{}' zone='{}' known_messages_zone={} status_keyword_match={} change_type={:?} is_anonymous={:?}",
-            container_label, zname, is_known, is_status_kw, z.change_type, z.is_annonymous
+            "StatusKit-CloudKit fetch: container='{}' zone='{}' change_type={:?}",
+            label, zname, z.change_type
         );
-        if is_status_kw && !is_known {
-            keyword_matches.push(zname.clone());
-        }
         if zname != "_defaultZone" {
             zone_names.push(zname);
         }
     }
 
-    // For every non-default zone in this container, fetch a page of records
-    // and dump schemas. This is done while we still have the opened container
-    // handle so we don't have to re-init or thread the container through to
-    // a second function. The schema log is enough to identify StatusKit-shape
-    // records (`from`, `signature`, `keys`, `personal_config`) from the
-    // surrounding noise.
-    for zname in &zone_names {
-        let zone_id = open.private_zone(zname.clone());
+    // Pick zone(s) to try. If we have a cached name, prefer it; else try all.
+    let try_zones: Vec<String> = match cached_zone_name {
+        Some(name) if zone_names.iter().any(|z| z == name) => vec![name.to_string()],
+        Some(name) => {
+            info!(
+                "StatusKit-CloudKit fetch: cached zone='{}' not found in container — falling back to discovery",
+                name
+            );
+            zone_names.clone()
+        }
+        None => zone_names.clone(),
+    };
+
+    for zname in try_zones {
+        let zone_id = opened.private_zone(zname.clone());
         info!(
-            "StatusKit-CloudKit fetch: container='{}' zone='{}' attempting record fetch",
-            container_label, zname
+            "StatusKit-CloudKit fetch: container='{}' zone='{}' attempting record fetch (has_token={})",
+            label,
+            zname,
+            since_token.is_some()
         );
-        match open
+        let fetch_result = opened
             .perform(
                 &CloudKitSession::new(),
                 FetchRecordChangesOperation(cloudkit_proto::RetrieveChangesRequest {
-                    sync_continuation_token: None,
+                    sync_continuation_token: since_token.clone(),
                     zone_identifier: Some(zone_id),
                     requested_changes_types: Some(3),
                     assets_to_download: Some(NO_ASSETS.clone()),
@@ -499,113 +431,67 @@ async fn log_zones_for_container<P: omnisette::AnisetteProvider>(
                     ..Default::default()
                 }),
             )
-            .await
-        {
+            .await;
+        match fetch_result {
             Ok((_assets, response)) => {
                 let status = response.status.unwrap_or(0);
+                let next_token = response.sync_continuation_token.clone();
                 let records: Vec<_> = response.change.into_iter().collect();
                 info!(
-                    "StatusKit-CloudKit fetch: container='{}' zone='{}' status={} record_count={}",
-                    container_label,
+                    "StatusKit-CloudKit fetch: container='{}' zone='{}' status={} record_count={} next_token_present={}",
+                    label,
                     zname,
                     status,
-                    records.len()
+                    records.len(),
+                    next_token.is_some()
                 );
-                let log_count = records.len().min(10);
-                for (idx, rec) in records.iter().take(log_count).enumerate() {
-                    log_record_schema(idx, zname, rec);
+                if records.is_empty() {
+                    continue;
                 }
-                if records.len() > log_count {
-                    info!(
-                        "StatusKit-CloudKit fetch: container='{}' zone='{}' truncated schema log to first {} of {}",
-                        container_label,
-                        zname,
-                        log_count,
-                        records.len()
-                    );
-                }
+                return Ok(Some(DiscoveryHit {
+                    container_idx,
+                    zone_name: zname,
+                    records,
+                    next_token,
+                }));
             }
             Err(e) => {
+                let cls = classify_error(&format!("{:?}", e));
                 info!(
-                    "StatusKit-CloudKit fetch: container='{}' zone='{}' fetch failed: {:?}",
-                    container_label, zname, e
+                    "StatusKit-CloudKit fetch: container='{}' zone='{}' FETCH-{}: {:?}",
+                    label, zname, cls, e
                 );
             }
         }
     }
+    Ok(None)
 }
 
-/// Single-page fetch of `FetchRecordChangesOperation` against the named zone.
-/// Returns the records (as RecordChange entries), the next continuation
-/// token, and the response status.
-async fn fetch_zone_records(
-    client: &Client,
-    zone_name: &str,
-    since_token: Option<Vec<u8>>,
-) -> Result<
-    (
-        Vec<cloudkit_proto::retrieve_changes_response::RecordChange>,
-        Option<Vec<u8>>,
-        i32,
-    ),
-    String,
-> {
-    let cm = client
-        .get_or_init_cloud_messages_client()
-        .await
-        .map_err(|e| format!("cloud_messages init failed: {:?}", e))?;
-    let container = cm
-        .get_container()
-        .await
-        .map_err(|e| format!("get_container failed: {:?}", e))?;
-    let zone_id = container.private_zone(zone_name.to_string());
-
-    info!(
-        "StatusKit-CloudKit fetch: zone='{}' has_continuation_token={}",
-        zone_name,
-        since_token.is_some()
-    );
-
-    let (_assets, response) = container
-        .perform(
-            &CloudKitSession::new(),
-            FetchRecordChangesOperation(cloudkit_proto::RetrieveChangesRequest {
-                sync_continuation_token: since_token,
-                zone_identifier: Some(zone_id),
-                requested_changes_types: Some(3),
-                assets_to_download: Some(NO_ASSETS.clone()),
-                newest_first: Some(true),
-                ..Default::default()
-            }),
-        )
-        .await
-        .map_err(|e| format!("perform(FetchRecordChangesOperation) failed: {:?}", e))?;
-
-    let status = response.status.unwrap_or(0);
-    let next_token = response.sync_continuation_token.clone();
-    let records = response.change.into_iter().collect();
-    Ok((records, next_token, status))
+fn record_type_name(
+    rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
+) -> Option<&str> {
+    rec.record
+        .as_ref()
+        .and_then(|r| r.r#type.as_ref())
+        .and_then(|t| t.name.as_deref())
 }
 
-/// Log a record's full schema (record_type, field names, protection_info presence)
-/// at info level so the user can identify the StatusKit record shape.
+fn record_id_name(
+    rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
+) -> Option<&str> {
+    rec.identifier
+        .as_ref()
+        .and_then(|i| i.value.as_ref())
+        .and_then(|v| v.name.as_deref())
+}
+
 fn log_record_schema(
     idx: usize,
     zone: &str,
     rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
 ) {
-    let id = rec
-        .identifier
-        .as_ref()
-        .and_then(|i| i.value.as_ref())
-        .and_then(|v| v.name.as_deref())
-        .unwrap_or("<no-name>");
-    let rec_type = rec
-        .record
-        .as_ref()
-        .and_then(|r| r.r#type.as_ref())
-        .and_then(|t| t.name.as_deref())
-        .unwrap_or("<no-type>");
+    let id = record_id_name(rec).unwrap_or("<no-name>");
+    let rec_type = record_type_name(rec).unwrap_or("<no-type>");
     let has_protection = rec
         .record
         .as_ref()
@@ -616,169 +502,344 @@ fn log_record_schema(
         .as_ref()
         .map(|r| r.record_field.len())
         .unwrap_or(0);
-    let field_names: Vec<&str> = rec
-        .record
-        .as_ref()
-        .map(|r| {
-            r.record_field
-                .iter()
-                .filter_map(|f| f.identifier.as_ref().and_then(|i| i.name.as_deref()))
-                .collect()
-        })
-        .unwrap_or_default();
-    let field_types: Vec<i32> = rec
-        .record
-        .as_ref()
-        .map(|r| {
-            r.record_field
-                .iter()
-                .filter_map(|f| {
-                    f.value
-                        .as_ref()
-                        .and_then(|v| v.r#type)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let has_tombstone = rec.record.is_none();
     info!(
-        "StatusKit-CloudKit schema[{}]: zone='{}' record_id='{}' record_type='{}' tombstone={} has_protection_info={} field_count={} field_names={:?} field_value_types={:?}",
-        idx, zone, id, rec_type, has_tombstone, has_protection, field_count, field_names, field_types
+        "StatusKit-CloudKit schema[{}]: zone='{}' record_id='{}' record_type='{}' has_protection_info={} field_count={}",
+        idx, zone, id, rec_type, has_protection, field_count
     );
 }
 
-/// Captured during decode so we can log + persist without needing access to
-/// `StatusKitSharedDevice`'s private fields.
+/// Map CD_Channel record_id → CD_identifier (the base64 channel id used as
+/// the key in `state.keys`). Used to translate a CD_ReceivedInvitation's
+/// CD_channel foreign key into the actual channel id.
+fn build_channel_id_map(
+    records: &[cloudkit_proto::retrieve_changes_response::RecordChange],
+) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for rec in records {
+        if record_type_name(rec) != Some("CD_Channel") {
+            continue;
+        }
+        let id = match record_id_name(rec) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        if let Some(ident) = extract_string_field(rec, "CD_identifier") {
+            map.insert(id, ident);
+        }
+    }
+    map
+}
+
+/// Find a string-valued field on the record. Handles the unencrypted
+/// STRING_TYPE case only — encrypted strings need PCS unwrap.
+fn extract_string_field(
+    rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
+    name: &str,
+) -> Option<String> {
+    let record = rec.record.as_ref()?;
+    for f in &record.record_field {
+        let fname = f.identifier.as_ref().and_then(|i| i.name.as_deref());
+        if fname == Some(name) {
+            let v = f.value.as_ref()?;
+            return v.string_value.clone();
+        }
+    }
+    None
+}
+
+/// Find an encrypted-bytes field's raw ciphertext bytes.
+fn extract_encrypted_bytes_field<'a>(
+    rec: &'a cloudkit_proto::retrieve_changes_response::RecordChange,
+    name: &str,
+) -> Option<&'a [u8]> {
+    let record = rec.record.as_ref()?;
+    for f in &record.record_field {
+        let fname = f.identifier.as_ref().and_then(|i| i.name.as_deref());
+        if fname == Some(name) {
+            let v = f.value.as_ref()?;
+            // EncryptedBytesType=20 (FieldType::EncryptedBytesType)
+            if v.r#type == Some(FieldType::EncryptedBytesType as i32) {
+                return v.bytes_value.as_deref();
+            }
+        }
+    }
+    None
+}
+
+/// Decoded peer ready for injection.
 struct DecodedPeer {
     channel_id: String,
     from: String,
     device: StatusKitSharedDevice,
 }
 
-/// Decode one CloudKit record into a StatusKit peer entry.
-///
-/// Phase-1 stub: returns `Ok(None)` for every record. This is intentional.
-/// The schema dumps logged by `log_record_schema` produce the information
-/// needed to write a real decoder; until that schema is confirmed, this
-/// function refuses to fabricate `StatusKitSharedDevice` instances. PCS
-/// unwrap is wired up but the field-mapping is left for Phase 2.
-async fn decode_peer_record(
-    client: &Client,
+/// Mirror of the private upstream `StatusKitRawSharedDevice` used as the
+/// IDS-payload wire format for keysharing reshares (cmd 224). The same
+/// plist is what the iPhone stored in `CD_invitationPayload`.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct InvitationPayloadMirror {
+    #[serde(rename = "r")]
+    keys: String, // base64 of SharedMessage protobuf
+    #[serde(rename = "d")]
+    time_sent_s: f64,
+    #[serde(rename = "p")]
+    personal_config: String, // base64 of plist of StatusKitPersonalConfig
+    #[serde(rename = "s")]
+    bundle: String,
+    #[serde(rename = "c")]
+    channel: String, // base64 channel id
+}
+
+async fn decode_invitation_record<P: omnisette::AnisetteProvider>(
+    _client: &Client,
+    opened: &CloudKitOpenContainer<'_, P>,
+    cm: &rustpush::cloud_messages::CloudMessagesClient<P>,
     rec: &cloudkit_proto::retrieve_changes_response::RecordChange,
+    channel_map: &HashMap<String, String>,
 ) -> Result<Option<DecodedPeer>, String> {
-    let _record = match &rec.record {
+    let record = match &rec.record {
         Some(r) => r,
-        None => return Ok(None), // tombstone — not an error
+        None => return Ok(None),
+    };
+    let record_id = rec
+        .identifier
+        .as_ref()
+        .ok_or("record missing identifier")?
+        .clone();
+    let zone_id = record_id
+        .zone_identifier
+        .clone()
+        .ok_or("record missing zone_identifier")?;
+
+    let sender_handle = extract_string_field(rec, "CD_senderHandle");
+    let channel_fk = extract_string_field(rec, "CD_channel");
+    let payload_ct = extract_encrypted_bytes_field(rec, "CD_invitationPayload");
+    if sender_handle.is_none() || channel_fk.is_none() || payload_ct.is_none() {
+        info!(
+            "StatusKit-CloudKit decode: missing required fields (sender={}, channel_fk={}, payload={})",
+            sender_handle.is_some(),
+            channel_fk.is_some(),
+            payload_ct.is_some()
+        );
+        return Ok(None);
+    }
+    let sender_handle = sender_handle.unwrap();
+    let channel_fk = channel_fk.unwrap();
+    let payload_ct = payload_ct.unwrap();
+
+    // PCS-unwrap CD_invitationPayload.
+    let zone_key = match opened
+        .get_zone_encryption_config(&zone_id, &cm.keychain, &MESSAGES_SERVICE)
+        .await
+    {
+        Ok(k) => k,
+        Err(e) => {
+            return Err(format!(
+                "get_zone_encryption_config(MESSAGES_SERVICE) failed — likely a different PCS service is needed for StatusKit: {:?}",
+                e
+            ));
+        }
     };
 
-    // PCS unwrap scaffolding for Phase 2. We try to obtain a per-record PCS
-    // key here so that, when the real decoder lands, it has the unwrapped
-    // material in hand and the failure modes are already logged.
-    if let Some(record) = &rec.record {
-        if let Some(_protection) = &record.protection_info {
-            let cm = match client.get_or_init_cloud_messages_client().await {
-                Ok(c) => c,
-                Err(e) => {
-                    info!(
-                        "StatusKit-CloudKit decode: cloud_messages unavailable for PCS unwrap: {:?}",
-                        e
-                    );
-                    return Ok(None);
-                }
-            };
-            let container = match cm.get_container().await {
-                Ok(c) => c,
-                Err(e) => {
-                    info!(
-                        "StatusKit-CloudKit decode: get_container failed for PCS unwrap: {:?}",
-                        e
-                    );
-                    return Ok(None);
-                }
-            };
-            // Try the messages-service zone-key first since it's our existing
-            // PCS context. If StatusKit needs a different service constant,
-                // we'll see the failure here and surface it for diagnosis.
-            let zone_id = match rec
-                .identifier
-                .as_ref()
-                .and_then(|i| i.zone_identifier.as_ref())
-            {
-                Some(z) => z.clone(),
-                None => {
-                    info!(
-                        "StatusKit-CloudKit decode: record has no zone_identifier; skipping PCS unwrap probe"
-                    );
-                    return Ok(None);
-                }
-            };
-            let zone_key_attempt = container
-                .get_zone_encryption_config(&zone_id, &cm.keychain, &MESSAGES_SERVICE)
-                .await;
-            match zone_key_attempt {
-                Ok(zone_key) => {
-                    let pcs_attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                        || pcs_keys_for_record(record, &zone_key),
-                    ));
-                    match pcs_attempt {
-                        Ok(Ok(_pcs_key)) => {
-                            info!(
-                                "StatusKit-CloudKit decode: PCS unwrap OK via MESSAGES_SERVICE; record decode still pending Phase-2 schema"
-                            );
-                        }
-                        Ok(Err(e)) => {
-                            info!(
-                                "StatusKit-CloudKit decode: PCS unwrap returned error via MESSAGES_SERVICE: {:?}",
-                                e
-                            );
-                            // Fallback path mirrors cloud_sync_attachments.
-                            if let Some(protection) = &record.protection_info {
-                                let record_protection =
-                                    PCSShareProtection::from_protection_info(protection);
-                                let keychain_state =
-                                    cm.keychain.state.read().await;
-                                let fallback = std::panic::catch_unwind(
-                                    std::panic::AssertUnwindSafe(|| {
-                                        record_protection.decrypt_with_keychain(
-                                            &keychain_state,
-                                            &MESSAGES_SERVICE,
-                                            false,
-                                        )
-                                    }),
-                                );
-                                match fallback {
-                                    Ok(Ok(_)) => info!(
-                                        "StatusKit-CloudKit decode: keychain fallback PCS unwrap OK"
-                                    ),
-                                    Ok(Err(e2)) => info!(
-                                        "StatusKit-CloudKit decode: keychain fallback PCS unwrap also failed: {:?}",
-                                        e2
-                                    ),
-                                    Err(_) => info!(
-                                        "StatusKit-CloudKit decode: keychain fallback panicked"
-                                    ),
-                                }
-                            }
-                        }
-                        Err(_) => {
-                            info!(
-                                "StatusKit-CloudKit decode: pcs_keys_for_record panicked — likely a different PCS service class is needed"
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    info!(
-                        "StatusKit-CloudKit decode: get_zone_encryption_config(MESSAGES_SERVICE) failed; StatusKit may use a different PCS service: {:?}",
-                        e
-                    );
-                }
+    // Try pcs_keys_for_record first; if it panics or fails, fall back to
+    // direct keychain decrypt. Mirrors cloud_sync_attachments pattern.
+    let encryptor = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        pcs_keys_for_record(record, &zone_key)
+    })) {
+        Ok(Ok(enc)) => enc,
+        Ok(Err(e)) => {
+            info!(
+                "StatusKit-CloudKit decode: pcs_keys_for_record returned error: {:?} — trying keychain fallback",
+                e
+            );
+            match decrypt_with_keychain_fallback(record, cm).await {
+                Some(enc) => enc,
+                None => return Err(format!("PCS unwrap failed (both paths)")),
             }
         }
+        Err(_) => {
+            info!(
+                "StatusKit-CloudKit decode: pcs_keys_for_record panicked — trying keychain fallback"
+            );
+            match decrypt_with_keychain_fallback(record, cm).await {
+                Some(enc) => enc,
+                None => return Err(format!("PCS unwrap panicked, keychain fallback failed")),
+            }
+        }
+    };
+
+    // Decrypt the encrypted-bytes payload field.
+    let plaintext = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        encryptor.decrypt_data(payload_ct, "CD_invitationPayload")
+    })) {
+        Ok(b) => b,
+        Err(_) => return Err("decrypt_data panicked on CD_invitationPayload".into()),
+    };
+    if plaintext.is_empty() {
+        return Err("decrypted CD_invitationPayload is empty".into());
+    }
+    info!(
+        "StatusKit-CloudKit decode: PCS-decrypted CD_invitationPayload ({} bytes)",
+        plaintext.len()
+    );
+
+    // Parse the IDS-format plist.
+    let parsed: InvitationPayloadMirror = plist::from_bytes(&plaintext)
+        .map_err(|e| format!("plist::from_bytes(InvitationPayloadMirror) failed: {:?}", e))?;
+    info!(
+        "StatusKit-CloudKit decode: parsed payload bundle='{}' time_sent_s={} channel_b64_len={}",
+        parsed.bundle,
+        parsed.time_sent_s,
+        parsed.channel.len()
+    );
+
+    // Decode the SharedMessage protobuf.
+    let share_message_bytes = B64
+        .decode(&parsed.keys)
+        .map_err(|e| format!("base64 decode SharedMessage: {:?}", e))?;
+    let share_message = SharedMessage::decode(Cursor::new(&share_message_bytes))
+        .map_err(|e| format!("SharedMessage::decode failed: {:?}", e))?;
+
+    if share_message.sig_key.len() != 32 {
+        return Err(format!(
+            "unexpected sig_key length {}",
+            share_message.sig_key.len()
+        ));
     }
 
-    // Phase 2 lands here.
-    Ok(None)
+    // The base64 channel from the payload is the canonical channel id.
+    // CD_channel FK + channel_map is a sanity cross-check; log if they
+    // disagree but trust the embedded value (it's what the keysharing
+    // protocol uses on the wire).
+    if let Some(mapped) = channel_map.get(&channel_fk) {
+        if mapped != &parsed.channel {
+            info!(
+                "StatusKit-CloudKit decode: CD_channel FK→identifier mismatch (mapped='{}', payload='{}') — trusting payload",
+                mapped, parsed.channel
+            );
+        }
+    } else {
+        info!(
+            "StatusKit-CloudKit decode: CD_channel FK '{}' not in channel_map (have {} entries)",
+            channel_fk,
+            channel_map.len()
+        );
+    }
+
+    // Reconstruct the StatusKitSharedDevice via plist round-trip.
+    let device = build_shared_device(
+        sender_handle.clone(),
+        &share_message,
+        &parsed.personal_config,
+    )?;
+
+    Ok(Some(DecodedPeer {
+        channel_id: parsed.channel,
+        from: sender_handle,
+        device,
+    }))
+}
+
+/// Try the same keychain-decrypt fallback that cloud_sync_attachments uses
+/// when pcs_keys_for_record panics. Returns None on any failure.
+async fn decrypt_with_keychain_fallback<P: omnisette::AnisetteProvider>(
+    record: &cloudkit_proto::Record,
+    cm: &rustpush::cloud_messages::CloudMessagesClient<P>,
+) -> Option<rustpush::pcs::PCSEncryptor> {
+    let protection = record.protection_info.as_ref()?;
+    let record_protection = PCSShareProtection::from_protection_info(protection);
+    let keychain_state = cm.keychain.state.read().await;
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        record_protection.decrypt_with_keychain(&keychain_state, &MESSAGES_SERVICE, false)
+    }));
+    match result {
+        Ok(Ok((pcs_keys, _))) => {
+            info!("StatusKit-CloudKit decode: keychain fallback PCS unwrap OK");
+            let record_id = record.record_identifier.clone()?;
+            Some(rustpush::pcs::PCSEncryptor {
+                keys: pcs_keys,
+                record_id,
+            })
+        }
+        Ok(Err(e)) => {
+            info!(
+                "StatusKit-CloudKit decode: keychain fallback PCS unwrap returned error: {:?}",
+                e
+            );
+            None
+        }
+        Err(_) => {
+            info!("StatusKit-CloudKit decode: keychain fallback PCS unwrap panicked");
+            None
+        }
+    }
+}
+
+/// Reconstruct a `StatusKitSharedDevice` from its IDS-payload representation
+/// via plist serialization round-trip. Avoids needing public field
+/// access on the upstream type.
+fn build_shared_device(
+    sender: String,
+    share_message: &SharedMessage,
+    personal_config_b64: &str,
+) -> Result<StatusKitSharedDevice, String> {
+    // signature: convert 32-byte X9.62 raw → 33-byte compressed → DER bytes.
+    let sig_der = compressed_pubkey_to_der(&share_message.sig_key)
+        .map_err(|e| format!("compressed_pubkey_to_der: {:?}", e))?;
+
+    // keys: each SharedKey re-encoded as protobuf; wrapped as plist::Data.
+    let keys_protos: Vec<Vec<u8>> = match &share_message.keys {
+        Some(k) => k.keys.iter().map(SharedKey::encode_to_vec).collect(),
+        None => return Err("SharedMessage missing inner SharedKeys".into()),
+    };
+
+    // personal_config: deserialize from base64-of-plist into a plist::Value
+    // so we can embed it nested in the synthetic device plist.
+    let personal_config_value: PlistValue = if personal_config_b64.is_empty() {
+        // Some payloads send an empty `p` (no personal config); StatusKitPersonalConfig
+        // has `#[serde(default)]` on its only field so an empty dict deserializes fine.
+        PlistValue::Dictionary(plist::Dictionary::new())
+    } else {
+        let pc_bytes = B64
+            .decode(personal_config_b64)
+            .map_err(|e| format!("base64 decode personal_config: {:?}", e))?;
+        plist::from_bytes(&pc_bytes)
+            .map_err(|e| format!("plist::from_bytes(personal_config): {:?}", e))?
+    };
+
+    // Build the canonical serialized form of StatusKitSharedDevice.
+    let mut dict = plist::Dictionary::new();
+    dict.insert("from".into(), PlistValue::String(sender));
+    dict.insert(
+        "signature".into(),
+        PlistValue::Data(sig_der),
+    );
+    dict.insert(
+        "keys".into(),
+        PlistValue::Array(keys_protos.into_iter().map(PlistValue::Data).collect()),
+    );
+    dict.insert("personal_config".into(), personal_config_value);
+
+    let device_value = PlistValue::Dictionary(dict);
+    let mut buf = Vec::new();
+    plist::to_writer_binary(Cursor::new(&mut buf), &device_value)
+        .map_err(|e| format!("plist::to_writer_binary: {:?}", e))?;
+    plist::from_bytes::<StatusKitSharedDevice>(&buf)
+        .map_err(|e| format!("plist::from_bytes(StatusKitSharedDevice) round-trip: {:?}", e))
+}
+
+/// Take a 32-byte X9.62 raw EC public key (P-256), prepend the 0x03 compressed
+/// prefix, decompress to an `EcPoint`, then output X9.62 DER. Mirrors
+/// `CompactECKey::decompress(...).public_key_to_der()`.
+fn compressed_pubkey_to_der(raw_32: &[u8]) -> Result<Vec<u8>, openssl::error::ErrorStack> {
+    let mut compressed = [0u8; 33];
+    compressed[0] = 0x03;
+    compressed[1..].copy_from_slice(raw_32);
+    let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+    let mut ctx = BigNumContext::new()?;
+    let point = EcPoint::from_bytes(&group, &compressed, &mut ctx)?;
+    let key = EcKey::from_public_key(&group, &point)?;
+    key.public_key_to_der()
 }
 
 struct InjectStats {
@@ -787,10 +848,6 @@ struct InjectStats {
     injected_handles: Vec<String>,
 }
 
-/// Acquire a write lock on the in-memory StatusKit state, insert decoded
-/// peers, and persist via the same plist path that the upstream
-/// `update_state` callback uses. Skips peers whose channel id is already
-/// known so reshare-derived state always wins on conflict.
 async fn inject_into_state(
     client: &Client,
     peers: Vec<DecodedPeer>,
