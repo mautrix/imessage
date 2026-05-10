@@ -239,8 +239,8 @@ func (c *IMClient) rememberAliasPortal(ctx context.Context, alias string, portal
 // restart. Reads are bulk against the KV table.
 func (c *IMClient) hydrateAliasPortalCacheFromKV(ctx context.Context, log zerolog.Logger) {
 	rows, err := c.Main.Bridge.DB.RawDB.QueryContext(ctx,
-		"SELECT key, value FROM kv WHERE key LIKE $1",
-		statusKitAliasPortalKeyPrefix+"%")
+		"SELECT key, value FROM kv_store WHERE bridge_id=$1 AND key LIKE $2",
+		c.Main.Bridge.ID, statusKitAliasPortalKeyPrefix+"%")
 	if err != nil {
 		log.Warn().Err(err).Msg("StatusKit alias-resolver: KV hydration query failed")
 		return
