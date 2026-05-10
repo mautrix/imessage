@@ -8484,31 +8484,43 @@ impl Client {
             "com.apple.private.alloy.status.personal",
         ];
 
-        // Dedup targets across unknowns ∪ known_handles (preserving insertion
-        // order so unknowns front-load the chunked HTTP fetches).
-        let mut all_targets: Vec<String> = Vec::with_capacity(unknowns.len() + known_handles.len());
+        // Dedup unknowns and known siblings into separate vectors so we can
+        // apply different refresh policies. Unknowns get refresh=true (force
+        // Apple to re-query, bypassing EMPTY_REFRESH). Known siblings get
+        // refresh=false (cache-only when warm; only fetched if their entry
+        // is missing or genuinely stale per session_token_refresh_seconds).
+        // This is the difference between ~4 Apple lookups per cycle and ~28.
+        let mut unknown_targets: Vec<String> = Vec::with_capacity(unknowns.len());
         let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for h in unknowns.iter().chain(known_handles.iter()) {
+        for h in &unknowns {
             if seen.insert(h.clone()) {
-                all_targets.push(h.clone());
+                unknown_targets.push(h.clone());
+            }
+        }
+        let mut sibling_targets: Vec<String> = Vec::with_capacity(known_handles.len());
+        for h in &known_handles {
+            if seen.insert(h.clone()) {
+                sibling_targets.push(h.clone());
             }
         }
 
-        // Timeout scales with batch size: chunks of 18 per HTTP query upstream,
-        // ~3-4s per chunk under healthy network. Cap at 90s so a stuck batch
-        // doesn't wedge the cloud-sync orchestrator.
-        let timeout_secs: u64 = ((all_targets.len() as u64 / 18) * 4 + 15).min(90);
+        // Timeouts scale with each list's size separately. Unknowns are the
+        // small set (the ones we actually need fresh data for); known siblings
+        // are mostly cache hits, so this call is fast in steady state.
+        let unknown_timeout: u64 = ((unknown_targets.len() as u64 / 18) * 4 + 15).min(90);
+        let sibling_timeout: u64 = ((sibling_targets.len() as u64 / 18) * 4 + 15).min(90);
 
         let mut results: HashMap<String, Vec<String>> = HashMap::new();
 
         for &service in SERVICES {
-            // refresh=true so Apple is re-queried even for handles cached as
-            // empty within the EMPTY_REFRESH (1h) window — see resolve_handle.
+            // 1. Force-fresh fetch for the unknowns. refresh=true bypasses the
+            //    EMPTY_REFRESH cache filter so Apple is re-queried even if a
+            //    prior empty result is cached within the 1h window.
             match tokio::time::timeout(
-                Duration::from_secs(timeout_secs),
+                Duration::from_secs(unknown_timeout),
                 self.client.identity.cache_keys(
                     service,
-                    &all_targets,
+                    &unknown_targets,
                     &my_handle,
                     true,
                     &QueryOptions::default(),
@@ -8516,12 +8528,38 @@ impl Client {
             ).await {
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) => {
-                    info!("batch_resolve_handles: cache_keys({}, n={}) failed: {:?}", service, all_targets.len(), e);
+                    info!("batch_resolve_handles: cache_keys(unknowns, {}, n={}) failed: {:?}", service, unknown_targets.len(), e);
                     continue;
                 }
                 Err(_) => {
-                    info!("batch_resolve_handles: cache_keys({}, n={}) timed out after {}s", service, all_targets.len(), timeout_secs);
+                    info!("batch_resolve_handles: cache_keys(unknowns, {}, n={}) timed out after {}s", service, unknown_targets.len(), unknown_timeout);
                     continue;
+                }
+            }
+
+            // 2. Cache-only top-up for known siblings. refresh=false means each
+            //    sibling is filtered out if its cache entry is fresh — typical
+            //    case is cache hit for everyone (siblings have been queried
+            //    during normal message traffic). Only siblings with truly
+            //    missing/stale entries hit Apple.
+            if !sibling_targets.is_empty() {
+                match tokio::time::timeout(
+                    Duration::from_secs(sibling_timeout),
+                    self.client.identity.cache_keys(
+                        service,
+                        &sibling_targets,
+                        &my_handle,
+                        false,
+                        &QueryOptions::default(),
+                    ),
+                ).await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
+                        info!("batch_resolve_handles: cache_keys(siblings, {}, n={}) failed (continuing with cached entries): {:?}", service, sibling_targets.len(), e);
+                    }
+                    Err(_) => {
+                        info!("batch_resolve_handles: cache_keys(siblings, {}, n={}) timed out after {}s (continuing with cached entries)", service, sibling_targets.len(), sibling_timeout);
+                    }
                 }
             }
 
@@ -8552,8 +8590,8 @@ impl Client {
         }
 
         info!(
-            "batch_resolve_handles: resolved {}/{} unknowns ({} known siblings supplied, {} unique targets queried)",
-            results.len(), unknowns.len(), known_handles.len(), all_targets.len()
+            "batch_resolve_handles: resolved {}/{} unknowns (forced-fresh n={}, sibling cache-top-up n={})",
+            results.len(), unknowns.len(), unknown_targets.len(), sibling_targets.len()
         );
         Ok(results)
     }
