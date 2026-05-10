@@ -1618,8 +1618,12 @@ func (c *IMClient) OnStatusUpdate(user string, mode *string, available bool) {
 			}
 
 			// (2) IDS correlation (self-bounding, safe to call from goroutine).
+			// Cached wrapper: skips repeat round-trips against handles
+			// that recently returned no result (negative cooldown), and
+			// short-circuits via the persistent alias_portal store on
+			// previously-resolved handles.
 			if portal == nil {
-				if altPortal := c.resolveStatusPortalViaIDS(ctx, log, user); altPortal != nil {
+				if altPortal := c.resolveStatusPortalViaIDSCached(ctx, log, user); altPortal != nil {
 					log.Info().Str("user", user).Msg("StatusKit: resolved mailto→tel via IDS correlation")
 					portal = altPortal
 				}
@@ -2143,7 +2147,7 @@ func (c *IMClient) eagerResolveReshareSender(sender, normalizedUser string, log 
 				}
 			}
 		}
-		if altPortal := c.resolveStatusPortalViaIDS(ctx, log, sender); altPortal != nil {
+		if altPortal := c.resolveStatusPortalViaIDSCached(ctx, log, sender); altPortal != nil {
 			c.rememberAliasPortal(ctx, sender, altPortal.ID)
 			log.Info().Str("resolved_portal_id", string(altPortal.ID)).Msg("StatusKit: eager-resolved reshare sender via IDS correlation")
 			return

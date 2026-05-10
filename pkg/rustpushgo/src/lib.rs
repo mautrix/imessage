@@ -8301,22 +8301,26 @@ impl Client {
             msg: "no handle available".into(),
         })?.clone();
 
-        // Try two IDS services in order:
-        //   1. com.apple.madrid (iMessage) — the normal path
-        //   2. com.apple.private.alloy.status.keysharing (StatusKit) — fallback
+        // Try IDS services in order. Each service's validate_targets may
+        // return zero keys for a hidden alias (e.g. an Apple-ID-linked
+        // mailto: that isn't registered for iMessage), so we walk down
+        // the list until one returns a correlation_id, then scan
+        // known_handles in that same service for matching ids.
         //
-        // Contacts who use iMessage only via their phone number have zero
-        // Madrid keys for their Apple ID (mailto:) — IDS reports "zero keys".
-        // However, they DO have StatusKit-keysharing keys because their device
-        // sent us a key-sharing message using their Apple ID. The keysharing
-        // service uses the same sender_correlation_identifier as Madrid, so
-        // the same correlation-ID scan works; we just need the right service.
+        //   1. com.apple.madrid                          (iMessage)
+        //   2. com.apple.private.alloy.status.keysharing (StatusKit reshare)
+        //   3. com.apple.private.alloy.status.personal   (StatusKit personal-mode)
+        //   4. com.apple.icloud.presence.mode.status     (status presence channel)
         //
-        // Each validate_targets call is bounded to 5 s via tokio timeout so
-        // a single-handle IDS query cannot block the goroutine indefinitely.
+        // The presence services catch hidden aliases that publish status
+        // updates but aren't registered for iMessage (peer iOS fans
+        // reshares across Apple-ID-linked emails that don't have Madrid
+        // entries). Each validate_targets call is bounded to 5 s.
         const SERVICES: &[&str] = &[
             "com.apple.madrid",
             "com.apple.private.alloy.status.keysharing",
+            "com.apple.private.alloy.status.personal",
+            "com.apple.icloud.presence.mode.status",
         ];
 
         for &service in SERVICES {
@@ -8374,9 +8378,12 @@ impl Client {
     /// invite_to_channel runs. Falling through to keysharing lets the
     /// periodic re-invite path find aliases on subsequent ticks.
     pub async fn resolve_handle_cached(&self, handle: String, known_handles: Vec<String>) -> Vec<String> {
+        // Mirror resolve_handle's services list — see comment there.
         const SERVICES: &[&str] = &[
             "com.apple.madrid",
             "com.apple.private.alloy.status.keysharing",
+            "com.apple.private.alloy.status.personal",
+            "com.apple.icloud.presence.mode.status",
         ];
 
         let my_handles = self.client.identity.get_handles().await;

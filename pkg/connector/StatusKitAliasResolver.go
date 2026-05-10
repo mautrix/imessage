@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
@@ -64,7 +65,24 @@ const (
 	// JSON-encoded list of channel ids the handle has been seen on. Used
 	// during transitive resolution to find sibling aliases.
 	statusKitAliasChannelsKeyPrefix = "statuskit.alias_channels."
+
+	// statusKitIDSAttemptKeyPrefix records the last time we asked Apple
+	// IDS to correlate an unknown StatusKit handle. The value is an
+	// RFC3339 timestamp. Used purely as a negative-result cooldown — a
+	// successful IDS resolution is recorded in the alias_portal store
+	// instead, so positive lookups short-circuit before reaching the
+	// negative cache. Apple is fine with periodic IDS round-trips per the
+	// existing chat/message paths, but we don't want a tight loop of
+	// retries against a handle that genuinely returns LookupFailed.
+	statusKitIDSAttemptKeyPrefix = "statuskit.ids_attempt."
 )
+
+// statusKitIDSAttemptCooldown is how long we wait between IDS round-trips
+// for a handle that returned LookupFailed (or otherwise produced no
+// portal). Long enough that an unresolved alias's Focus toggles don't
+// each trigger a fresh IDS query, short enough that newly-registered
+// services are picked up within the same day.
+const statusKitIDSAttemptCooldown = 6 * time.Hour
 
 // recordReshareObservation persists a (channel_id, sender_handle) pair
 // into both the cluster forward map and the alias→channels reverse map.
@@ -373,6 +391,56 @@ func (c *IMClient) prewarmAliasPortalCache(ctx context.Context, log zerolog.Logg
 		log.Warn().Err(err).Msg("StatusKit alias-resolver: pre-warm row iteration error")
 	}
 	log.Info().Int("primed", primed).Msg("StatusKit alias-resolver: pre-warm complete")
+}
+
+// resolveStatusPortalViaIDSCached wraps resolveStatusPortalViaIDS with a
+// persistent attempt-cache so the bridge does one IDS round-trip per
+// (unknown handle) per cooldown window, not one per presence update.
+//
+// Caching layers in order:
+//  1. alias_portal KV (in-memory + persistent) — positive results from any
+//     prior session resolve in O(1) without touching IDS.
+//  2. ids_attempt KV — negative cooldown; if we asked IDS for this handle
+//     within statusKitIDSAttemptCooldown and got nothing, skip the
+//     round-trip until the cooldown expires.
+//  3. Live IDS query via the existing resolveStatusPortalViaIDS, which
+//     now walks an extended service list (madrid + status.keysharing +
+//     status.personal + presence.mode.status) — see lib.rs:8311.
+//
+// On a successful IDS hit, resolveStatusPortalViaIDS / findPortalForAliases
+// already calls rememberAliasPortal, so the alias_portal KV is updated
+// for future O(1) lookups. On a negative result, this wrapper stamps
+// the attempt timestamp so we don't re-query for the cooldown window.
+func (c *IMClient) resolveStatusPortalViaIDSCached(ctx context.Context, log zerolog.Logger, user string) *bridgev2.Portal {
+	canonical := normalizeIdentifierForPortalID(user)
+	if canonical == "" {
+		return nil
+	}
+	if portal := c.lookupAliasPortal(ctx, canonical); portal != nil {
+		return portal
+	}
+	attemptKey := database.Key(statusKitIDSAttemptKeyPrefix + canonical)
+	if raw := c.Main.Bridge.DB.KV.Get(ctx, attemptKey); raw != "" {
+		if attemptedAt, err := time.Parse(time.RFC3339, raw); err == nil {
+			if time.Since(attemptedAt) < statusKitIDSAttemptCooldown {
+				return nil
+			}
+		}
+	}
+	portal := c.resolveStatusPortalViaIDS(ctx, log, user)
+	if portal != nil {
+		// Positive: alias_portal KV is updated by findPortalForAliases.
+		// Clear any prior negative-attempt stamp so a recovery is
+		// immediately reflected (next caller hits alias_portal directly).
+		c.Main.Bridge.DB.KV.Set(ctx, attemptKey, "")
+		return portal
+	}
+	c.Main.Bridge.DB.KV.Set(ctx, attemptKey, time.Now().UTC().Format(time.RFC3339))
+	log.Info().
+		Str("user", canonical).
+		Dur("cooldown", statusKitIDSAttemptCooldown).
+		Msg("StatusKit alias-resolver: IDS lookup returned no portal — caching negative attempt")
+	return nil
 }
 
 func decodeAliasList(raw string) []string {
