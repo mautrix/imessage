@@ -166,6 +166,14 @@ type IMClient struct {
 	// per unresolved handle per session. Values are networkid.PortalID.
 	statusKitPortalCache sync.Map // map[string]networkid.PortalID
 
+	// statusKitIDSGate paces and adaptively backs off batch IDS lookups
+	// driven by StatusKit alias resolution. Per-handle 6h negative cache
+	// (statusKitIDSAttemptKeyPrefix) prevents re-querying the same handle;
+	// this gate prevents a *burst* of distinct unknown handles from firing
+	// validate_targets in parallel — keeping the bridge's IDS traffic
+	// indistinguishable from a single user catching up on chats.
+	statusKitIDSGate idsRateGate
+
 	// sharedStreamAssetCache tracks the last observed asset GUID set per shared
 	// album for this session. The Shared Streams watcher uses it to suppress
 	// false-positive "new content" notices from Apple's getchanges endpoint,

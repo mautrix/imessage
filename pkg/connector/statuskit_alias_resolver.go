@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -83,6 +84,86 @@ const (
 // each trigger a fresh IDS query, short enough that newly-registered
 // services are picked up within the same day.
 const statusKitIDSAttemptCooldown = 6 * time.Hour
+
+// IDS-batch rate limiting: serialize and pace the alias-resolution
+// validate_targets calls so a burst of distinct unknown handles doesn't
+// produce a parallel storm against Apple. Per-handle 6h negative cache
+// already prevents repeat queries for the *same* handle; this gate
+// targets cross-handle bursts.
+//
+// Steady-state cost is zero: a typical resolver run is one IDS call
+// per several minutes (the per-handle cache absorbs everything else),
+// so the 3s gap is invisible.
+const (
+	// statusKitIDSMinInterval is the base spacing between IDS batch
+	// calls. Three seconds is well above iPhone-native pacing for
+	// validate_targets bursts (an iPhone can fire several per second
+	// when sending to a group), so we are conservatively quieter than
+	// any real device — not louder.
+	statusKitIDSMinInterval = 3 * time.Second
+
+	// statusKitIDSMaxBackoffMult caps the adaptive multiplier so the
+	// effective interval never exceeds 8 * 3s = 24s. A user catching
+	// up on chats sees pacing equivalent to slow-typing a series of
+	// new conversations; not so long that legitimate unknowns starve.
+	statusKitIDSMaxBackoffMult = 8
+)
+
+// idsRateGate is a fair, monotonic-time slot reservation system for
+// outbound IDS batch calls. Reserving a slot atomically advances the
+// next-allowed timestamp by the current effective interval, so callers
+// queueing back-to-back each get unique time slots. Sleeps happen
+// outside the mutex so context cancellation interrupts the wait.
+type idsRateGate struct {
+	mu               sync.Mutex
+	nextAllowedAt    time.Time
+	consecutiveFails int
+}
+
+// reserve books the next available time slot and returns how long the
+// caller must wait before making the IDS call. Caller is responsible
+// for actually sleeping (the gate intentionally does not block on
+// behalf of the caller so context cancellation remains observable).
+func (g *idsRateGate) reserve() time.Duration {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	mult := g.consecutiveFails
+	if mult < 1 {
+		mult = 1
+	} else if mult > statusKitIDSMaxBackoffMult {
+		mult = statusKitIDSMaxBackoffMult
+	}
+	interval := time.Duration(int64(statusKitIDSMinInterval) * int64(mult))
+
+	now := time.Now()
+	var wait time.Duration
+	if g.nextAllowedAt.After(now) {
+		wait = g.nextAllowedAt.Sub(now)
+	}
+	g.nextAllowedAt = now.Add(wait + interval)
+	return wait
+}
+
+// recordSuccess clears the failure counter. The next reserve() returns
+// to the base interval immediately.
+func (g *idsRateGate) recordSuccess() {
+	g.mu.Lock()
+	g.consecutiveFails = 0
+	g.mu.Unlock()
+}
+
+// recordFailure bumps the failure counter so subsequent reserve() calls
+// quote a longer wait. "Failure" here means the IDS call returned no
+// portal — which conflates Apple-side errors (rate limits) with benign
+// LookupFailed responses for hidden aliases. The conflation is on
+// purpose: even benign-no-result cases are reasonable to pace harder
+// because we have no other signal that Apple is unhappy.
+func (g *idsRateGate) recordFailure() {
+	g.mu.Lock()
+	g.consecutiveFails++
+	g.mu.Unlock()
+}
 
 // recordReshareObservation persists a (channel_id, sender_handle) pair
 // into both the cluster forward map and the alias→channels reverse map.
@@ -427,14 +508,35 @@ func (c *IMClient) resolveStatusPortalViaIDSCached(ctx context.Context, log zero
 			}
 		}
 	}
+
+	// Pace the outbound IDS batch call. Reserves a slot in the rate
+	// gate; if a burst of distinct unknown handles is in flight, this
+	// caller waits its turn (slots widen with consecutive failures up
+	// to a 24s cap). Returning nil on context cancel is correct —
+	// the caller will retry on the next presence update.
+	wait := c.statusKitIDSGate.reserve()
+	if wait > 0 {
+		log.Debug().
+			Str("user", canonical).
+			Dur("wait", wait).
+			Msg("StatusKit alias-resolver: pacing IDS batch call")
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return nil
+		}
+	}
+
 	portal := c.resolveStatusPortalViaIDS(ctx, log, user)
 	if portal != nil {
+		c.statusKitIDSGate.recordSuccess()
 		// Positive: alias_portal KV is updated by findPortalForAliases.
 		// Clear any prior negative-attempt stamp so a recovery is
 		// immediately reflected (next caller hits alias_portal directly).
 		c.Main.Bridge.DB.KV.Set(ctx, attemptKey, "")
 		return portal
 	}
+	c.statusKitIDSGate.recordFailure()
 	c.Main.Bridge.DB.KV.Set(ctx, attemptKey, time.Now().UTC().Format(time.RFC3339))
 	log.Info().
 		Str("user", canonical).
