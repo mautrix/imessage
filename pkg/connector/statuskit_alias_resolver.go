@@ -87,6 +87,7 @@ func (c *IMClient) recordReshareObservation(ctx context.Context, log zerolog.Log
 
 	clusterKey := database.Key(statusKitChannelClusterKeyPrefix + channelID)
 	cluster := decodeAliasList(c.Main.Bridge.DB.KV.Get(ctx, clusterKey))
+	clusterGrew := false
 	if !containsString(cluster, senderHandle) {
 		cluster = append(cluster, senderHandle)
 		if encoded, err := json.Marshal(cluster); err == nil {
@@ -96,6 +97,7 @@ func (c *IMClient) recordReshareObservation(ctx context.Context, log zerolog.Log
 				Str("alias", senderHandle).
 				Int("cluster_size", len(cluster)).
 				Msg("StatusKit alias-resolver: cluster observation added")
+			clusterGrew = true
 		}
 	}
 
@@ -106,6 +108,62 @@ func (c *IMClient) recordReshareObservation(ctx context.Context, log zerolog.Log
 		if encoded, err := json.Marshal(channels); err == nil {
 			c.Main.Bridge.DB.KV.Set(ctx, revKey, string(encoded))
 		}
+	}
+
+	// Eagerly link the cluster to a portal so subsequent presence updates
+	// (or the very first one) hit the alias→portal cache directly without
+	// needing to walk the cluster again. Without this, the bridge waits
+	// for the peer to publish a presence update before binding the alias —
+	// fine for an active StatusKit user but unnecessary now that we have
+	// the data already.
+	if clusterGrew {
+		c.eagerLinkClusterToPortal(ctx, log, channelID, cluster)
+	}
+}
+
+// eagerLinkClusterToPortal walks a cluster's siblings, finds the first
+// one that resolves to a portal (via the persistent alias→portal map or
+// the live non-IDS chain), and maps every unmapped sibling to that same
+// portal. Called whenever recordReshareObservation grows a cluster, so
+// the alias→portal map fills in as soon as Apple gives us enough data
+// to correlate — without waiting for a presence update.
+func (c *IMClient) eagerLinkClusterToPortal(ctx context.Context, log zerolog.Logger, channelID string, cluster []string) {
+	if len(cluster) == 0 {
+		return
+	}
+	var portal *bridgev2.Portal
+	var via string
+	for _, sibling := range cluster {
+		if p := c.lookupAliasPortal(ctx, sibling); p != nil {
+			portal = p
+			via = sibling
+			break
+		}
+	}
+	if portal == nil {
+		for _, sibling := range cluster {
+			if p := c.resolveSiblingHandleLive(ctx, log, sibling); p != nil {
+				portal = p
+				via = sibling
+				c.rememberAliasPortal(ctx, sibling, p.ID)
+				break
+			}
+		}
+	}
+	if portal == nil {
+		return
+	}
+	for _, sibling := range cluster {
+		if c.lookupAliasPortal(ctx, sibling) != nil {
+			continue
+		}
+		c.rememberAliasPortal(ctx, sibling, portal.ID)
+		log.Info().
+			Str("channel_id", channelID).
+			Str("alias", sibling).
+			Str("via", via).
+			Str("portal_id", string(portal.ID)).
+			Msg("StatusKit alias-resolver: eagerly linked cluster alias to portal")
 	}
 }
 
