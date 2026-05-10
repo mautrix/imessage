@@ -72,8 +72,16 @@ const (
 //
 // Called from OnReshareSender (live APNs reshares) and from the
 // StatusKit-CloudKit pull (offline reshares recovered from iCloud).
+//
+// The sender handle is canonicalized to its prefixed form
+// (`mailto:`/`tel:`) so live and CloudKit-pull paths converge on the
+// same KV key regardless of which form upstream produced.
 func (c *IMClient) recordReshareObservation(ctx context.Context, log zerolog.Logger, channelID, senderHandle string) {
 	if channelID == "" || senderHandle == "" {
+		return
+	}
+	senderHandle = normalizeIdentifierForPortalID(senderHandle)
+	if senderHandle == "" {
 		return
 	}
 
@@ -83,7 +91,7 @@ func (c *IMClient) recordReshareObservation(ctx context.Context, log zerolog.Log
 		cluster = append(cluster, senderHandle)
 		if encoded, err := json.Marshal(cluster); err == nil {
 			c.Main.Bridge.DB.KV.Set(ctx, clusterKey, string(encoded))
-			log.Debug().
+			log.Info().
 				Str("channel_id", channelID).
 				Str("alias", senderHandle).
 				Int("cluster_size", len(cluster)).
@@ -108,6 +116,10 @@ func (c *IMClient) recordReshareObservation(ctx context.Context, log zerolog.Log
 // live resolution chain only if needed. Returns the first portal that
 // resolves, persists the X→portal mapping for future O(1) lookups.
 func (c *IMClient) resolveViaCluster(ctx context.Context, log zerolog.Logger, unknown string) *bridgev2.Portal {
+	if unknown == "" {
+		return nil
+	}
+	unknown = normalizeIdentifierForPortalID(unknown)
 	if unknown == "" {
 		return nil
 	}
@@ -156,6 +168,10 @@ func (c *IMClient) resolveViaCluster(ctx context.Context, log zerolog.Logger, un
 // mapping and returns the active portal if one exists. In-memory check
 // happens via statusKitPortalCache; KV check is the persistent fallback.
 func (c *IMClient) lookupAliasPortal(ctx context.Context, alias string) *bridgev2.Portal {
+	alias = normalizeIdentifierForPortalID(alias)
+	if alias == "" {
+		return nil
+	}
 	if cached, ok := c.statusKitPortalCache.Load(alias); ok {
 		if p := c.findPortalByID(ctx, cached.(networkid.PortalID)); p != nil {
 			return p
@@ -227,6 +243,10 @@ func (c *IMClient) findPortalByID(ctx context.Context, id networkid.PortalID) *b
 // a StatusKit alias so future lookups are O(1) and survive restarts.
 func (c *IMClient) rememberAliasPortal(ctx context.Context, alias string, portalID networkid.PortalID) {
 	if alias == "" || portalID == "" {
+		return
+	}
+	alias = normalizeIdentifierForPortalID(alias)
+	if alias == "" {
 		return
 	}
 	c.statusKitPortalCache.Store(alias, portalID)
