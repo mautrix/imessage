@@ -8307,30 +8307,51 @@ impl Client {
         // the list until one returns a correlation_id, then scan
         // known_handles in that same service for matching ids.
         //
-        //   1. com.apple.madrid                          (iMessage)
-        //   2. com.apple.private.alloy.status.keysharing (StatusKit reshare)
-        //   3. com.apple.private.alloy.status.personal   (StatusKit personal-mode)
-        //   4. com.apple.icloud.presence.mode.status     (status presence channel)
-        //
-        // The presence services catch hidden aliases that publish status
-        // updates but aren't registered for iMessage (peer iOS fans
-        // reshares across Apple-ID-linked emails that don't have Madrid
-        // entries). Each validate_targets call is bounded to 5 s.
+        // Only services that are actually registered in the bridge's
+        // IDS service list are valid here — passing a topic that
+        // isn't registered makes IdentityManager::get_main_service
+        // panic via .expect("Topic ... not found!"). The bridge
+        // registers MADRID + MULTIPLEX (which sub_serves status.keysharing
+        // and status.personal); presence.mode.status is APNs-interest
+        // only, not an IDS service, so we cannot validate_targets it.
         const SERVICES: &[&str] = &[
             "com.apple.madrid",
             "com.apple.private.alloy.status.keysharing",
             "com.apple.private.alloy.status.personal",
-            "com.apple.icloud.presence.mode.status",
         ];
 
-        for &service in SERVICES {
+        for (idx, &service) in SERVICES.iter().enumerate() {
+            // Madrid (first service) gets a batched validate_targets call —
+            // the unknown handle plus every known ghost in one query. This
+            // matters for hidden Apple-ID aliases (e.g. mailto:aap724@…)
+            // that return LookupFailed (6001) when queried alone but get
+            // their correlation_id populated alongside successful sibling
+            // lookups in a batch. Restored from the original cc15c5db
+            // implementation; the single-handle refactor (04334703) was
+            // intended to avoid 15s blocks on hundreds of handles, but
+            // bridges with ≤ a few dozen ghosts pay no such cost. Other
+            // services keep single-handle queries because they don't need
+            // the sibling-promotion behavior.
+            let (targets, timeout_secs): (Vec<String>, u64) = if idx == 0 {
+                let mut t = Vec::with_capacity(known_handles.len() + 1);
+                t.push(handle.clone());
+                for k in &known_handles {
+                    if k != &handle {
+                        t.push(k.clone());
+                    }
+                }
+                (t, 15)
+            } else {
+                (vec![handle.clone()], 5)
+            };
+
             match tokio::time::timeout(
-                Duration::from_secs(5),
-                self.client.identity.validate_targets(&[handle.clone()], service, &my_handle),
+                Duration::from_secs(timeout_secs),
+                self.client.identity.validate_targets(&targets, service, &my_handle),
             ).await {
                 Ok(Ok(_)) => {}
-                Ok(Err(e)) => info!("resolve_handle: validate_targets({}) failed for {}: {:?}", service, handle, e),
-                Err(_) => info!("resolve_handle: validate_targets({}) timed out after 5s for {}", service, handle),
+                Ok(Err(e)) => info!("resolve_handle: validate_targets({}, n={}) failed: {:?}", service, targets.len(), e),
+                Err(_) => info!("resolve_handle: validate_targets({}, n={}) timed out after {}s", service, targets.len(), timeout_secs),
             }
 
             let cache = self.client.identity.cache.lock().await;
@@ -8343,8 +8364,9 @@ impl Client {
             };
 
             // Scan known handles for matching correlation IDs in this service.
-            // known_handles are pre-populated from message processing (tel:) and
-            // StatusKit invite responses (mailto:), so no extra IDS calls needed.
+            // The Madrid batch above populates correlation_ids for every
+            // known_handle that resolves; later services rely on the cache
+            // from prior message processing / StatusKit invite traffic.
             let mut aliases = vec![];
             for known_handle in &known_handles {
                 if known_handle == &handle {
@@ -8383,7 +8405,6 @@ impl Client {
             "com.apple.madrid",
             "com.apple.private.alloy.status.keysharing",
             "com.apple.private.alloy.status.personal",
-            "com.apple.icloud.presence.mode.status",
         ];
 
         let my_handles = self.client.identity.get_handles().await;
