@@ -8296,16 +8296,18 @@ impl Client {
     /// database — we check each one against the IDS cache for a matching
     /// correlation ID.
     pub async fn resolve_handle(&self, handle: String, known_handles: Vec<String>) -> Result<Vec<String>, WrappedError> {
+        use rustpush::ids::user::QueryOptions;
+
         let my_handles = self.client.identity.get_handles().await;
         let my_handle = my_handles.first().ok_or(WrappedError::GenericError {
             msg: "no handle available".into(),
         })?.clone();
 
-        // Try IDS services in order. Each service's validate_targets may
-        // return zero keys for a hidden alias (e.g. an Apple-ID-linked
-        // mailto: that isn't registered for iMessage), so we walk down
-        // the list until one returns a correlation_id, then scan
-        // known_handles in that same service for matching ids.
+        // Try IDS services in order. Each service's lookup may return zero
+        // keys for a hidden alias (e.g. an Apple-ID-linked mailto: that
+        // isn't registered for iMessage), so we walk down the list until
+        // one returns a correlation_id, then scan known_handles in that
+        // same service for matching ids.
         //
         // Only services that are actually registered in the bridge's
         // IDS service list are valid here — passing a topic that
@@ -8321,17 +8323,12 @@ impl Client {
         ];
 
         for (idx, &service) in SERVICES.iter().enumerate() {
-            // Madrid (first service) gets a batched validate_targets call —
-            // the unknown handle plus every known ghost in one query. This
-            // matters for hidden Apple-ID aliases (e.g. mailto:aap724@…)
-            // that return LookupFailed (6001) when queried alone but get
-            // their correlation_id populated alongside successful sibling
-            // lookups in a batch. Restored from the original cc15c5db
-            // implementation; the single-handle refactor (04334703) was
-            // intended to avoid 15s blocks on hundreds of handles, but
-            // bridges with ≤ a few dozen ghosts pay no such cost. Other
-            // services keep single-handle queries because they don't need
-            // the sibling-promotion behavior.
+            // Madrid (first service) gets a batched lookup — the unknown
+            // handle plus every known ghost in one query. This matters
+            // for hidden Apple-ID aliases (e.g. mailto:aap724@…) that
+            // return LookupFailed (6001) when queried alone but get their
+            // correlation_id populated alongside successful sibling
+            // lookups in a batch.
             let (targets, timeout_secs): (Vec<String>, u64) = if idx == 0 {
                 let mut t = Vec::with_capacity(known_handles.len() + 1);
                 t.push(handle.clone());
@@ -8345,13 +8342,25 @@ impl Client {
                 (vec![handle.clone()], 5)
             };
 
+            // Bypass the EMPTY_REFRESH (1h) freshness filter via refresh=true.
+            // Why: validate_targets uses refresh=false, which keeps stale empty
+            // results "fresh" for an hour — so a handle Apple previously returned
+            // empty for is filtered out of the HTTP fetch and never re-queried.
+            // refresh=true drops the cutoff to REFRESH_MIN (60s). The resolver's
+            // rate gate caps how often this runs, so we don't pound Apple.
             match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                self.client.identity.validate_targets(&targets, service, &my_handle),
+                self.client.identity.cache_keys(
+                    service,
+                    &targets,
+                    &my_handle,
+                    true,
+                    &QueryOptions::default(),
+                ),
             ).await {
                 Ok(Ok(_)) => {}
-                Ok(Err(e)) => info!("resolve_handle: validate_targets({}, n={}) failed: {:?}", service, targets.len(), e),
-                Err(_) => info!("resolve_handle: validate_targets({}, n={}) timed out after {}s", service, targets.len(), timeout_secs),
+                Ok(Err(e)) => info!("resolve_handle: cache_keys({}, n={}) failed: {:?}", service, targets.len(), e),
+                Err(_) => info!("resolve_handle: cache_keys({}, n={}) timed out after {}s", service, targets.len(), timeout_secs),
             }
 
             let cache = self.client.identity.cache.lock().await;
