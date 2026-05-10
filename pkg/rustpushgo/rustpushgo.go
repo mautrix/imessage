@@ -466,6 +466,15 @@ func uniffiCheckChecksums() {
 	}
 	{
 		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
+			return C.uniffi_rustpushgo_checksum_method_client_batch_resolve_handles(uniffiStatus)
+		})
+		if checksum != 63113 {
+			// If this happens try cleaning and rebuilding your project
+			panic("rustpushgo: uniffi_rustpushgo_checksum_method_client_batch_resolve_handles: UniFFI API checksum mismatch")
+		}
+	}
+	{
+		checksum := rustCall(func(uniffiStatus *C.RustCallStatus) C.uint16_t {
 			return C.uniffi_rustpushgo_checksum_method_client_cloud_diag_full_count(uniffiStatus)
 		})
 		if checksum != 27287 {
@@ -2154,6 +2163,31 @@ func (ffiObject *FfiObject) freeRustArcPtr() {
 
 type Client struct {
 	ffiObject FfiObject
+}
+
+func (_self *Client) BatchResolveHandles(unknowns []string, knownHandles []string) (map[string][]string, error) {
+	_pointer := _self.ffiObject.incrementPointer("*Client")
+	defer _self.ffiObject.decrementPointer()
+	return uniffiRustCallAsyncWithErrorAndResult(
+		FfiConverterTypeWrappedError{}, func(status *C.RustCallStatus) *C.void {
+			// rustFutureFunc
+			return (*C.void)(C.uniffi_rustpushgo_fn_method_client_batch_resolve_handles(
+				_pointer, rustBufferToC(FfiConverterSequenceStringINSTANCE.Lower(unknowns)), rustBufferToC(FfiConverterSequenceStringINSTANCE.Lower(knownHandles)),
+				status,
+			))
+		},
+		func(handle *C.void, ptr unsafe.Pointer, status *C.RustCallStatus) {
+			// pollFunc
+			C.ffi_rustpushgo_rust_future_poll_rust_buffer(unsafe.Pointer(handle), ptr, status)
+		},
+		func(handle *C.void, status *C.RustCallStatus) RustBufferI {
+			// completeFunc
+			return rustBufferFromC(C.ffi_rustpushgo_rust_future_complete_rust_buffer(unsafe.Pointer(handle), status))
+		},
+		FfiConverterMapStringSequenceStringINSTANCE.Lift, func(rustFuture *C.void, status *C.RustCallStatus) {
+			// freeFunc
+			C.ffi_rustpushgo_rust_future_free_rust_buffer(unsafe.Pointer(rustFuture), status)
+		})
 }
 
 func (_self *Client) CloudDiagFullCount() (string, error) {
@@ -9179,6 +9213,50 @@ func (_ FfiDestroyerMapStringString) Destroy(mapValue map[string]string) {
 	for key, value := range mapValue {
 		FfiDestroyerString{}.Destroy(key)
 		FfiDestroyerString{}.Destroy(value)
+	}
+}
+
+type FfiConverterMapStringSequenceString struct{}
+
+var FfiConverterMapStringSequenceStringINSTANCE = FfiConverterMapStringSequenceString{}
+
+func (c FfiConverterMapStringSequenceString) Lift(rb RustBufferI) map[string][]string {
+	return LiftFromRustBuffer[map[string][]string](c, rb)
+}
+
+func (_ FfiConverterMapStringSequenceString) Read(reader io.Reader) map[string][]string {
+	result := make(map[string][]string)
+	length := readInt32(reader)
+	for i := int32(0); i < length; i++ {
+		key := FfiConverterStringINSTANCE.Read(reader)
+		value := FfiConverterSequenceStringINSTANCE.Read(reader)
+		result[key] = value
+	}
+	return result
+}
+
+func (c FfiConverterMapStringSequenceString) Lower(value map[string][]string) RustBuffer {
+	return LowerIntoRustBuffer[map[string][]string](c, value)
+}
+
+func (_ FfiConverterMapStringSequenceString) Write(writer io.Writer, mapValue map[string][]string) {
+	if len(mapValue) > math.MaxInt32 {
+		panic("map[string][]string is too large to fit into Int32")
+	}
+
+	writeInt32(writer, int32(len(mapValue)))
+	for key, value := range mapValue {
+		FfiConverterStringINSTANCE.Write(writer, key)
+		FfiConverterSequenceStringINSTANCE.Write(writer, value)
+	}
+}
+
+type FfiDestroyerMapStringSequenceString struct{}
+
+func (_ FfiDestroyerMapStringSequenceString) Destroy(mapValue map[string][]string) {
+	for key, value := range mapValue {
+		FfiDestroyerString{}.Destroy(key)
+		FfiDestroyerSequenceString{}.Destroy(value)
 	}
 }
 

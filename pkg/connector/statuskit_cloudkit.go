@@ -493,5 +493,13 @@ func (c *IMClient) syncCloudStatusKitPeers(ctx context.Context, log zerolog.Logg
 		c.subscribeToContactPresence(log)
 	}
 
+	// Per-cycle alias-link confirmation. Walks every peer handle in
+	// state.keys (now freshly populated by the CloudKit drain), uses local
+	// data first (alias_portal cache, cluster store, contacts), and only
+	// hits Apple for handles still unresolved after that — in a single
+	// batched IDS call regardless of count. This is the 12h-cadence path
+	// the bridge-start hook also drives once at boot.
+	c.batchLinkStatusKitAliases(ctx, log)
+
 	return nil
 }

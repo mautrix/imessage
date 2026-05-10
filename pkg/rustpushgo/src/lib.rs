@@ -8448,6 +8448,116 @@ impl Client {
         vec![]
     }
 
+    /// Vectorized resolve_handle: takes many unknown handles plus the full set
+    /// of known portal-bearing handles, makes ONE batched IDS call per service
+    /// covering all of them at once, then walks the cache to match each
+    /// unknown's correlation_id against the known handles.
+    ///
+    /// Returns a map of unknown_handle → list of sibling known_handles. Only
+    /// handles that resolved to at least one sibling appear in the map.
+    /// Unknowns Apple has nothing for are silently absent.
+    ///
+    /// Designed to back the per-sync alias-link pass: 12-hour cadence, called
+    /// after the StatusKit-CloudKit pull when state.keys is freshly populated.
+    /// Pays one network round-trip total regardless of how many unknowns —
+    /// the rate gate that protects per-presence resolution doesn't apply
+    /// here because the call is bounded and infrequent by design.
+    pub async fn batch_resolve_handles(
+        &self,
+        unknowns: Vec<String>,
+        known_handles: Vec<String>,
+    ) -> Result<HashMap<String, Vec<String>>, WrappedError> {
+        use rustpush::ids::user::QueryOptions;
+
+        if unknowns.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let my_handles = self.client.identity.get_handles().await;
+        let my_handle = my_handles.first().ok_or(WrappedError::GenericError {
+            msg: "no handle available".into(),
+        })?.clone();
+
+        const SERVICES: &[&str] = &[
+            "com.apple.madrid",
+            "com.apple.private.alloy.status.keysharing",
+            "com.apple.private.alloy.status.personal",
+        ];
+
+        // Dedup targets across unknowns ∪ known_handles (preserving insertion
+        // order so unknowns front-load the chunked HTTP fetches).
+        let mut all_targets: Vec<String> = Vec::with_capacity(unknowns.len() + known_handles.len());
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for h in unknowns.iter().chain(known_handles.iter()) {
+            if seen.insert(h.clone()) {
+                all_targets.push(h.clone());
+            }
+        }
+
+        // Timeout scales with batch size: chunks of 18 per HTTP query upstream,
+        // ~3-4s per chunk under healthy network. Cap at 90s so a stuck batch
+        // doesn't wedge the cloud-sync orchestrator.
+        let timeout_secs: u64 = ((all_targets.len() as u64 / 18) * 4 + 15).min(90);
+
+        let mut results: HashMap<String, Vec<String>> = HashMap::new();
+
+        for &service in SERVICES {
+            // refresh=true so Apple is re-queried even for handles cached as
+            // empty within the EMPTY_REFRESH (1h) window — see resolve_handle.
+            match tokio::time::timeout(
+                Duration::from_secs(timeout_secs),
+                self.client.identity.cache_keys(
+                    service,
+                    &all_targets,
+                    &my_handle,
+                    true,
+                    &QueryOptions::default(),
+                ),
+            ).await {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => {
+                    info!("batch_resolve_handles: cache_keys({}, n={}) failed: {:?}", service, all_targets.len(), e);
+                    continue;
+                }
+                Err(_) => {
+                    info!("batch_resolve_handles: cache_keys({}, n={}) timed out after {}s", service, all_targets.len(), timeout_secs);
+                    continue;
+                }
+            }
+
+            let cache = self.client.identity.cache.lock().await;
+            for unknown in &unknowns {
+                if results.contains_key(unknown) {
+                    continue;
+                }
+                let cid = match cache.get_correlation_id(service, &my_handle, unknown) {
+                    Some(c) if !c.is_empty() => c,
+                    _ => continue,
+                };
+                let mut aliases = vec![];
+                for known in &known_handles {
+                    if known == unknown {
+                        continue;
+                    }
+                    if let Some(other_cid) = cache.get_correlation_id(service, &my_handle, known) {
+                        if other_cid == cid {
+                            aliases.push(known.clone());
+                        }
+                    }
+                }
+                if !aliases.is_empty() {
+                    results.insert(unknown.clone(), aliases);
+                }
+            }
+        }
+
+        info!(
+            "batch_resolve_handles: resolved {}/{} unknowns ({} known siblings supplied, {} unique targets queried)",
+            results.len(), unknowns.len(), known_handles.len(), all_targets.len()
+        );
+        Ok(results)
+    }
+
     /// Reset all StatusKit APNs channel cursors (last_msg_ns) to 1 in the
     /// persisted state file. Must be called BEFORE init_statuskit() so the
     /// StatusKit client loads the reset cursors on startup. Resetting to 1

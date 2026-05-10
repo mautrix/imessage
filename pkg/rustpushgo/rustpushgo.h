@@ -73,6 +73,13 @@ void uniffi_rustpushgo_fn_free_client(
 	RustCallStatus* out_status
 );
 
+void* uniffi_rustpushgo_fn_method_client_batch_resolve_handles(
+	void* ptr,
+	RustBuffer unknowns,
+	RustBuffer known_handles,
+	RustCallStatus* out_status
+);
+
 void* uniffi_rustpushgo_fn_method_client_cloud_diag_full_count(
 	void* ptr,
 	RustCallStatus* out_status
@@ -1527,6 +1534,10 @@ uint16_t uniffi_rustpushgo_checksum_func_register_ford_key(
 );
 
 uint16_t uniffi_rustpushgo_checksum_func_restore_token_provider(
+	RustCallStatus* out_status
+);
+
+uint16_t uniffi_rustpushgo_checksum_method_client_batch_resolve_handles(
 	RustCallStatus* out_status
 );
 

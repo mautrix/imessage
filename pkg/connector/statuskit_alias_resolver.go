@@ -545,6 +545,159 @@ func (c *IMClient) resolveStatusPortalViaIDSCached(ctx context.Context, log zero
 	return nil
 }
 
+// batchLinkStatusKitAliases iterates every peer handle the bridge holds a
+// StatusKit key for (`state.keys`'s `from` set) and ensures each one has a
+// portal mapping in the alias_portal cache. Local data is consulted first;
+// only handles that can't be resolved from local sources are sent to Apple,
+// and they go in a SINGLE batched IDS call regardless of count.
+//
+// Resolution order per handle:
+//  1. alias_portal cache (in-memory + KV) — already linked, skip.
+//  2. Cluster store — sibling handle on a shared channel id.
+//  3. Cheap chain — contact store + direct tel:/mailto: portal lookup.
+//  4. Batched IDS — one cache_keys call covers every residual unknown plus
+//     every known portal-bearing ghost; siblings are matched via correlation_id.
+//
+// Idempotent. Designed to run on the regular CloudKit sync cadence (12h):
+// each pass confirms link state and picks up aliases that became resolvable
+// (new ghosts, new cluster observations, Apple finally returning a correlation)
+// since the prior pass. Also runs once at bridge start so a restart resyncs.
+func (c *IMClient) batchLinkStatusKitAliases(ctx context.Context, log zerolog.Logger) {
+	if c.client == nil {
+		return
+	}
+	sk, err := c.client.GetStatuskitClient()
+	if err != nil || sk == nil {
+		log.Info().Err(err).Msg("StatusKit alias-resolver: batch link pass — StatusKit client not ready, skipping")
+		return
+	}
+	rawHandles := sk.GetKnownHandles()
+	if len(rawHandles) == 0 {
+		log.Info().Msg("StatusKit alias-resolver: batch link pass — no known peer handles, skipping")
+		return
+	}
+
+	seen := make(map[string]struct{}, len(rawHandles))
+	var unknowns []string
+	already := 0
+	clusterLinked := 0
+	chainLinked := 0
+	for _, raw := range rawHandles {
+		h := normalizeIdentifierForPortalID(raw)
+		if h == "" {
+			continue
+		}
+		if _, dup := seen[h]; dup {
+			continue
+		}
+		seen[h] = struct{}{}
+
+		if c.lookupAliasPortal(ctx, h) != nil {
+			already++
+			continue
+		}
+		if portal := c.resolveViaCluster(ctx, log, h); portal != nil {
+			clusterLinked++
+			continue
+		}
+		if portal := c.resolveSiblingHandleLive(ctx, log, h); portal != nil {
+			c.rememberAliasPortal(ctx, h, portal.ID)
+			chainLinked++
+			continue
+		}
+		unknowns = append(unknowns, h)
+	}
+
+	if len(unknowns) == 0 {
+		log.Info().
+			Int("known_peers", len(seen)).
+			Int("already_linked", already).
+			Int("cluster_linked", clusterLinked).
+			Int("chain_linked", chainLinked).
+			Msg("StatusKit alias-resolver: batch link pass complete (no Apple query needed)")
+		return
+	}
+
+	knownHandles := c.collectKnownPortalHandles(ctx, log)
+	if len(knownHandles) == 0 {
+		log.Info().
+			Int("residual_unknowns", len(unknowns)).
+			Msg("StatusKit alias-resolver: batch link pass — no known portal-bearing handles to use as IDS siblings")
+		return
+	}
+
+	// Pace the bulk IDS call exactly like a normal alias resolution. The
+	// failure counter is shared with the per-presence path so a stuck Apple
+	// doesn't stack two slow callers. Sleep is interruptible by ctx.
+	wait := c.statusKitIDSGate.reserve()
+	if wait > 0 {
+		log.Debug().Dur("wait", wait).Msg("StatusKit alias-resolver: pacing batch IDS call")
+		select {
+		case <-time.After(wait):
+		case <-ctx.Done():
+			return
+		}
+	}
+
+	results, err := c.client.BatchResolveHandles(unknowns, knownHandles)
+	if err != nil {
+		log.Warn().Err(err).
+			Int("unknowns", len(unknowns)).
+			Int("known_siblings", len(knownHandles)).
+			Msg("StatusKit alias-resolver: BatchResolveHandles failed")
+		c.statusKitIDSGate.recordFailure()
+		return
+	}
+
+	idsLinked := 0
+	for unknown, aliases := range results {
+		if portal := c.findPortalForAliases(ctx, log, unknown, aliases); portal != nil {
+			idsLinked++
+		}
+	}
+	if idsLinked > 0 {
+		c.statusKitIDSGate.recordSuccess()
+	} else {
+		c.statusKitIDSGate.recordFailure()
+	}
+
+	log.Info().
+		Int("known_peers", len(seen)).
+		Int("already_linked", already).
+		Int("cluster_linked", clusterLinked).
+		Int("chain_linked", chainLinked).
+		Int("ids_linked", idsLinked).
+		Int("residual_unresolved", len(unknowns)-idsLinked).
+		Msg("StatusKit alias-resolver: batch link pass complete")
+}
+
+// collectKnownPortalHandles returns every ghost id that looks like an IDS
+// handle (tel:/mailto:) — the set of "siblings" we feed into a batched IDS
+// query so Apple's correlation_id field can match unknowns to them.
+func (c *IMClient) collectKnownPortalHandles(ctx context.Context, log zerolog.Logger) []string {
+	rows, err := c.Main.Bridge.DB.RawDB.QueryContext(ctx, "SELECT id FROM ghost WHERE bridge_id=$1", c.Main.Bridge.ID)
+	if err != nil {
+		log.Warn().Err(err).Msg("StatusKit alias-resolver: ghost scan failed")
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		if !strings.HasPrefix(id, "tel:") && !strings.HasPrefix(id, "mailto:") {
+			continue
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		log.Warn().Err(err).Msg("StatusKit alias-resolver: ghost row iteration error")
+	}
+	return out
+}
+
 func decodeAliasList(raw string) []string {
 	if raw == "" {
 		return nil
