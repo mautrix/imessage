@@ -649,11 +649,49 @@ func (c *IMClient) batchLinkStatusKitAliases(ctx context.Context, log zerolog.Lo
 		return
 	}
 
+	// Persist with a detached context. bridgev2's KV.Set silently drops
+	// writes when ctx is canceled (it logs via zerolog.Ctx(ctx) which is a
+	// disabled logger when ctx has none). The cloudkit cycle ctx CAN cancel
+	// mid-iteration (orchestrator deadline, bridge shutdown), and Go map
+	// iteration order is random — so a fast-canceling ctx silently loses
+	// whichever entries happened to land late in the loop. Using
+	// context.Background here means resolved entries hit disk regardless
+	// of cycle ctx state. The IDS call above still respected the cycle
+	// ctx (rust-side 90s timeout caps it).
+	persistCtx := context.Background()
+
 	idsLinked := 0
 	for unknown, aliases := range results {
-		if portal := c.findPortalForAliases(ctx, log, unknown, aliases); portal != nil {
-			idsLinked++
+		portal := c.findPortalForAliases(ctx, log, unknown, aliases)
+		if portal == nil {
+			continue
 		}
+		// Persist explicitly with the detached ctx. findPortalForAliases
+		// also calls rememberAliasPortal internally, but it uses the cycle
+		// ctx — that's the path that was silently failing. This redundant
+		// write is the durable one. Idempotent at the SQL layer (UPSERT).
+		c.rememberAliasPortal(persistCtx, unknown, portal.ID)
+		// Clear the per-presence resolver's negative cooldown stamp so the
+		// next presence update for this handle doesn't get short-circuited
+		// to "already attempted, skip" — the batch path just succeeded for
+		// it. lookupAliasPortal would short-circuit first anyway, but
+		// clearing keeps the KV honest.
+		c.Main.Bridge.DB.KV.Set(persistCtx, database.Key(statusKitIDSAttemptKeyPrefix+unknown), "")
+		// Read-after-write verification surfaces silent KV failures so
+		// future regressions are immediately visible in the logs.
+		if got := c.Main.Bridge.DB.KV.Get(persistCtx, database.Key(statusKitAliasPortalKeyPrefix+unknown)); got != string(portal.ID) {
+			log.Warn().
+				Str("alias", unknown).
+				Str("expected_portal_id", string(portal.ID)).
+				Str("read_back", got).
+				Msg("StatusKit alias-resolver: batch link write failed to persist (read-after-write mismatch)")
+		} else {
+			log.Info().
+				Str("alias", unknown).
+				Str("portal_id", string(portal.ID)).
+				Msg("StatusKit alias-resolver: batch link wrote alias_portal entry")
+		}
+		idsLinked++
 	}
 	if idsLinked > 0 {
 		c.statusKitIDSGate.recordSuccess()
