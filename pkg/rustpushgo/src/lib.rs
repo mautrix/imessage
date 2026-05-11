@@ -4454,6 +4454,12 @@ fn message_inst_to_wrapped(msg: &MessageInst) -> WrappedMessage {
             w.reply_guid = normal.reply_guid.clone();
             w.reply_part = normal.reply_part.clone();
             w.is_sms = matches!(normal.service, MessageType::SMS { .. });
+            if let MessageType::SMS { from_handle: Some(ref fh), .. } = normal.service {
+                // Apple's SMS relay puts the forwarding iPhone's handle in the APNs
+                // envelope sender, causing the bridge to misidentify it as IsFromMe.
+                // The true sender of an inbound SMS is stored in from_handle.
+                w.sender = Some(fh.clone());
+            }
             // iOS piggybacks Name & Photo Sharing keys on regular text
             // messages from contacts who have sharing enabled; lift them so
             // the receive loop's inline download still fires.
