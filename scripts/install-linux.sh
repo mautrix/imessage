@@ -696,9 +696,9 @@ elif [ -t 0 ]; then
     echo "  !im facetime commands and inbound FT notices."
     echo ""
     if [ "$CURRENT_DISABLE_FT" = "true" ]; then
-        read -p "Disable FaceTime Bridge? [Y/n]:" DIS_FT
-        case "$DIS_FT" in
-            [nN]*)
+        read -p "Enable FaceTime Bridge? [y/N]: " EN_FT
+        case "$EN_FT" in
+            [yY]*)
                 sed -i "s/disable_facetime: .*/disable_facetime: false/" "$CONFIG"
                 echo "✓ FaceTime Bridge enabled"
                 ;;
@@ -707,9 +707,9 @@ elif [ -t 0 ]; then
                 ;;
         esac
     else
-        read -p "Disable FaceTime Bridge (use native Apple FT)? [y/N]: " DIS_FT
-        case "$DIS_FT" in
-            [yY]*)
+        read -p "Enable FaceTime Bridge? [Y/n]: " EN_FT
+        case "$EN_FT" in
+            [nN]*)
                 sed -i "s/disable_facetime: .*/disable_facetime: true/" "$CONFIG"
                 echo "✓ FaceTime Bridge disabled"
                 ;;
@@ -747,6 +747,9 @@ elif [ -t 0 ]; then
     echo "  update Matrix ghost presence — the same affordance Apple's"
     echo "  Messages app shows in-conversation. Disabling keeps the"
     echo "  StatusKit registration intact but suppresses the notices."
+    echo ""
+    echo "  Note: when a notification is posted, the destination chat will"
+    echo "  be unarchived. This is a limitation external to the bridge."
     echo ""
     if [ "$CURRENT_STATUSKIT_NOTIF" = "false" ]; then
         read -p "Enable StatusKit notifications? [y/N]: " EN_SK
