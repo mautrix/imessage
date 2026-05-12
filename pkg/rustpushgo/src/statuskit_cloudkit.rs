@@ -1000,6 +1000,20 @@ struct InjectStats {
     injected_handles: Vec<String>,
 }
 
+/// Serialize a StatusKitSharedDevice to its canonical binary-plist bytes.
+/// Used to compare an incoming CloudKit-decoded device against the one
+/// already in `state.keys` under the same channel id — same bytes mean
+/// the peer's device material hasn't changed and we can skip the write.
+/// Different bytes mean the peer rotated material under the same channel
+/// id (rare, but happens) and the CloudKit copy should overwrite the
+/// stale local entry. Returning None on serialize failure forces an
+/// overwrite — safer than silently retaining a possibly-stale key.
+fn device_canonical_bytes(device: &StatusKitSharedDevice) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    plist::to_writer_binary(Cursor::new(&mut buf), device).ok()?;
+    Some(buf)
+}
+
 async fn inject_into_state(
     client: &Client,
     peers: Vec<DecodedPeer>,
@@ -1020,9 +1034,17 @@ async fn inject_into_state(
     let mut injected_handles: Vec<String> = Vec::new();
 
     for p in peers {
-        if state.keys.contains_key(&p.channel_id) {
-            already_known += 1;
-            continue;
+        if let Some(existing) = state.keys.get(&p.channel_id) {
+            let existing_bytes = device_canonical_bytes(existing);
+            let new_bytes = device_canonical_bytes(&p.device);
+            if existing_bytes.is_some() && existing_bytes == new_bytes {
+                already_known += 1;
+                continue;
+            }
+            info!(
+                "StatusKit-CloudKit inject: channel {} present with different device material — overwriting (peer key rotation)",
+                p.channel_id
+            );
         }
         injected_handles.push(p.from.clone());
         state.keys.insert(p.channel_id, p.device);
@@ -1032,7 +1054,7 @@ async fn inject_into_state(
     if inserted > 0 {
         let path = subsystem_state_path("statuskit-state.plist");
         info!(
-            "StatusKit-CloudKit inject: persisting {} new peer(s) to {}",
+            "StatusKit-CloudKit inject: persisting {} new/updated peer(s) to {}",
             inserted, path
         );
         persist_plist_state(&path, &*state);
