@@ -8466,15 +8466,37 @@ impl Client {
                 None
             },
         };
-        let record = profiles.get_record(&share_msg).await.map_err(|e| {
-            warn!(
-                "fetch_profile failed (record_key={}…, has_poster={}): {:?}",
-                key_prefix, has_poster, e
-            );
-            WrappedError::GenericError {
-                msg: format!("Failed to fetch profile: {:?}", e),
+        // Upstream cloudkit.rs `FetchedRecords::get_record` does
+        // `.expect("No record found?")` when CloudKit returns a response
+        // with no matching record id. That's a normal outcome when the
+        // peer rotated/deleted their shared-profile record after we cached
+        // its key, but the upstream panics → crosses the FFI boundary →
+        // takes the bridge down (and systemd restarts into the same row,
+        // crashloop). Wrap in catch_unwind so the panic becomes an error
+        // and the Go-side periodic refresh logs+skips the stale row.
+        use futures::FutureExt;
+        let fetch_fut = profiles.get_record(&share_msg);
+        let record = match std::panic::AssertUnwindSafe(fetch_fut).catch_unwind().await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                warn!(
+                    "fetch_profile failed (record_key={}…, has_poster={}): {:?}",
+                    key_prefix, has_poster, e
+                );
+                return Err(WrappedError::GenericError {
+                    msg: format!("Failed to fetch profile: {:?}", e),
+                });
             }
-        })?;
+            Err(_) => {
+                warn!(
+                    "fetch_profile panicked in upstream CloudKit (record_key={}…, has_poster={}) — likely record rotated/deleted; treating as fetch error",
+                    key_prefix, has_poster
+                );
+                return Err(WrappedError::GenericError {
+                    msg: "Shared profile record not found in CloudKit (rotated/deleted)".to_string(),
+                });
+            }
+        };
         Ok(WrappedProfileRecord {
             display_name: record.name.name,
             first_name: record.name.first,
