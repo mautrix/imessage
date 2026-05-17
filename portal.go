@@ -76,10 +76,16 @@ func (br *IMBridge) GetPortalByGUIDIfExists(guid string) *Portal {
 }
 
 func (br *IMBridge) maybeGetPortalByGUID(txn dbutil.Execable, guid string, createIfNotExist bool) *Portal {
+	br.ZLog.Trace().
+		Str("guid", guid).
+		Bool("create_if", createIfNotExist).
+		Msg("maybeGetPortalByGUID")
+	orig_guid := guid
 	if br.Config.Bridge.DisableSMSPortals && strings.HasPrefix(guid, "SMS;-;") {
 		parsed := imessage.ParseIdentifier(guid)
 		if !parsed.IsGroup && parsed.Service == "SMS" {
 			parsed.Service = "iMessage"
+			br.Log.Infofln("disable_sms_portals: true; mapping '%s' -> '%s'", guid, parsed.String())
 			guid = parsed.String()
 		}
 	}
@@ -87,10 +93,18 @@ func (br *IMBridge) maybeGetPortalByGUID(txn dbutil.Execable, guid string, creat
 	if !createIfNotExist {
 		fallbackGUID = ""
 	}
+
+	orig_portal, orig_ok := br.portalsByGUID[orig_guid]
 	portal, ok := br.portalsByGUID[guid]
 	if !ok {
-		return br.loadDBPortal(txn, br.DB.Portal.GetByGUID(guid), fallbackGUID)
+		res := br.loadDBPortal(txn, br.DB.Portal.GetByGUID(guid), fallbackGUID)
+		br.Log.Infofln("maybeGetPortalByGuid(): portalsByGuid[%s]=nil, loaded portal %s", guid, res.GUID)
+		return res
 	}
+	if orig_ok && orig_portal.GUID != portal.GUID {
+		br.Log.Infofln("maybeGetPortalByGuid(): portalsByGUID[%s]: %s; portalsByGuid[%s]: %s", orig_guid, orig_portal.GUID, guid, portal.GUID)
+	}
+	br.Log.Infofln("maybeGetPortalByGuid(): portalsByGUID[%s]: %s", guid, portal.GUID)
 	return portal
 }
 
@@ -187,16 +201,38 @@ func (br *IMBridge) loadDBPortal(txn dbutil.Execable, dbPortal *database.Portal,
 	} else if guid != dbPortal.GUID {
 		aliasedPortal, ok := br.portalsByGUID[dbPortal.GUID]
 		if ok {
+			aliasedPortal.zlog.Debug().
+				Str("original_guid", guid).
+				Msg("loadDBPortal: found aliased portal")
+
 			br.portalsByGUID[guid] = aliasedPortal
 			return aliasedPortal
 		}
 	}
+
 	portal := br.NewPortal(dbPortal)
+	portal.zlog.Trace().Msg("loadDBPortal")
 	br.portalsByGUID[portal.GUID] = portal
 	if portal.IsPrivateChat() {
 		portal.SecondaryGUIDs = br.DB.MergedChat.GetAllForTarget(portal.GUID)
 		for _, sourceGUID := range portal.SecondaryGUIDs {
 			br.portalsByGUID[sourceGUID] = portal
+		}
+		filtered := make([]string, 0, len(portal.SecondaryGUIDs))
+		for _, guid := range portal.SecondaryGUIDs {
+			if guid != portal.GUID {
+				filtered = append(filtered, guid)
+			}
+		}
+
+		if len(filtered) > 0 {
+			portal.zlog.Debug().
+				Strs("secondary_guids", filtered).
+				Msg("loadDBPortal: private chat")
+		} else {
+			portal.zlog.Trace().
+				Strs("secondary_guids", filtered).
+				Msg("loadDBPortal: private chat")
 		}
 	}
 	if len(portal.MXID) > 0 {
