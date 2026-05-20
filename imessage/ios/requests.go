@@ -25,6 +25,7 @@ import (
 
 const (
 	ReqSendMessage         ipc.Command = "send_message"
+	ReqUploadMedia         ipc.Command = "upload_media"
 	ReqSendMedia           ipc.Command = "send_media"
 	ReqSendTapback         ipc.Command = "send_tapback"
 	ReqSendReadReceipt     ipc.Command = "send_read_receipt"
@@ -65,6 +66,14 @@ type SendMediaRequest struct {
 	ReplyToPart    int                      `json:"reply_to_part"`
 	IsAudioMessage bool                     `json:"is_audio_message"`
 	Metadata       imessage.MessageMetadata `json:"metadata,omitempty"`
+}
+
+type UploadMediaRequest struct {
+	PathOnDisk string `json:"path_on_disk"`
+}
+
+type UploadMediaResponse struct {
+	GUID string `json:"guid"`
 }
 
 type SendTapbackRequest struct {
