@@ -242,6 +242,7 @@ type SendTextRequest struct {
 	Subject             string `json:"subject,omitempty"`
 	SelectedMessageGUID string `json:"selectedMessageGuid,omitempty"`
 	PartIndex           int    `json:"partIndex,omitempty"`
+	DDScan              bool   `json:"ddScan,omitempty"`
 }
 
 type UnsendMessage struct {
