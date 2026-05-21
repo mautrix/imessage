@@ -22,6 +22,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/appservice"
@@ -85,6 +86,9 @@ func (user *User) loginWithSharedSecret() error {
 	}
 	if loginSecret == "appservice" {
 		client.AccessToken = user.bridge.AS.Registration.AppToken
+		req.Type = mautrix.AuthTypeAppservice
+	} else if strings.HasPrefix(loginSecret, "as_token:") {
+		client.AccessToken = loginSecret[9:]
 		req.Type = mautrix.AuthTypeAppservice
 	} else {
 		mac := hmac.New(sha512.New, []byte(loginSecret))
