@@ -1221,37 +1221,69 @@ func (bb *blueBubbles) SendFile(chatID, text, filename string, pathOnDisk string
 
 	bb.log.Info().Int("attachmentSize", len(attachment)).Msg("Read attachment from disk")
 
-	var method string
+	// Resolve the "any" pseudo-service to a concrete service for the AppleScript
+	// path (AppleScript errors "Can't make any into type constant" on "any").
+	// For DMs, ask BlueBubbles which service the handle uses (iMessage vs SMS);
+	// for groups (and on lookup failure) default to iMessage.
+	appleScriptChatID := chatID
+	if id := imessage.ParseIdentifier(chatID); id.Service == "any" {
+		if !id.IsGroup {
+			if resolved, rerr := bb.ResolveIdentifier(id.LocalID); rerr == nil && resolved != "" {
+				appleScriptChatID = resolved
+			} else {
+				id.Service = "iMessage"
+				appleScriptChatID = id.String()
+			}
+		} else {
+			id.Service = "iMessage"
+			appleScriptChatID = id.String()
+		}
+	}
+
+	sendAttachment := func(method string) (SendTextResponse, error) {
+		chatGuid := chatID
+		if method == "apple-script" {
+			chatGuid = appleScriptChatID
+		}
+		formData := map[string]interface{}{
+			"chatGuid":            chatGuid,
+			"tempGuid":            fmt.Sprintf("temp-%s", RandString(8)),
+			"name":                filename,
+			"method":              method,
+			"attachment":          attachment,
+			"isAudioMessage":      voiceMemo,
+			"selectedMessageGuid": replyTo,
+			"partIndex":           replyToPart,
+		}
+		if method == "private-api" {
+			formData["subject"] = text
+		}
+		var resp SendTextResponse
+		reqErr := bb.apiPostAsFormData("/api/v1/message/attachment", formData, &resp)
+		return resp, reqErr
+	}
+
+	method := "apple-script"
 	if bb.usingPrivateAPI {
 		method = "private-api"
-	} else {
-		// we have to use apple-script and send a second message
+	}
+
+	response, err := sendAttachment(method)
+	if err == nil && method == "private-api" && (response.Status >= 300 || response.Data.GUID == "") {
+		// The Private API attachment path can fail at the helper level (e.g.
+		// NSInvalidArgumentException on macOS Tahoe) while returning a non-2xx body
+		// rather than a transport error. Fall back to AppleScript.
+		bb.log.Warn().Int64("status", response.Status).Msg("Private API attachment send failed, falling back to AppleScript")
 		method = "apple-script"
+		response, err = sendAttachment(method)
 	}
-
-	formData := map[string]interface{}{
-		"chatGuid":            chatID,
-		"tempGuid":            fmt.Sprintf("temp-%s", RandString(8)),
-		"name":                filename,
-		"method":              method,
-		"attachment":          attachment,
-		"isAudioMessage":      voiceMemo,
-		"selectedMessageGuid": replyTo,
-		"partIndex":           replyToPart,
-	}
-
-	if bb.usingPrivateAPI {
-		formData["subject"] = text
-	}
-
-	path := "/api/v1/message/attachment"
-
-	var response SendTextResponse
-	if err := bb.apiPostAsFormData(path, formData, &response); err != nil {
+	if err != nil {
 		return nil, err
 	}
 
-	if !bb.usingPrivateAPI {
+	// The AppleScript attachment send carries no caption; deliver any caption as a
+	// separate follow-up message (guard against an empty caption).
+	if method != "private-api" && text != "" {
 		bb.SendMessage(chatID, text, replyTo, replyToPart, nil, nil)
 	}
 
