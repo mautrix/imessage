@@ -57,6 +57,8 @@ type blueBubbles struct {
 
 	contactsLastRefresh time.Time
 	contacts            []Contact
+	contactsLock        sync.RWMutex
+	contactsRefreshLock sync.Mutex
 
 	bbRequestLock sync.Mutex
 
@@ -86,7 +88,9 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 
 	// Preload some caches
 	bb.usingPrivateAPI = bb.isPrivateAPI()
-	bb.RefreshContactList()
+	if err := bb.RefreshContactList(); err != nil {
+		bb.log.Warn().Err(err).Msg("Failed to refresh contact cache at startup")
+	}
 
 	if err := bb.connectAndListen(); err != nil {
 		return err
@@ -861,6 +865,8 @@ func (bb *blueBubbles) GetChatsWithMessagesAfter(minDate time.Time) (resp []imes
 }
 
 func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
+	bb.contactsLock.RLock()
+	defer bb.contactsLock.RUnlock()
 	var matchedContact *Contact
 
 	numericAddress := numericOnly(address)
@@ -911,6 +917,8 @@ func (bb *blueBubbles) matchHandleToContact(address string) *Contact {
 }
 
 func (bb *blueBubbles) SearchContactList(input string) ([]*imessage.Contact, error) {
+	bb.contactsLock.RLock()
+	defer bb.contactsLock.RUnlock()
 	bb.log.Trace().Str("input", input).Msg("SearchContactList")
 
 	var matchedContacts []*imessage.Contact
@@ -950,7 +958,7 @@ func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact
 
 	contact := bb.matchHandleToContact(identifier)
 
-	bb.log.Trace().Str("identifier", identifier).Interface("contact", contact).Msg("GetContactInfo: found a contact")
+	bb.log.Trace().Bool("matched", contact != nil).Msg("GetContactInfo: contact lookup complete")
 
 	if contact != nil {
 		resp, _ = bb.convertBBContactToiMessageContact(contact)
@@ -963,6 +971,8 @@ func (bb *blueBubbles) GetContactInfo(identifier string) (resp *imessage.Contact
 }
 
 func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
+	bb.contactsLock.RLock()
+	defer bb.contactsLock.RUnlock()
 	bb.log.Trace().Msg("GetContactList")
 
 	for _, contact := range bb.contacts {
@@ -974,6 +984,8 @@ func (bb *blueBubbles) GetContactList() (resp []*imessage.Contact, err error) {
 }
 
 func (bb *blueBubbles) RefreshContactList() error {
+	bb.contactsRefreshLock.Lock()
+	defer bb.contactsRefreshLock.Unlock()
 	bb.log.Trace().Msg("refreshContactsList")
 
 	var contactResponse ContactResponse
@@ -985,9 +997,16 @@ func (bb *blueBubbles) RefreshContactList() error {
 		return err
 	}
 
-	// save contacts for later
+	bb.contactsLock.Lock()
+	defer bb.contactsLock.Unlock()
+	// Permission loss can look like a successful empty response. Keep the last
+	// useful cache instead of degrading profiles during a temporary outage.
+	if len(contactResponse.Data) == 0 && len(bb.contacts) > 0 {
+		return errors.New("BlueBubbles returned an empty contact list; retaining cached contacts")
+	}
 	bb.contacts = contactResponse.Data
 	bb.contactsLastRefresh = time.Now()
+	bb.log.Info().Int("contacts", len(bb.contacts)).Msg("Refreshed BlueBubbles contact cache")
 
 	return nil
 }
@@ -1602,7 +1621,7 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*i
 		convertedID = ""
 	}
 
-	if *bbContact.Avatar != "" {
+	if bbContact.Avatar != nil && *bbContact.Avatar != "" {
 		imageData, err = base64.StdEncoding.DecodeString(*bbContact.Avatar)
 		if err != nil {
 			bb.log.Error().Err(err).Str("DisplayName", bbContact.DisplayName).Msg("Error decoding contact avatar")

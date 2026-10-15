@@ -250,18 +250,29 @@ func applyMeta(portal *Portal, meta func(portal *Portal)) {
 }
 
 func (puppet *Puppet) updatePortalMeta(meta func(portal *Portal)) {
-	imID := imessage.Identifier{Service: "iMessage", LocalID: puppet.ID}.String()
-	applyMeta(puppet.bridge.GetPortalByGUID(imID), meta)
-	smsID := imessage.Identifier{Service: "SMS", LocalID: puppet.ID}.String()
-	applyMeta(puppet.bridge.GetPortalByGUID(smsID), meta)
+	// Unified macOS chats also need profile updates. Only touch existing portals;
+	// a contact change must not create an unused portal for another transport.
+	seen := make(map[*Portal]bool)
+	for _, service := range []string{"iMessage", "SMS", "any"} {
+		guid := imessage.Identifier{Service: service, LocalID: puppet.ID}.String()
+		portal := puppet.bridge.GetPortalByGUIDIfExists(guid)
+		if portal != nil && !seen[portal] {
+			seen[portal] = true
+			applyMeta(portal, meta)
+		}
+	}
 }
 
 func (puppet *Puppet) updatePortalAvatar() {
 	puppet.updatePortalMeta(func(portal *Portal) {
+		if portal.AvatarURL == puppet.AvatarURL || puppet.AvatarURL.IsEmpty() {
+			return
+		}
 		if len(portal.MXID) > 0 && portal.shouldSetDMRoomMetadata() {
 			_, err := portal.MainIntent().SetRoomAvatar(portal.MXID, puppet.AvatarURL)
 			if err != nil {
 				portal.log.Warnln("Failed to set avatar:", err)
+				return
 			}
 		}
 		portal.AvatarURL = puppet.AvatarURL
@@ -273,10 +284,14 @@ func (puppet *Puppet) updatePortalAvatar() {
 
 func (puppet *Puppet) updatePortalName() {
 	puppet.updatePortalMeta(func(portal *Portal) {
+		if portal.Name == puppet.Displayname || puppet.Displayname == "" {
+			return
+		}
 		if len(portal.MXID) > 0 && portal.shouldSetDMRoomMetadata() {
 			_, err := portal.MainIntent().SetRoomName(portal.MXID, puppet.Displayname)
 			if err != nil {
 				portal.log.Warnln("Failed to set name:", err)
+				return
 			}
 		}
 		portal.Name = puppet.Displayname
@@ -379,5 +394,11 @@ func (puppet *Puppet) SyncWithContact(contact *imessage.Contact) {
 	update = puppet.UpdateContactInfo() || update
 	if update {
 		puppet.Update()
+	}
+	// An unchanged ghost profile can still belong to a newer unified room whose
+	// metadata was never populated. Reconcile existing rooms, skipping matches.
+	if contact != nil {
+		go puppet.updatePortalName()
+		go puppet.updatePortalAvatar()
 	}
 }
