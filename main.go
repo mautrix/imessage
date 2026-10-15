@@ -543,7 +543,10 @@ func (br *IMBridge) Start() {
 	br.Log.Debugln("Starting IPC loop")
 	go br.IPC.Loop()
 
-	go br.StartupSync()
+	go func() {
+		br.syncBlueBubblesContactProfiles()
+		br.StartupSync()
+	}()
 	br.ZLog.Info().Msg("Initialization complete")
 	go br.PeriodicSync()
 }
@@ -618,6 +621,12 @@ func (br *IMBridge) PeriodicSync() {
 	for {
 		time.Sleep(time.Hour)
 		br.Log.Infoln("Executing periodic chat/contact info sync")
+		if br.Config.IMessage.Platform == "bluebubbles" {
+			if err := br.IM.RefreshContactList(); err != nil {
+				br.Log.Warnln("Failed to refresh BlueBubbles contacts; using cached profiles:", err)
+			}
+			br.syncBlueBubblesContactProfiles()
+		}
 		for _, portal := range br.GetAllPortals() {
 			if len(portal.MXID) > 0 {
 				portal.log.Infoln("Syncing portal (periodic sync, existing portal)")
