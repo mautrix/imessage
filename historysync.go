@@ -216,7 +216,7 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 					RelatesTo: event.RelatesTo{
 						Type:    event.RelAnnotation,
 						EventID: dbMessage.MXID,
-						Key:     msg.Tapback.Type.Emoji(),
+						Key:     msg.Tapback.Emoji(),
 					},
 				},
 			},
@@ -384,6 +384,7 @@ func (portal *Portal) finishBackfill(txn dbutil.Transaction, eventIDs []id.Event
 			dbTapback.MessagePart = info.TapbackTarget.Part
 			dbTapback.GUID = info.GUID
 			dbTapback.Type = info.Tapback.Type
+			dbTapback.CustomEmoji = info.Tapback.CustomEmoji
 			dbTapback.MXID = eventIDs[i]
 			dbTapback.Insert(txn)
 		} else {

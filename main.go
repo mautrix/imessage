@@ -543,6 +543,7 @@ func (br *IMBridge) Start() {
 	br.Log.Debugln("Starting IPC loop")
 	go br.IPC.Loop()
 
+	go br.refreshRoomFeatures()
 	go br.StartupSync()
 	br.ZLog.Info().Msg("Initialization complete")
 	go br.PeriodicSync()
