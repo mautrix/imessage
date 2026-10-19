@@ -40,19 +40,19 @@ func (mq *TapbackQuery) New() *Tapback {
 }
 
 func (mq *TapbackQuery) GetByGUID(chat, message string, part int, sender string) *Tapback {
-	return mq.get("SELECT portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid "+
+	return mq.get("SELECT portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid, custom_emoji "+
 		"FROM tapback WHERE portal_guid=$1 AND message_guid=$2 AND message_part=$3 AND sender_guid=$4",
 		chat, message, part, sender)
 }
 
 func (mq *TapbackQuery) GetByTapbackGUID(chat, tapback string) *Tapback {
-	return mq.get("SELECT portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid "+
+	return mq.get("SELECT portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid, custom_emoji "+
 		"FROM tapback WHERE portal_guid=$1 AND guid=$2",
 		chat, tapback)
 }
 
 func (mq *TapbackQuery) GetByMXID(mxid id.EventID) *Tapback {
-	return mq.get("SELECT portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid "+
+	return mq.get("SELECT portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid, custom_emoji "+
 		"FROM tapback WHERE mxid=$1", mxid)
 }
 
@@ -76,11 +76,12 @@ type Tapback struct {
 	HandleGUID  string
 	Type        imessage.TapbackType
 	MXID        id.EventID
+	CustomEmoji string
 }
 
 func (tapback *Tapback) Scan(row dbutil.Scannable) *Tapback {
 	var nullishGUID sql.NullString
-	err := row.Scan(&tapback.PortalGUID, &nullishGUID, &tapback.MessageGUID, &tapback.MessagePart, &tapback.SenderGUID, &tapback.HandleGUID, &tapback.Type, &tapback.MXID)
+	err := row.Scan(&tapback.PortalGUID, &nullishGUID, &tapback.MessageGUID, &tapback.MessagePart, &tapback.SenderGUID, &tapback.HandleGUID, &tapback.Type, &tapback.MXID, &tapback.CustomEmoji)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			tapback.log.Errorln("Database scan failed:", err)
@@ -95,16 +96,16 @@ func (tapback *Tapback) Insert(txn dbutil.Execable) {
 	if txn == nil {
 		txn = tapback.db
 	}
-	_, err := txn.Exec("INSERT INTO tapback (portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-		tapback.PortalGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.HandleGUID, tapback.Type, tapback.MXID)
+	_, err := txn.Exec("INSERT INTO tapback (portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid, custom_emoji) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+		tapback.PortalGUID, tapback.GUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.HandleGUID, tapback.Type, tapback.MXID, tapback.CustomEmoji)
 	if err != nil {
 		tapback.log.Warnfln("Failed to insert tapback %s/%s.%d/%s: %v", tapback.PortalGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
 	}
 }
 
 func (tapback *Tapback) Update() {
-	_, err := tapback.db.Exec("UPDATE tapback SET guid=?5, type=?6, mxid=?7 WHERE portal_guid=?1 AND message_guid=?2 AND message_part=?3 AND sender_guid=?4",
-		tapback.PortalGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.GUID, tapback.Type, tapback.MXID)
+	_, err := tapback.db.Exec("UPDATE tapback SET guid=$5, type=$6, mxid=$7, custom_emoji=$8 WHERE portal_guid=$1 AND message_guid=$2 AND message_part=$3 AND sender_guid=$4",
+		tapback.PortalGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, tapback.GUID, tapback.Type, tapback.MXID, tapback.CustomEmoji)
 	if err != nil {
 		tapback.log.Warnfln("Failed to update tapback %s/%s.%d/%s: %v", tapback.PortalGUID, tapback.MessageGUID, tapback.MessagePart, tapback.SenderGUID, err)
 	}

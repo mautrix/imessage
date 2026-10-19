@@ -87,6 +87,9 @@ imessage:
     # Should media on disk be deleted after bridging to Matrix?
     delete_media_after_upload: false
 
+    # Requires macOS 26+ and a connected helper/server advertising custom_emoji_reactions.
+    # Leave disabled for servers without that capability. Unicode emoji only.
+    bluebubbles_custom_emoji_reactions: false
     bluebubbles_url:
     bluebubbles_password:
 

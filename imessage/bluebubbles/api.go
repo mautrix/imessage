@@ -60,7 +60,9 @@ type blueBubbles struct {
 
 	bbRequestLock sync.Mutex
 
-	usingPrivateAPI bool
+	usingPrivateAPI            bool
+	serverOSVersion            string
+	serverCustomEmojiReactions bool
 }
 
 func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
@@ -86,6 +88,9 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 
 	// Preload some caches
 	bb.usingPrivateAPI = bb.isPrivateAPI()
+	if bb.bridge.GetConnectorConfig().BlueBubblesCustomEmojiReactions && !bb.SupportsEmojiTapbacks() {
+		return fmt.Errorf("custom emoji reactions require macOS Tahoe 26+ and a connected emoji-capable BlueBubbles helper; server reports macOS %q", bb.serverOSVersion)
+	}
 	bb.RefreshContactList()
 
 	if err := bb.connectAndListen(); err != nil {
@@ -1206,6 +1211,8 @@ func (bb *blueBubbles) isPrivateAPI() bool {
 		return false
 	}
 
+	bb.serverOSVersion = serverInfo.Data.OSVersion
+	bb.serverCustomEmojiReactions = serverInfo.Data.CustomEmojiReactions
 	privateAPI := serverInfo.Data.PrivateAPI
 
 	return privateAPI
@@ -1271,7 +1278,10 @@ func (bb *blueBubbles) SendFileCleanup(sendFileDir string) {
 func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, tapback imessage.TapbackType, remove bool) (*imessage.SendResponse, error) {
 	bb.log.Trace().Str("chatID", chatID).Str("targetGUID", targetGUID).Int("targetPart", targetPart).Interface("tapback", tapback).Bool("remove", remove).Msg("SendTapback")
 
-	var tapbackName = tapback.Name()
+	return bb.sendReaction(chatID, targetGUID, targetPart, tapback.Name(), remove)
+}
+
+func (bb *blueBubbles) sendReaction(chatID, targetGUID string, targetPart int, tapbackName string, remove bool) (*imessage.SendResponse, error) {
 
 	if !bb.usingPrivateAPI {
 		bb.log.Warn().Str("chatID", chatID).Str("targetGUID", targetGUID).Str("tapbackName", tapbackName).Bool("remove", remove).Msg("The private-api isn't enabled in BlueBubbles, can't send tapback")
@@ -1304,9 +1314,10 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 	}
 
 	return &imessage.SendResponse{
-		GUID:    res.Data.GUID,
-		Service: res.Data.Handle.Service,
-		Time:    time.UnixMilli(res.Data.DateCreated),
+		GUID:     res.Data.GUID,
+		ChatGUID: chatID,
+		Service:  res.Data.Handle.Service,
+		Time:     time.UnixMilli(res.Data.DateCreated),
 	}, nil
 }
 
@@ -1676,11 +1687,11 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	// Tapbacks
 	if bbMessage.AssociatedMessageGUID != "" &&
 		bbMessage.AssociatedMessageType != "" {
-		message.Tapback = &imessage.Tapback{
-			TargetGUID: bbMessage.AssociatedMessageGUID,
-			Type:       bb.convertBBTapbackToImessageTapback(bbMessage.AssociatedMessageType),
+		var err error
+		message.Tapback, err = parseBBTapback(bbMessage.AssociatedMessageGUID, bbMessage.AssociatedMessageType, bbMessage.AssociatedMessageEmoji)
+		if err != nil {
+			return nil, err
 		}
-		message.Tapback.Parse()
 	} else {
 		message.Tapback = nil
 	}
@@ -1711,27 +1722,6 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 	message.ThreadID = bbMessage.ThreadOriginatorGUID
 
 	return &message, nil
-}
-
-func (bb *blueBubbles) convertBBTapbackToImessageTapback(associatedMessageType string) (tbType imessage.TapbackType) {
-	if strings.Contains(associatedMessageType, "love") {
-		tbType = imessage.TapbackLove
-	} else if strings.Contains(associatedMessageType, "dislike") {
-		tbType = imessage.TapbackDislike
-	} else if strings.Contains(associatedMessageType, "like") {
-		tbType = imessage.TapbackLike
-	} else if strings.Contains(associatedMessageType, "laugh") {
-		tbType = imessage.TapbackLaugh
-	} else if strings.Contains(associatedMessageType, "emphasize") {
-		tbType = imessage.TapbackEmphasis
-	} else if strings.Contains(associatedMessageType, "question") {
-		tbType = imessage.TapbackQuestion
-	}
-
-	if strings.Contains(associatedMessageType, "-") {
-		tbType += imessage.TapbackRemoveOffset
-	}
-	return tbType
 }
 
 func (bb *blueBubbles) convertBBChatToiMessageChat(bbChat Chat) (*imessage.ChatInfo, error) {

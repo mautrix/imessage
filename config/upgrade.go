@@ -39,6 +39,7 @@ func DoUpgrade(helper *up.Helper) {
 	helper.Copy(up.Str, "imessage", "unix_socket")
 	helper.Copy(up.Int, "imessage", "ping_interval_seconds")
 	helper.Copy(up.Bool, "imessage", "delete_media_after_upload")
+	helper.Copy(up.Bool, "imessage", "bluebubbles_custom_emoji_reactions")
 	helper.Copy(up.Str|up.Null, "imessage", "bluebubbles_url")
 	helper.Copy(up.Str|up.Null, "imessage", "bluebubbles_password")
 

@@ -743,6 +743,9 @@ func (portal *Portal) getRoomCreateContent() *mautrix.ReqCreateRoom {
 		Content:  event.Content{Parsed: bridgeInfo},
 		StateKey: &bridgeInfoStateKey,
 	}}
+	if features := portal.getRoomFeatures(); features != nil {
+		initialState = append(initialState, roomFeatureStateEvents(bridgeInfoStateKey, features)...)
+	}
 	if portal.bridge.Config.Bridge.Encryption.Default {
 		initialState = append(initialState, &event.Event{
 			Type: event.StateEncryption,
@@ -1529,15 +1532,15 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 
 	if reaction, ok := evt.Content.Parsed.(*event.ReactionEventContent); !ok || reaction.RelatesTo.Type != event.RelAnnotation {
 		doError("Ignoring reaction %s due to unknown m.relates_to data", evt.ID)
-	} else if tapbackType := imessage.TapbackFromEmoji(reaction.RelatesTo.Key); tapbackType == 0 {
+	} else if tapbackType, customEmoji := imessage.ReactionFromEmoji(reaction.RelatesTo.Key, imessage.SupportsEmojiTapbacks(portal.bridge.IM)); tapbackType == 0 {
 		doError("Unknown reaction type %s in %s", reaction.RelatesTo.Key, reaction.RelatesTo.EventID)
 	} else if target := portal.bridge.DB.Message.GetByMXID(reaction.RelatesTo.EventID); target == nil {
 		doError("Unknown reaction target %s", reaction.RelatesTo.EventID)
-	} else if existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, target.Part, ""); existing != nil && existing.Type == tapbackType {
+	} else if existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, target.Part, ""); existing != nil && existing.Type == tapbackType && existing.CustomEmoji == customEmoji {
 		doError("Ignoring outgoing tapback to %s/%s: type is same", reaction.RelatesTo.EventID, target.GUID)
 	} else {
 		targetChatGUID := portal.getTargetGUID("reaction", evt.ID, target.HandleGUID)
-		if resp, err := portal.bridge.IM.SendTapback(targetChatGUID, target.GUID, target.Part, tapbackType, false); err != nil {
+		if resp, err := imessage.SendReaction(portal.bridge.IM, targetChatGUID, target.GUID, target.Part, tapbackType, customEmoji, false); err != nil {
 			doError("Failed to send tapback %d to %s: %v", tapbackType, target.GUID, err)
 		} else if existing == nil {
 			// TODO should timestamp be stored?
@@ -1552,6 +1555,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 			tapback.MessageGUID = target.GUID
 			tapback.MessagePart = target.Part
 			tapback.Type = tapbackType
+			tapback.CustomEmoji = customEmoji
 			tapback.MXID = evt.ID
 			tapback.Insert(nil)
 		} else {
@@ -1565,6 +1569,7 @@ func (portal *Portal) HandleMatrixReaction(evt *event.Event) {
 			}
 			existing.GUID = resp.GUID
 			existing.Type = tapbackType
+			existing.CustomEmoji = customEmoji
 			existing.MXID = evt.ID
 			existing.Update()
 		}
@@ -1586,12 +1591,12 @@ func (portal *Portal) HandleMatrixRedaction(evt *event.Event) {
 	redactedTapback := portal.bridge.DB.Tapback.GetByMXID(evt.Redacts)
 	if redactedTapback != nil {
 		portal.log.Debugln("Starting handling of Matrix redaction of tapback", evt.ID)
-		redactedTapback.Delete()
-		_, err := portal.bridge.IM.SendTapback(portal.getTargetGUID("tapback redaction", evt.ID, redactedTapback.HandleGUID), redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, true)
+		_, err := imessage.SendReaction(portal.bridge.IM, portal.getTargetGUID("tapback redaction", evt.ID, redactedTapback.HandleGUID), redactedTapback.MessageGUID, redactedTapback.MessagePart, redactedTapback.Type, redactedTapback.CustomEmoji, true)
 		if err != nil {
 			portal.log.Errorfln("Failed to send removal of tapback %d to %s/%d: %v", redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart, err)
 			portal.bridge.SendMessageErrorCheckpoint(evt, status.MsgStepRemote, err, true, 0)
 		} else {
+			redactedTapback.Delete()
 			portal.log.Debugfln("Handled Matrix redaction %s of iMessage tapback %d to %s/%d", evt.ID, redactedTapback.Type, redactedTapback.MessageGUID, redactedTapback.MessagePart)
 			if !portal.bridge.IM.Capabilities().MessageStatusCheckpoints {
 				portal.bridge.SendMessageSuccessCheckpoint(evt, status.MsgStepRemote, 0)
@@ -2240,7 +2245,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 
 	existing := portal.bridge.DB.Tapback.GetByGUID(portal.GUID, target.GUID, target.Part, senderGUID)
 	if msg.Tapback.Remove {
-		if existing == nil {
+		if existing == nil || existing.Type != msg.Tapback.Type || existing.CustomEmoji != msg.Tapback.CustomEmoji {
 			return
 		}
 		_, err := intent.RedactEvent(portal.MXID, existing.MXID)
@@ -2249,7 +2254,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		}
 		existing.Delete()
 		return
-	} else if existing != nil && existing.Type == msg.Tapback.Type {
+	} else if existing != nil && existing.Type == msg.Tapback.Type && existing.CustomEmoji == msg.Tapback.CustomEmoji {
 		portal.log.Debugfln("Ignoring tapback from %s to %s: type is same", msg.SenderText(), target.GUID)
 		return
 	}
@@ -2258,7 +2263,7 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		RelatesTo: event.RelatesTo{
 			EventID: target.MXID,
 			Type:    event.RelAnnotation,
-			Key:     msg.Tapback.Type.Emoji(),
+			Key:     msg.Tapback.Emoji(),
 		},
 	}
 
@@ -2284,11 +2289,13 @@ func (portal *Portal) HandleiMessageTapback(msg *imessage.Message) {
 		tapback.HandleGUID = msg.ChatGUID
 		tapback.GUID = msg.GUID
 		tapback.Type = msg.Tapback.Type
+		tapback.CustomEmoji = msg.Tapback.CustomEmoji
 		tapback.MXID = resp.EventID
 		tapback.Insert(nil)
 	} else {
 		existing.GUID = msg.GUID
 		existing.Type = msg.Tapback.Type
+		existing.CustomEmoji = msg.Tapback.CustomEmoji
 		existing.MXID = resp.EventID
 		existing.HandleGUID = msg.ChatGUID
 		existing.Update()

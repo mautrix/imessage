@@ -139,6 +139,7 @@ type TypingNotification struct {
 }
 
 type Message struct {
+	AssociatedMessageEmoji    string       `json:"associatedMessageEmoji,omitempty"`
 	AssociatedMessageGUID     string       `json:"associatedMessageGuid,omitempty"`
 	AssociatedMessageType     string       `json:"associatedMessageType,omitempty"`
 	Attachments               []Attachment `json:"attachments,omitempty"`
@@ -307,7 +308,9 @@ type MessageReadResponse struct {
 }
 
 type ServerInfo struct {
-	PrivateAPI bool `json:"private_api"`
+	PrivateAPI           bool   `json:"private_api"`
+	OSVersion            string `json:"os_version"`
+	CustomEmojiReactions bool   `json:"custom_emoji_reactions"`
 }
 
 type ServerInfoResponse struct {

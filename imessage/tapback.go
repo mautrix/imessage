@@ -30,15 +30,17 @@ const (
 	TapbackLaugh
 	TapbackEmphasis
 	TapbackQuestion
+	TapbackCustom
 
 	TapbackRemoveOffset = 1000
 )
 
 type Tapback struct {
-	TargetGUID string      `json:"target_guid"`
-	TargetPart int         `json:"-"`
-	Remove     bool        `json:"-"`
-	Type       TapbackType `json:"type"`
+	TargetGUID  string      `json:"target_guid"`
+	TargetPart  int         `json:"-"`
+	Remove      bool        `json:"-"`
+	Type        TapbackType `json:"type"`
+	CustomEmoji string      `json:"emoji,omitempty"`
 }
 
 var (
@@ -75,6 +77,9 @@ func (tapback *Tapback) Parse() (*Tapback, error) {
 type TapbackType int
 
 func TapbackFromEmoji(emoji string) TapbackType {
+	if emoji == "" {
+		return 0
+	}
 	switch []rune(emoji)[0] {
 	case '\u2665', '\u2764', '\U0001f499', '\U0001f49a', '\U0001f90e', '\U0001f5a4', '\U0001f90d', '\U0001f9e1',
 		'\U0001f49b', '\U0001f49c', '\U0001f496', '\u2763', '\U0001f495', '\U0001f49f':
@@ -158,4 +163,60 @@ func (amt TapbackType) Name() string {
 	default:
 		return ""
 	}
+}
+
+// Emoji returns the original Unicode sequence for a custom Tapback.
+func (tapback *Tapback) Emoji() string {
+	if tapback.Type == TapbackCustom {
+		return tapback.CustomEmoji
+	}
+	return tapback.Type.Emoji()
+}
+
+// EmojiTapbackAPI is optional: existing connectors keep their classic behavior.
+type EmojiTapbackAPI interface {
+	SupportsEmojiTapbacks() bool
+	SendEmojiTapback(chatID, targetGUID string, targetPart int, emoji string, remove bool) (*SendResponse, error)
+}
+
+// ReactionFromEmoji preserves arbitrary emoji only on an explicitly capable connector.
+func ReactionFromEmoji(emoji string, custom bool) (TapbackType, string) {
+	if emoji == "" {
+		return 0, ""
+	}
+	if !custom {
+		return TapbackFromEmoji(emoji), ""
+	}
+	switch emoji {
+	case "❤", "❤️":
+		return TapbackLove, ""
+	case "👍", "👍️":
+		return TapbackLike, ""
+	case "👎", "👎️":
+		return TapbackDislike, ""
+	case "😂":
+		return TapbackLaugh, ""
+	case "‼", "‼️":
+		return TapbackEmphasis, ""
+	case "❓", "❓️":
+		return TapbackQuestion, ""
+	default:
+		return TapbackCustom, emoji
+	}
+}
+
+func SupportsEmojiTapbacks(api API) bool {
+	sender, ok := api.(EmojiTapbackAPI)
+	return ok && sender.SupportsEmojiTapbacks()
+}
+
+func SendReaction(api API, chatID, targetGUID string, targetPart int, kind TapbackType, emoji string, remove bool) (*SendResponse, error) {
+	if kind == TapbackCustom {
+		sender, ok := api.(EmojiTapbackAPI)
+		if !ok || !sender.SupportsEmojiTapbacks() || emoji == "" {
+			return nil, errors.New("custom emoji reactions require a compatible BlueBubbles server and macOS Tahoe 26 or newer")
+		}
+		return sender.SendEmojiTapback(chatID, targetGUID, targetPart, emoji, remove)
+	}
+	return api.SendTapback(chatID, targetGUID, targetPart, kind, remove)
 }

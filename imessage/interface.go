@@ -152,8 +152,9 @@ type PlatformConfig struct {
 
 	DeleteMediaAfterUpload bool `yaml:"delete_media_after_upload"`
 
-	BlueBubblesURL      string `yaml:"bluebubbles_url"`
-	BlueBubblesPassword string `yaml:"bluebubbles_password"`
+	BlueBubblesCustomEmojiReactions bool   `yaml:"bluebubbles_custom_emoji_reactions"`
+	BlueBubblesURL                  string `yaml:"bluebubbles_url"`
+	BlueBubblesPassword             string `yaml:"bluebubbles_password"`
 }
 
 func (pc *PlatformConfig) BridgeName() string {
