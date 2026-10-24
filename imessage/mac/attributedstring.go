@@ -18,6 +18,7 @@ package mac
 
 //#cgo CFLAGS: -x objective-c -Wno-incompatible-pointer-types -Wno-deprecated
 //#cgo LDFLAGS: -framework Foundation
+//#include <stdlib.h>
 //#include "meowAttributedString.h"
 //#include "meowMemory.h"
 import "C"
@@ -26,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"runtime"
+	"unsafe"
 
 	"maunium.net/go/maulogger/v2"
 
@@ -76,7 +78,9 @@ func (as *AttributedString) SortAttachments(log maulogger.Logger, attachments []
 func meowDecodeAttributedString(data []byte) (*AttributedString, error) {
 	runtime.LockOSThread()
 	pool := C.meowMakePool()
-	var parsed string = C.GoString(C.meowDecodeAttributedString(C.CString(base64.StdEncoding.EncodeToString(data))))
+	cInput := C.CString(base64.StdEncoding.EncodeToString(data))
+	defer C.free(unsafe.Pointer(cInput))
+	var parsed string = C.GoString(C.meowDecodeAttributedString(cInput))
 	C.meowReleasePool(pool)
 	runtime.UnlockOSThread()
 	if parsed[0] != '{' {

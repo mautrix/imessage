@@ -18,6 +18,7 @@ package mac
 
 //#cgo CFLAGS: -x objective-c -Wno-incompatible-pointer-types
 //#cgo LDFLAGS: -framework Contacts -framework Foundation
+//#include <stdlib.h>
 //#include "meowContacts.h"
 //#include "meowMemory.h"
 import "C"
@@ -125,11 +126,13 @@ func (cs *ContactStore) GetContactInfo(identifier string) (*imessage.Contact, er
 	// This makes a NSAutoreleasePool, which enables Objective-C's memory management.
 	pool := C.meowMakePool()
 
+	cIdentifier := C.CString(identifier)
+	defer C.free(unsafe.Pointer(cIdentifier))
 	var cnContact *C.CNContact
 	if identifier[0] == '+' {
-		cnContact = C.meowGetContactByPhone(cs.int, C.CString(identifier))
+		cnContact = C.meowGetContactByPhone(cs.int, cIdentifier)
 	} else {
-		cnContact = C.meowGetContactByEmail(cs.int, C.CString(identifier))
+		cnContact = C.meowGetContactByEmail(cs.int, cIdentifier)
 	}
 	goContact := cncontactToContact(cnContact, true)
 
