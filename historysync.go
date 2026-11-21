@@ -145,7 +145,7 @@ type messageIndex struct {
 	Index int
 }
 
-func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
+func (portal *Portal) convertBackfill(messages []*imessage.Message, recovering bool) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
 	events := make([]*event.Event, 0, len(messages))
 	metas := make([]messageWithIndex, 0, len(messages))
 	metaIndexes := make(map[messageIndex]int, len(messages))
@@ -159,6 +159,20 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 		intent := portal.getIntentForMessage(msg, nil)
 		converted := portal.convertiMessage(msg, intent)
 		for index, conv := range converted {
+			if recovering {
+				// Attachment conversion failures produce a notice. Leave that part
+				// unmapped so it can be recovered after the media is available.
+				if conv.Content.MsgType == event.MsgNotice {
+					continue
+				}
+				bridged, err := portal.bridge.DB.Message.HasBridgedPart(msg.GUID, index)
+				if err != nil {
+					return nil, nil, nil, false, fmt.Errorf("check recorded message part: %w", err)
+				}
+				if bridged {
+					continue
+				}
+			}
 			evt := &event.Event{
 				Sender:    intent.UserID,
 				Type:      conv.Type,
@@ -187,10 +201,15 @@ func (portal *Portal) convertBackfill(messages []*imessage.Message) ([]*event.Ev
 	return events, metas, metaIndexes, isRead, nil
 }
 
-func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
+func (portal *Portal) convertTapbacks(messages []*imessage.Message, recovering bool) ([]*event.Event, []messageWithIndex, map[messageIndex]int, bool, error) {
 	events := make([]*event.Event, 0, len(messages))
 	metas := make([]messageWithIndex, 0, len(messages))
 	metaIndexes := make(map[messageIndex]int, len(messages))
+	type reactionSlot struct {
+		target messageIndex
+		sender string
+	}
+	seenSlots := make(map[reactionSlot]struct{})
 	unreadThreshold := time.Duration(portal.bridge.Config.Bridge.Backfill.UnreadHoursThreshold) * time.Hour
 	var isRead bool
 	for _, msg := range messages {
@@ -199,6 +218,21 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 			continue
 		}
 
+		if recovering {
+			target := messageIndex{msg.Tapback.TargetGUID, msg.Tapback.TargetPart}
+			slot := reactionSlot{target, msg.Sender.String()}
+			if _, duplicate := seenSlots[slot]; duplicate {
+				continue
+			}
+			bridged, err := portal.bridge.DB.Tapback.HasBridgedTapback(msg.GUID, portal.GUID, target.GUID, target.Index, slot.sender)
+			if err != nil {
+				return nil, nil, nil, false, fmt.Errorf("check recorded tapback: %w", err)
+			}
+			if bridged {
+				continue
+			}
+			seenSlots[slot] = struct{}{}
+		}
 		intent := portal.getIntentForMessage(msg, nil)
 		dbMessage := portal.bridge.DB.Message.GetByGUID(portal.GUID, msg.Tapback.TargetGUID, msg.Tapback.TargetPart)
 		if dbMessage == nil {
@@ -237,6 +271,10 @@ func (portal *Portal) convertTapbacks(messages []*imessage.Message) ([]*event.Ev
 }
 
 func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Message, forward, forwardIfNoMessages, markAsRead bool) (success bool) {
+	return portal.sendBackfillWithRecovery(backfillID, messages, forward, forwardIfNoMessages, markAsRead, false)
+}
+
+func (portal *Portal) sendBackfillWithRecovery(backfillID string, messages []*imessage.Message, forward, forwardIfNoMessages, markAsRead, recovering bool) (success bool) {
 	idMap := make(map[string][]id.EventID, len(messages))
 	for _, msg := range messages {
 		idMap[msg.GUID] = []id.EventID{}
@@ -271,24 +309,26 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		validMessages = append(validMessages, msg)
 	}
 
-	events, metas, metaIndexes, isRead, err := portal.convertBackfill(validMessages)
+	events, metas, metaIndexes, isRead, err := portal.convertBackfill(validMessages, recovering)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert messages for backfill: %v", err)
 		return false
 	}
 	portal.log.Debugfln("Converted %d messages into %d message events to backfill", len(messages), len(events))
-	if len(events) == 0 {
+	if len(events) == 0 && !recovering {
 		return true
 	}
 
-	eventIDs, sendErr := portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead, events, metas, metaIndexes)
-	if sendErr != nil {
-		return false
+	if len(events) > 0 {
+		eventIDs, sendErr := portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead && !recovering, events, metas, metaIndexes)
+		if sendErr != nil {
+			return false
+		}
+		portal.addBackfillToDB(metas, eventIDs, idMap, backfillID)
 	}
-	portal.addBackfillToDB(metas, eventIDs, idMap, backfillID)
 
 	//We have to process tapbacks after all other messages because we need texts in the DB in order to target them
-	events, metas, metaIndexes, isRead, err = portal.convertTapbacks(validMessages)
+	events, metas, metaIndexes, isRead, err = portal.convertTapbacks(validMessages, recovering)
 	if err != nil {
 		portal.log.Errorfln("Failed to convert tapbacks for backfill: %v", err)
 		return false
@@ -298,7 +338,7 @@ func (portal *Portal) sendBackfill(backfillID string, messages []*imessage.Messa
 		return true
 	}
 
-	eventIDs, sendErr = portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead, events, metas, metaIndexes)
+	eventIDs, sendErr := portal.sendBackfillToMatrixServer(batchSending, forward, forwardIfNoMessages, markAsRead, isRead && !recovering, events, metas, metaIndexes)
 	if sendErr != nil {
 		return false
 	}

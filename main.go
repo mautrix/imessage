@@ -559,6 +559,7 @@ func (br *IMBridge) StartupSync() {
 
 	forceUpdateBridgeInfo := br.sendStatusUpdateInfo ||
 		br.DB.KV.Get(database.KVBridgeInfoVersion) != database.ExpectedBridgeInfoVersion
+	recovery := br.loadStartupRecoveryPlan()
 	alreadySynced := make(map[string]bool)
 	for _, portal := range br.GetAllPortals() {
 		removed := portal.CleanupIfEmpty(true)
@@ -579,11 +580,17 @@ func (br *IMBridge) StartupSync() {
 				}
 			}
 			portal.Sync(true)
+			if recovery != nil {
+				recovery.runForPortal(portal)
+			}
 			alreadySynced[portal.GUID] = true
 			if forceUpdateBridgeInfo {
 				portal.UpdateBridgeInfo()
 			}
 		}
+	}
+	if recovery != nil && len(recovery.pendingChats) > 0 {
+		br.ZLog.Warn().Int("chat_count", len(recovery.pendingChats)).Msg("Skipped recovery for chats without an existing portal")
 	}
 	if forceUpdateBridgeInfo {
 		br.DB.KV.Set(database.KVBridgeInfoVersion, database.ExpectedBridgeInfoVersion)
