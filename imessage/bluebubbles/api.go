@@ -1687,11 +1687,12 @@ func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.
 
 	// Attachments
 	message.Attachments = make([]*imessage.Attachment, len(bbMessage.Attachments))
-	for i, attachment := range bbMessage.Attachments {
-		attachment, err := bb.downloadAttachment(attachment.GUID)
+	for i, source := range bbMessage.Attachments {
+		attachment, err := bb.downloadAttachment(source.GUID)
 		if err != nil {
-			bb.log.Err(err).Str("attachmentGUID", attachment.GUID).Msg("Failed to download attachment")
-			continue
+			bb.log.Warn().Str("attachmentGUID", source.GUID).Msg("Attachment unavailable")
+			// Keep the part index so the portal can report the missing file without shifting other parts.
+			attachment = &imessage.Attachment{GUID: source.GUID, FileName: source.TransferName}
 		}
 
 		message.Attachments[i] = attachment
