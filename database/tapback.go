@@ -51,6 +51,15 @@ func (mq *TapbackQuery) GetByTapbackGUID(chat, tapback string) *Tapback {
 		chat, tapback)
 }
 
+// HasBridgedTapback checks the exact GUID and whether this sender already reacted to this part.
+func (mq *TapbackQuery) HasBridgedTapback(guid, portalGUID, targetGUID string, targetPart int, senderGUID string) (bool, error) {
+	var exists bool
+	err := mq.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM tapback WHERE mxid<>'' AND
+		(guid=$1 OR (portal_guid=$2 AND message_guid=$3 AND message_part=$4 AND sender_guid=$5)))`,
+		guid, portalGUID, targetGUID, targetPart, senderGUID).Scan(&exists)
+	return exists, err
+}
+
 func (mq *TapbackQuery) GetByMXID(mxid id.EventID) *Tapback {
 	return mq.get("SELECT portal_guid, guid, message_guid, message_part, sender_guid, handle_guid, type, mxid "+
 		"FROM tapback WHERE mxid=$1", mxid)

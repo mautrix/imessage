@@ -77,6 +77,13 @@ func (mq *MessageQuery) GetByGUID(chat string, guid string, part int) *Message {
 		"FROM message WHERE portal_guid=$1 AND guid=$2 AND part=$3", chat, guid, part)
 }
 
+// HasBridgedPart also checks old portals, as a chat may have been merged or renamed.
+func (mq *MessageQuery) HasBridgedPart(guid string, part int) (bool, error) {
+	var exists bool
+	err := mq.db.QueryRow("SELECT EXISTS(SELECT 1 FROM message WHERE guid=$1 AND part=$2 AND mxid<>'')", guid, part).Scan(&exists)
+	return exists, err
+}
+
 func (mq *MessageQuery) GetByMXID(mxid id.EventID) *Message {
 	return mq.get("SELECT portal_guid, guid, part, mxid, sender_guid, handle_guid, timestamp "+
 		"FROM message WHERE mxid=$1", mxid)

@@ -594,7 +594,18 @@ func (bb *blueBubbles) messageQueryRequestToMap(req *MessageQueryRequest) map[st
 	return m
 }
 
-func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) (resp []*imessage.Message, err error) {
+func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, backfillID string) ([]*imessage.Message, error) {
+	return bb.getMessagesSinceDate(chatID, minDate, backfillID, nil)
+}
+
+func (bb *blueBubbles) GetHistoryRecoveryMessages(chatID string, minDate time.Time, backfillID string, messageGUIDs map[string]struct{}) ([]*imessage.Message, error) {
+	if len(messageGUIDs) == 0 {
+		return nil, nil
+	}
+	return bb.getMessagesSinceDate(chatID, minDate, backfillID, messageGUIDs)
+}
+
+func (bb *blueBubbles) getMessagesSinceDate(chatID string, minDate time.Time, backfillID string, recoveryGUIDs map[string]struct{}) (resp []*imessage.Message, err error) {
 	bb.log.Trace().Str("chatID", chatID).Time("minDate", minDate).Str("backfillID", backfillID).Msg("GetMessagesSinceDate")
 
 	after := minDate.UnixNano() / int64(time.Millisecond)
@@ -620,18 +631,60 @@ func (bb *blueBubbles) GetMessagesSinceDate(chatID string, minDate time.Time, ba
 		return nil, err
 	}
 
-	for _, messsage := range messages {
-		imessage, err := bb.convertBBMessageToiMessage(messsage)
+	convert := bb.convertBBMessageToiMessage
+	if recoveryGUIDs != nil {
+		messages = filterHistoryRecoveryMessages(messages, chatID, after, recoveryGUIDs)
+		convert = bb.convertHistoryRecoveryMessage
+	}
+	for _, message := range messages {
+		converted, err := convert(message)
 		if err != nil {
 			bb.log.Warn().Err(err).Msg("Failed to convert message from BlueBubbles format to Matrix format")
 			continue
 		}
-		resp = append(resp, imessage)
+		resp = append(resp, converted)
 	}
 
 	resp = reverseList(resp)
 
 	return resp, nil
+}
+
+// Filter before conversion, which downloads attachments even for messages we won't send.
+func filterHistoryRecoveryMessages(messages []Message, chatID string, after int64, wanted map[string]struct{}) []Message {
+	seen := make(map[string]struct{}, len(wanted))
+	selected := make([]Message, 0, len(wanted))
+	for _, message := range messages {
+		_, requested := wanted[message.GUID]
+		_, duplicate := seen[message.GUID]
+		if requested && !duplicate && message.DateCreated >= after && len(message.Chats) > 0 && message.Chats[0].GUID == chatID {
+			seen[message.GUID] = struct{}{}
+			selected = append(selected, message)
+		}
+	}
+	return selected
+}
+
+func (bb *blueBubbles) convertHistoryRecoveryMessage(message Message) (*imessage.Message, error) {
+	// Leave the entire message available for retry if any part is missing. Do not
+	// create a mapped notice as a substitute for an attachment during recovery.
+	attachments := message.Attachments
+	message.Attachments = nil
+	converted, err := bb.convertBBMessageToiMessage(message)
+	if err != nil {
+		return nil, err
+	}
+	for _, attachment := range attachments {
+		downloaded, err := bb.downloadAttachmentWithStatusCheck(attachment.GUID, true)
+		if err != nil {
+			for _, downloaded := range converted.Attachments {
+				_ = downloaded.Delete()
+			}
+			return nil, fmt.Errorf("attachment unavailable for history recovery")
+		}
+		converted.Attachments = append(converted.Attachments, downloaded)
+	}
+	return converted, nil
 }
 
 func (bb *blueBubbles) GetMessagesBetween(chatID string, minDate, maxDate time.Time) (resp []*imessage.Message, err error) {
@@ -1753,6 +1806,10 @@ func (bb *blueBubbles) convertBBChatToiMessageChat(bbChat Chat) (*imessage.ChatI
 }
 
 func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Attachment, err error) {
+	return bb.downloadAttachmentWithStatusCheck(guid, false)
+}
+
+func (bb *blueBubbles) downloadAttachmentWithStatusCheck(guid string, checkStatus bool) (attachment *imessage.Attachment, err error) {
 	bb.log.Trace().Str("guid", guid).Msg("downloadAttachment")
 
 	var attachmentResponse AttachmentResponse
@@ -1770,6 +1827,9 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 		return nil, err
 	}
 	defer response.Body.Close()
+	if checkStatus && response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("attachment download returned HTTP %d", response.StatusCode)
+	}
 
 	tempFile, err := os.CreateTemp(os.TempDir(), guid)
 	if err != nil {
@@ -1781,6 +1841,9 @@ func (bb *blueBubbles) downloadAttachment(guid string) (attachment *imessage.Att
 	_, err = io.Copy(tempFile, response.Body)
 	if err != nil {
 		bb.log.Error().Err(err).Msg("Error copying response body to temp file")
+		if checkStatus {
+			_ = os.Remove(tempFile.Name())
+		}
 		return nil, err
 	}
 
