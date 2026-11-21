@@ -1761,6 +1761,9 @@ func (portal *Portal) handleIMMemberChange(msg *imessage.Message, dbMessage *dat
 }
 
 func (portal *Portal) convertIMAttachment(msg *imessage.Message, attach *imessage.Attachment, intent *appservice.IntentAPI) (*event.MessageEventContent, map[string]interface{}, error) {
+	if attach.PathOnDisk == "" {
+		return nil, nil, errors.New("attachment unavailable")
+	}
 	data, err := attach.Read()
 	if err != nil {
 		portal.log.Errorfln("Failed to read attachment in %s: %v", msg.GUID, err)
@@ -1980,7 +1983,7 @@ func (portal *Portal) addSourceMetadata(msg *imessage.Message, to map[string]any
 func (portal *Portal) convertiMessage(msg *imessage.Message, intent *appservice.IntentAPI) []*ConvertedMessage {
 	attachments := portal.convertIMAttachments(msg, intent)
 	text := portal.convertIMText(msg)
-	if text != nil && len(attachments) == 1 && portal.bridge.Config.Bridge.CaptionInMessage {
+	if text != nil && len(attachments) == 1 && attachments[0].Content.MsgType != event.MsgNotice && portal.bridge.Config.Bridge.CaptionInMessage {
 		attach := attachments[0].Content
 		attach.FileName = attach.Body
 		attach.Body = text.Content.Body
