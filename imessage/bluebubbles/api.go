@@ -2,6 +2,7 @@ package bluebubbles
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -60,10 +61,15 @@ type blueBubbles struct {
 
 	bbRequestLock sync.Mutex
 
+	readReceipts       chan queuedReadReceipt
+	readReceiptContext context.Context
+	cancelReadReceipts context.CancelFunc
+
 	usingPrivateAPI bool
 }
 
 func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
+	receiptContext, cancelReadReceipts := context.WithCancel(context.Background())
 	return &blueBubbles{
 		bridge: bridge,
 		log:    bridge.GetZLog().With().Str("component", "bluebubbles").Logger(),
@@ -75,6 +81,10 @@ func NewBlueBubblesConnector(bridge imessage.Bridge) (imessage.API, error) {
 		contactChan:       make(chan *imessage.Contact, 2048),
 		messageStatusChan: make(chan *imessage.SendMessageStatus, 32),
 		backfillTaskChan:  make(chan *imessage.BackfillTask, 32),
+
+		readReceipts:       make(chan queuedReadReceipt, readReceiptQueueSize),
+		readReceiptContext: receiptContext,
+		cancelReadReceipts: cancelReadReceipts,
 	}, nil
 }
 
@@ -92,6 +102,8 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 		return err
 	}
 
+	go bb.runReadReceipts()
+
 	// Notify main this API is fully loaded
 	readyCallback()
 
@@ -100,6 +112,7 @@ func (bb *blueBubbles) Start(readyCallback func()) error {
 
 func (bb *blueBubbles) Stop() {
 	bb.log.Trace().Msg("Stop")
+	bb.cancelReadReceipts()
 	bb.stopListening()
 }
 
@@ -1308,32 +1321,6 @@ func (bb *blueBubbles) SendTapback(chatID, targetGUID string, targetPart int, ta
 		Service: res.Data.Handle.Service,
 		Time:    time.UnixMilli(res.Data.DateCreated),
 	}, nil
-}
-
-func (bb *blueBubbles) SendReadReceipt(chatID, readUpTo string) error {
-	bb.log.Trace().Str("chatID", chatID).Str("readUpTo", readUpTo).Msg("SendReadReceipt")
-
-	if !bb.usingPrivateAPI {
-		bb.log.Warn().Str("chatID", chatID).Msg("The private-api isn't enabled in BlueBubbles, can't send read receipt")
-		return errors.ErrUnsupported
-	}
-
-	var res ReadReceiptResponse
-	err := bb.apiPost(fmt.Sprintf("/api/v1/chat/%s/read", chatID), nil, &res)
-
-	if err != nil {
-		return err
-	}
-
-	if res.Status != 200 {
-		bb.log.Error().Any("response", res).Str("chatID", chatID).Msg("Failure when marking a chat as read")
-
-		return errors.New("could not mark chat as read")
-	}
-
-	bb.log.Trace().Str("chatID", chatID).Msg("Marked a chat as Read")
-
-	return nil
 }
 
 func (bb *blueBubbles) SendTypingNotification(chatID string, typing bool) error {
