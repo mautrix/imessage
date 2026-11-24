@@ -1,5 +1,47 @@
 package bluebubbles
 
+import (
+	"bytes"
+	"encoding/json"
+	"strconv"
+)
+
+// FlexString unmarshals either a JSON string or a JSON number as a string.
+type FlexString string
+
+func (fs *FlexString) UnmarshalJSON(data []byte) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		*fs = ""
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(trimmed, &s); err != nil {
+			return err
+		}
+		*fs = FlexString(s)
+		return nil
+	}
+	var num json.Number
+	if err := json.Unmarshal(trimmed, &num); err == nil {
+		*fs = FlexString(num.String())
+		return nil
+	}
+	var i int64
+	if err := json.Unmarshal(trimmed, &i); err != nil {
+		return err
+	}
+	*fs = FlexString(strconv.FormatInt(i, 10))
+	return nil
+}
+
+type SocketIOHandshake struct {
+	SID          string `json:"sid"`
+	PingInterval int64  `json:"pingInterval"`
+	PingTimeout  int64  `json:"pingTimeout"`
+}
+
 type PageMetadata struct {
 	Count  int64 `json:"count"`
 	Total  int64 `json:"total"`
@@ -140,7 +182,8 @@ type TypingNotification struct {
 
 type Message struct {
 	AssociatedMessageGUID     string       `json:"associatedMessageGuid,omitempty"`
-	AssociatedMessageType     string       `json:"associatedMessageType,omitempty"`
+	AssociatedMessageType     FlexString   `json:"associatedMessageType,omitempty"`
+	AssociatedMessageEmoji    string       `json:"associatedMessageEmoji,omitempty"`
 	Attachments               []Attachment `json:"attachments,omitempty"`
 	AttributedBody            []any        `json:"attributedBody,omitempty"`
 	BalloonBundleID           any          `json:"balloonBundleId,omitempty"`
@@ -249,9 +292,9 @@ type UnsendMessage struct {
 }
 
 type EditMessage struct {
-	EditedMessage                  string `json:"editedMessage"`
-	BackwwardsCompatibilityMessage string `json:"backwardsCompatibilityMessage"`
-	PartIndex                      int    `json:"partIndex"`
+	EditedMessage                 string `json:"editedMessage"`
+	BackwardsCompatibilityMessage string `json:"backwardsCompatibilityMessage"`
+	PartIndex                     int    `json:"partIndex"`
 }
 
 type UnsendMessageResponse struct {
@@ -320,4 +363,19 @@ type ResolveIdentifierResponse struct {
 	Status  int64  `json:"status"`
 	Message string `json:"message"`
 	Data    Handle `json:"data"`
+}
+
+type CreateChatRequest struct {
+	Addresses []string `json:"addresses"`
+	Service   string   `json:"service,omitempty"`
+	Method    string   `json:"method,omitempty"`
+	Message   string   `json:"message,omitempty"`
+	TempGUID  string   `json:"tempGuid,omitempty"`
+}
+
+type CreateChatResponse struct {
+	Status  int64  `json:"status"`
+	Message string `json:"message"`
+	Data    Chat   `json:"data"`
+	Error   any    `json:"error,omitempty"`
 }

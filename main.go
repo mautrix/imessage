@@ -185,7 +185,6 @@ func (br *IMBridge) ensureConnection() {
 }
 
 func (br *IMBridge) Init() {
-	br.CommandProcessor = commands.NewProcessor(&br.Bridge)
 	br.DB = database.New(br.Bridge.DB, br.Log.Sub("Database"))
 
 	br.initSegment()
@@ -618,6 +617,9 @@ func (br *IMBridge) PeriodicSync() {
 	for {
 		time.Sleep(time.Hour)
 		br.Log.Infoln("Executing periodic chat/contact info sync")
+		if err := br.IM.RefreshContactList(); err != nil && !errors.Is(err, errors.ErrUnsupported) {
+			br.ZLog.Warn().Err(err).Msg("Failed to refresh contact list during periodic sync")
+		}
 		for _, portal := range br.GetAllPortals() {
 			if len(portal.MXID) > 0 {
 				portal.log.Infoln("Syncing portal (periodic sync, existing portal)")

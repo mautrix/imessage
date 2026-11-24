@@ -30,15 +30,27 @@ const (
 	TapbackLaugh
 	TapbackEmphasis
 	TapbackQuestion
+	TapbackCustomEmoji
 
 	TapbackRemoveOffset = 1000
 )
 
 type Tapback struct {
-	TargetGUID string      `json:"target_guid"`
-	TargetPart int         `json:"-"`
-	Remove     bool        `json:"-"`
-	Type       TapbackType `json:"type"`
+	TargetGUID  string      `json:"target_guid"`
+	TargetPart  int         `json:"-"`
+	Remove      bool        `json:"-"`
+	Type        TapbackType `json:"type"`
+	CustomEmoji string      `json:"custom_emoji,omitempty"`
+}
+
+func (tapback *Tapback) Emoji() string {
+	if tapback == nil {
+		return ""
+	}
+	if tapback.Type == TapbackCustomEmoji && tapback.CustomEmoji != "" {
+		return tapback.CustomEmoji
+	}
+	return tapback.Type.Emoji()
 }
 
 var (
@@ -75,7 +87,11 @@ func (tapback *Tapback) Parse() (*Tapback, error) {
 type TapbackType int
 
 func TapbackFromEmoji(emoji string) TapbackType {
-	switch []rune(emoji)[0] {
+	runes := []rune(emoji)
+	if len(runes) == 0 {
+		return 0
+	}
+	switch runes[0] {
 	case '\u2665', '\u2764', '\U0001f499', '\U0001f49a', '\U0001f90e', '\U0001f5a4', '\U0001f90d', '\U0001f9e1',
 		'\U0001f49b', '\U0001f49c', '\U0001f496', '\u2763', '\U0001f495', '\U0001f49f':
 		// '♥', '❤', '💙', '💚', '🤎', '🖤', '🤍', '🧡', '💛', '💜', '💖', '❣', '💕', '💟'
@@ -105,10 +121,12 @@ func TapbackFromName(name string) TapbackType {
 		return TapbackDislike
 	case "laugh":
 		return TapbackLaugh
-	case "emphasize":
+	case "emphasize", "emphasis":
 		return TapbackEmphasis
 	case "question":
 		return TapbackQuestion
+	case "emoji":
+		return TapbackCustomEmoji
 	default:
 		return 0
 	}

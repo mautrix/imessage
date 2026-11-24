@@ -266,6 +266,7 @@ type CreateGroupResponse struct {
 type ConnectorCapabilities struct {
 	MessageSendResponses     bool
 	SendTapbacks             bool
+	SendCustomEmojiTapbacks  bool
 	SendReadReceipts         bool
 	SendTypingNotifications  bool
 	SendCaptions             bool

@@ -40,7 +40,12 @@ func (user *User) SwitchCustomMXID(accessToken string, mxid id.UserID) error {
 		return errors.New("mismatching mxid")
 	}
 	user.AccessToken = accessToken
-	return user.startCustomMXID()
+	err := user.startCustomMXID()
+	if err != nil {
+		return err
+	}
+	user.Update()
+	return nil
 }
 
 func (user *User) CustomIntent() *appservice.IntentAPI {
@@ -58,11 +63,14 @@ func (user *User) initDoublePuppet() {
 				err = user.startCustomMXID()
 			}
 		}
-	} else {
+	} else if len(user.bridge.Config.Bridge.LoginSharedSecret) > 0 {
 		err = user.loginWithSharedSecret()
 		if err == nil {
 			err = user.startCustomMXID()
 		}
+	} else {
+		user.log.Debugln("Double puppeting not configured (no access token or login_shared_secret); use login-matrix command to enable")
+		return
 	}
 	if err != nil {
 		user.log.Warnln("Failed to switch to auto-logined custom puppet:", err)

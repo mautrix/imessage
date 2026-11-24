@@ -1,4 +1,4 @@
--- v0 -> v21 (compatible with v18+): Latest schema
+-- v0 -> v22 (compatible with v18+): Latest schema
 
 CREATE TABLE portal (
 	guid              TEXT    PRIMARY KEY,
@@ -52,6 +52,7 @@ CREATE TABLE tapback (
 	handle_guid  TEXT NOT NULL DEFAULT '',
 	type         INTEGER NOT NULL,
 	mxid         TEXT NOT NULL UNIQUE, guid TEXT DEFAULT NULL,
+	emoji        TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (portal_guid, message_guid, message_part, sender_guid),
 	FOREIGN KEY (portal_guid, message_guid, message_part) REFERENCES message(portal_guid, guid, part) ON DELETE CASCADE ON UPDATE CASCADE
 );

@@ -62,6 +62,6 @@ The android-sms connector is deprecated in favor of [mautrix-gmessages](https://
   * [x] At startup
   * [x] When receiving message
 * [ ] Private chat creation by inviting Matrix puppet of iMessage user to new room
-* [ ] Option to use own Matrix account for messages sent from other iMessage clients
+* [x] Option to use own Matrix account for messages sent from other iMessage clients
   * [x] Automatically with shared secret login
-  * [ ] Manually with `login-matrix` command
+  * [x] Manually with `login-matrix` command

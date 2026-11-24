@@ -38,7 +38,13 @@ type WrappedCommandEvent struct {
 func (br *IMBridge) RegisterCommands() {
 	proc := br.CommandProcessor.(*commands.Processor)
 	proc.AddHandlers(
+		commands.CommandLoginMatrix,
+		commands.CommandLogoutMatrix,
+		commands.CommandDiscardMegolmSession,
+		commands.CommandSetPowerLevel,
 		cmdPM,
+		cmdCreateGroup,
+		cmdSync,
 		cmdSearchContacts,
 		cmdRefreshContacts,
 	)
@@ -107,13 +113,18 @@ func fnSearchContacts(ce *WrappedCommandEvent) {
 		return
 	}
 
-	// TODO trim whitespace from args first
-	contacts, err := ce.Bridge.IM.SearchContactList(ce.RawArgs)
+	searchTerm := strings.TrimSpace(ce.RawArgs)
+	if searchTerm == "" {
+		ce.Reply("**Usage:** `search-contacts <search terms>`")
+		return
+	}
+
+	contacts, err := ce.Bridge.IM.SearchContactList(searchTerm)
 	if err != nil {
 		ce.Reply("Failed to search contacts: %s", err)
 	} else {
-		if contacts == nil || len(contacts) == 0 {
-			ce.Reply("No contacts found for search `%s`", ce.RawArgs)
+		if len(contacts) == 0 {
+			ce.Reply("No contacts found for search `%s`", searchTerm)
 		} else {
 			replyMessage := fmt.Sprintf("Found %d contacts:\n", len(contacts))
 
@@ -165,12 +176,91 @@ var cmdRefreshContacts = &commands.FullHandler{
 }
 
 func fnRefreshContacts(ce *WrappedCommandEvent) {
-	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnSearchContacts")
+	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnRefreshContacts")
 
 	err := ce.Bridge.IM.RefreshContactList()
 	if err != nil {
-		ce.Reply("Failed to search contacts: %s", err)
+		ce.Reply("Failed to refresh contacts: %s", err)
 	} else {
-		ce.Reply("Contacts List updated!")
+		ce.Reply("Contacts list updated!")
 	}
+}
+
+var cmdCreateGroup = &commands.FullHandler{
+	Func: wrapCommand(fnCreateGroup),
+	Name: "create-group",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionManagingPortals,
+		Description: "Creates a new group chat with the specified phone numbers or email addresses.",
+		Args:        "<_address1_> <_address2_> [...]",
+	},
+	RequiresPortal: false,
+	RequiresLogin:  false,
+}
+
+func fnCreateGroup(ce *WrappedCommandEvent) {
+	ce.Bridge.ZLog.Trace().Interface("args", ce.Args).Str("cmd", ce.Command).Msg("fnCreateGroup")
+
+	if len(ce.Args) < 2 {
+		ce.Reply("**Usage:** `create-group <address1> <address2> [...]`")
+		return
+	}
+
+	guids := make([]string, len(ce.Args))
+	for i, identifier := range ce.Args {
+		if strings.HasPrefix(identifier, "iMessage;-;") || strings.HasPrefix(identifier, "SMS;-;") {
+			guids[i] = identifier
+		} else {
+			resolved, err := ce.Bridge.IM.ResolveIdentifier(identifier)
+			if err != nil {
+				ce.Reply("Failed to resolve identifier `%s`: %s", identifier, err)
+				return
+			}
+			guids[i] = resolved
+		}
+	}
+
+	createResp, err := ce.Bridge.IM.CreateGroup(guids)
+	if err != nil {
+		ce.Reply("Failed to create group: %s", err)
+		return
+	}
+
+	portal := ce.Bridge.GetPortalByGUID(createResp.GUID)
+	portal.ThreadID = createResp.ThreadID
+	if err = portal.CreateMatrixRoom(nil, nil); err != nil {
+		ce.Reply("Created iMessage group `%s`, but failed to create Matrix room: %s", createResp.GUID, err)
+		return
+	}
+
+	ce.Reply("Created group portal room [%s](%s) and invited you to it.", portal.MXID, portal.MXID.URI(ce.Bridge.Config.Homeserver.Domain).MatrixToURL())
+}
+
+var cmdSync = &commands.FullHandler{
+	Func: wrapCommand(fnSync),
+	Name: "sync",
+	Help: commands.HelpMeta{
+		Section:     HelpSectionManagingPortals,
+		Description: "Refreshes contacts and resyncs existing portal rooms and metadata.",
+	},
+	RequiresPortal: false,
+	RequiresLogin:  false,
+}
+
+func fnSync(ce *WrappedCommandEvent) {
+	ce.Bridge.ZLog.Trace().Str("cmd", ce.Command).Msg("fnSync")
+
+	if err := ce.Bridge.IM.RefreshContactList(); err != nil {
+		ce.Bridge.ZLog.Warn().Err(err).Msg("Failed to refresh contact list during manual sync")
+	}
+
+	portals := ce.Bridge.GetAllPortals()
+	synced := 0
+	for _, portal := range portals {
+		if len(portal.MXID) > 0 {
+			portal.Sync(false)
+			synced++
+		}
+	}
+	ce.Reply("Contact list refreshed and synced %d portal rooms.", synced)
 }

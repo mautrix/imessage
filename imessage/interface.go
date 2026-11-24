@@ -52,6 +52,10 @@ type VenturaFeatures interface {
 	EditMessage(chatID, targetGUID string, newText string, targetPart int) (*SendResponse, error)
 }
 
+type CustomEmojiTapbackAPI interface {
+	SendCustomEmojiTapback(chatID, targetGUID string, targetPart int, emoji string, remove bool) (*SendResponse, error)
+}
+
 type API interface {
 	Start(readyCallback func()) error
 	Stop()
