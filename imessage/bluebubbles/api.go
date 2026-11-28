@@ -1621,6 +1621,9 @@ func (bb *blueBubbles) convertBBContactToiMessageContact(bbContact *Contact) (*i
 }
 
 func (bb *blueBubbles) convertBBMessageToiMessage(bbMessage Message) (*imessage.Message, error) {
+	if len(bbMessage.Chats) == 0 || bbMessage.Chats[0].GUID == "" {
+		return nil, errors.New("BlueBubbles message has no chat GUID")
+	}
 
 	var message imessage.Message
 
